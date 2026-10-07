@@ -1,0 +1,5 @@
+# Respaldos y temporales
+*.bak
+*.bak.*
+*.tmp
+.commit_msg
