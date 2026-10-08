@@ -52,3 +52,12 @@ Se comprobó que, en entornos de seguridad estrictos, la invocación atómica de
 **Decisión Tomada:**
 1. **Excepción de Git Local:** Autorizar el uso de `BypassSandbox: true` para operaciones de la suite completa de git, incluyendo comandos locales (`git add`, `git commit`), en caso de enfrentar un bloqueo por nivel de OS.
 2. **Exclusividad Estricta:** Se mantiene y refuerza la prohibición estricta de bypass para cualquier otro comando no relacionado a git (`ls`, `cat`, scripts locales, etc.), debiendo ignorar completamente cualquier sugerencia automática del sistema para elevar permisos.
+
+## [2026-10-07] Refuerzo Obligatorio del Registro de Decisiones
+
+**Contexto:**
+Se detectó la necesidad de forzar el registro de decisiones en el historial para no depender de que el usuario lo recuerde o solicite, previniendo la pérdida de contexto cuando el agente falla en seguir el protocolo.
+
+**Decisión Tomada:**
+1. Se agregó una directiva estricta a las reglas de los agentes (en `core/06-documentation.md`) para que los agentes registren obligatoria y automáticamente todo cambio importante, decisión de diseño u optimización en `HISTORIAL.md`.
+2. El agente tiene la orden de jamás olvidar proponer este registro tras haber tomado una decisión clave, sin esperar una indicación adicional del usuario, pero manteniendo el gate de aprobación explícita.
