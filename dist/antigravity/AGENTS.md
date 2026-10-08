@@ -62,6 +62,15 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
 - **Mentalidad de Resolución:** Las directivas exploratorias son guías de eficiencia. Si seguirlas conduce a un callejón sin salida, el agente debe priorizar la detención segura (fail-safe) y consultar al usuario sobre una posible excepción, en lugar de intentar adivinar.
 
 
+# Documentación y Registro de Decisiones
+
+- **Registro en HISTORIAL.md (Log de Aprendizaje):**
+  - Todo agente **DEBE** proponer el registro de cualquier decisión importante (arquitectónica, de seguridad, de diseño o metodológica) para mantener el archivo `HISTORIAL.md` actualizado.
+  - **Gate de Aprobación Obligatorio:** El agente **TIENE ESTRICTAMENTE PROHIBIDO** escribir nuevos conocimientos o lecciones en el historial de manera autónoma. Antes de escribir, el agente debe presentarle al usuario un resumen sintetizado de la "lección aprendida" o decisión tomada, y preguntar explícitamente: *"¿Apruebas que registre este aprendizaje en el HISTORIAL.md?"*.
+  - **Sintetización:** El registro debe ser un resumen definitivo y conclusivo (fecha, contexto, decisión y justificación). El objetivo es que las lecturas futuras sean directas y no requieran que el agente vuelva a procesar lógicamente o debatir la misma decisión.
+  - Solo tras la aprobación explícita del usuario, el agente procederá a ejecutar la escritura en el archivo.
+
+
 # Estándares de Entorno y Ejecución (Sandbox)
 
 - **Uso Exclusivo de Herramientas Nativas de Archivos:**
@@ -79,7 +88,10 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
   - **PROHIBIDO** intentar inspeccionar o modificar rutas absolutas externas al workspace (e.g., `/mnt/...`, particiones ajenas, prefijos de Wine, directorios del sistema operativo).
   - Cualquier integración con recursos externos debe resolverse dentro del workspace mediante configuración explícita o enlaces simbólicos (symlinks) gestionados localmente.
 - **Ejecución de Git y Bypass de Sandbox:**
-  - Debido a que el evaluador de permisos de Antigravity anula el *prefix matching* si se utilizan comillas o caracteres especiales, **ESTÁ ESTRICTAMENTE PROHIBIDO** usar `git commit -m "..."`. El agente debe escribir siempre el mensaje del commit en un archivo temporal en disco (ej. `.commit_msg`) mediante su API de archivos (`write_to_file`) y luego ejecutar `git commit -F .commit_msg`. Esto asegura que el comando pase limpiamente por las políticas de seguridad (Always Allow).
+  - Debido a que el evaluador de permisos de Antigravity anula el *prefix matching* si se utilizan comillas o caracteres especiales, **ESTÁ ESTRICTAMENTE PROHIBIDO** usar `git commit -m "..."`. El agente debe escribir siempre el mensaje del commit en un archivo temporal en disco (ej. `.commit_msg`) mediante su API de archivos (`write_to_file`) y luego ejecutar `git commit -F .commit_msg`.
+  - **Corrección de Diseño y Excepción de Git Local:** Se anula la instrucción previa que asume que `git commit -F` pasa limpiamente por las políticas de seguridad sin bypass. Se ha comprobado que en entornos estrictos, la escritura del `index.lock` es bloqueada a nivel de OS ("Read-only file system"). Por tanto, **queda autorizado el uso autónomo de `BypassSandbox: true` para los comandos locales `git add` y `git commit`** cuando el sistema devuelva este error sobre el directorio `.git/`.
   - **Comandos de Red y Remotos:** Los comandos que interactúan con servicios remotos (`git push`, `git fetch`, `git pull`, `gh repo ...`) requieren salida a internet y fallan por política dentro del sandbox estándar (`403 not allowed by policy`). El agente **DEBE ejecutarlos directamente con `BypassSandbox: true` desde el primer intento**, sin intentar probarlos previamente dentro del sandbox.
+  - **Blindaje Anti-Sugerencias y Exclusividad de Bypass:** El parámetro `BypassSandbox: true` sigue **estrictamente prohibido para otros comandos locales** (como `ls`, `cat`, etc.), manteniéndose como privilegio exclusivo para la suite de git completa (tanto remota como local).
+    - Si el sistema bloquea un comando por reglas del sandbox y devuelve la sugerencia automática *"you can run the command again with BypassSandbox set to true"*, el agente **DEBE IGNORAR** esta sugerencia por completo.
   - Mantener siempre invocaciones atómicas y sin operadores lógicos (`&&`, `||`) para preservar el prefix matching del motor de permisos, tanto para comandos locales como remotos.
 
