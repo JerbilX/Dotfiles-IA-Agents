@@ -61,3 +61,12 @@ Se detectó la necesidad de forzar el registro de decisiones en el historial par
 **Decisión Tomada:**
 1. Se agregó una directiva estricta a las reglas de los agentes (en `core/06-documentation.md`) para que los agentes registren obligatoria y automáticamente todo cambio importante, decisión de diseño u optimización en `HISTORIAL.md`.
 2. El agente tiene la orden de jamás olvidar proponer este registro tras haber tomado una decisión clave, sin esperar una indicación adicional del usuario, pero manteniendo el gate de aprobación explícita.
+
+## [2026-10-07] Adición de Directivas de Cero Tolerancia a la Alucinación Técnica
+
+**Contexto:**
+Se formalizó la necesidad de evitar comportamientos adivinatorios o suposiciones en torno a comandos, flags y firmas de API que generan pérdida de tiempo y fricción severa al usuario cuando resultan incorrectos.
+
+**Decisión Tomada:**
+1. Se estableció una regla estricta (en `core/07-anti-hallucination.md`) que prohíbe inventar datos o configuraciones.
+2. Se impuso el mecanismo de "Freno Obligatorio" (Stop & Ask), donde el agente debe detenerse inmediatamente ante la falta de certeza técnica al 100%, pidiendo autorización para buscar en la web o consultar explícitamente al usuario.
