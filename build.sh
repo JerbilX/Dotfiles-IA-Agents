@@ -101,9 +101,79 @@ cmd_status() {
     fi
 }
 
+cmd_skills() {
+    echo "==> [skills] Provisionando entorno de skills de Antigravity..."
+    local AGY_SKILLS_PATH="${AGY_SKILLS_PATH:-"${SCRIPT_DIR}/../AGY-Skills/skills"}"
+    local GEMINI_SKILLS_DIR="${HOME}/.gemini/config/skills"
+    local CONFIG_FILE="${RUNTIMES_DIR}/config.md"
+
+    # Garantizar directorios base
+    mkdir -p "${GEMINI_SKILLS_DIR}"
+    mkdir -p "${HOME}/.local/bin"
+
+    # 1. Purgar symlinks previos en el entorno de ejecución (Idempotencia)
+    find "${GEMINI_SKILLS_DIR}" -maxdepth 1 -type l -delete
+
+    # 2. Leer configuración (sección ## Enabled Skills) y aprovisionar
+    if [[ -f "${CONFIG_FILE}" ]]; then
+        local in_section=false
+        while IFS= read -r line; do
+            # Detectar inicio de sección
+            if [[ "$line" =~ ^"## Enabled Skills" ]]; then
+                in_section=true
+                continue
+            fi
+            
+            # Si estamos en la sección y encontramos otra cabecera, salimos
+            if [[ "$in_section" = true && "$line" =~ ^"#" ]]; then
+                break
+            fi
+            
+            if [[ "$in_section" = true ]]; then
+                # Buscar líneas que empiecen con guión (lista markdown)
+                if [[ "$line" =~ ^-[[:space:]]+([a-zA-Z0-9_-]+) ]]; then
+                    local skill_name="${BASH_REMATCH[1]}"
+                    local target_dir
+                    target_dir="$(realpath -m "${AGY_SKILLS_PATH}/${skill_name}")"
+                    
+                    if [[ -d "${target_dir}" ]]; then
+                        # Habilitar el skill
+                        ln -sfn "${target_dir}" "${GEMINI_SKILLS_DIR}/${skill_name}"
+                        echo "  [+] Skill habilitado: ${skill_name}"
+                        
+                        # (Opcional) Aprovisionamiento dinámico de binarios del skill
+                        if [[ -d "${target_dir}/scripts" ]]; then
+                            for script in "${target_dir}/scripts/"*.sh; do
+                                if [[ -f "${script}" && -x "${script}" ]]; then
+                                    local bin_name
+                                    bin_name=$(basename "${script}" .sh)
+                                    # Sobreescribir nombre genérico por comando global de ecosistema
+                                    if [[ "${bin_name}" == "build_release" && "${skill_name}" == "eso-addon"* ]]; then
+                                        bin_name="eso-build"
+                                    fi
+                                    
+                                    ln -sfn "${script}" "${HOME}/.local/bin/${bin_name}"
+                                    echo "      -> Binario expuesto en PATH: ~/.local/bin/${bin_name}"
+                                fi
+                            done
+                        fi
+                    else
+                        echo "  [!] Advertencia: No se encontró el origen '${skill_name}' en ${AGY_SKILLS_PATH}"
+                    fi
+                fi
+            fi
+        done < "${CONFIG_FILE}"
+        echo "==> [skills] Provisionamiento finalizado."
+    else
+        echo "Error: Archivo de configuración no encontrado en ${CONFIG_FILE}" >&2
+        exit 1
+    fi
+}
+
 cmd_all() {
     cmd_build
     cmd_link
+    cmd_skills
     cmd_status
 }
 
@@ -116,6 +186,9 @@ case "${COMMAND}" in
     link)
         cmd_link
         ;;
+    skills)
+        cmd_skills
+        ;;
     status)
         cmd_status
         ;;
@@ -123,7 +196,7 @@ case "${COMMAND}" in
         cmd_all
         ;;
     *)
-        echo "Uso: $0 {build|link|status|all}" >&2
+        echo "Uso: $0 {build|link|skills|status|all}" >&2
         exit 1
         ;;
 esac
