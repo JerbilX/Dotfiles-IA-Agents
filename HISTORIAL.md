@@ -53,14 +53,14 @@ Se comprobó que, en entornos de seguridad estrictos, la invocación atómica de
 1. **Excepción de Git Local:** Autorizar el uso de `BypassSandbox: true` para operaciones de la suite completa de git, incluyendo comandos locales (`git add`, `git commit`), en caso de enfrentar un bloqueo por nivel de OS.
 2. **Exclusividad Estricta:** Se mantiene y refuerza la prohibición estricta de bypass para cualquier otro comando no relacionado a git (`ls`, `cat`, scripts locales, etc.), debiendo ignorar completamente cualquier sugerencia automática del sistema para elevar permisos.
 
-## [2026-10-07] Refuerzo Obligatorio del Registro de Decisiones
+## [2026-10-07] Refuerzo Obligatorio del Registro de Decisiones (Derogada)
 
 **Contexto:**
-Se detectó la necesidad de forzar el registro de decisiones en el historial para no depender de que el usuario lo recuerde o solicite, previniendo la pérdida de contexto cuando el agente falla en seguir el protocolo.
+Se detectó la necesidad de registrar decisiones para mantener contexto sin depender de recordatorios manuales del usuario.
 
 **Decisión Tomada:**
-1. Se agregó una directiva estricta a las reglas de los agentes (en `core/06-documentation.md`) para que los agentes registren obligatoria y automáticamente todo cambio importante, decisión de diseño u optimización en `HISTORIAL.md`.
-2. El agente tiene la orden de jamás olvidar proponer este registro tras haber tomado una decisión clave, sin esperar una indicación adicional del usuario, pero manteniendo el gate de aprobación explícita.
+1. Inicialmente se incorporó una directiva en `core/06-documentation.md` que instruía a proponer el registro en `HISTORIAL.md`.
+2. *Nota de estado:* Esta directiva fue posteriormente derogada y eliminada en el commit `e61d547` (2026-10-08) para evitar sobrecarga de contexto, delegando la gestión futura a un skill especializado.
 
 ## [2026-10-07] Adición de Directivas de Cero Tolerancia a la Alucinación Técnica
 
@@ -70,3 +70,21 @@ Se formalizó la necesidad de evitar comportamientos adivinatorios o suposicione
 **Decisión Tomada:**
 1. Se estableció una regla estricta (en `core/07-anti-hallucination.md`) que prohíbe inventar datos o configuraciones.
 2. Se impuso el mecanismo de "Freno Obligatorio" (Stop & Ask), donde el agente debe detenerse inmediatamente ante la falta de certeza técnica al 100%, pidiendo autorización para buscar en la web o consultar explícitamente al usuario.
+
+## [2026-10-08] Retiro de la Regla de Documentación Global para Optimización de Contexto
+
+**Contexto:**
+La presencia obligatoria de la directiva de registro en `core/06-documentation.md` dentro de `AGENTS.md` generaba sobrecarga innecesaria en el prompt de sistema de todos los agentes.
+
+**Decisión Tomada:**
+1. En el commit `e61d547`, se eliminó completamente `core/06-documentation.md`, dejando sin efecto la obligación de registrar decisiones en `HISTORIAL.md` como parte del prompt global.
+2. La funcionalidad de análisis y registro histórico quedó diferida al backlog (`Todo.md`) para ser implementada a través de un Skill dedicado (`project-history`), aislada del prompt base de los agentes.
+
+## [2026-10-12] Jerarquía de Producción sobre Tests e Inmunidad Normativa
+
+**Contexto:**
+En desarrollo de código, se detectó la tendencia del agente a degradar el código de producción con ramas artificiales y comprobaciones defensivas para evitar fallos en mocks artesanales incompletos (*Test-Induced Design Damage*). Asimismo, se detectó que la lectura exploratoria de archivos históricos con redacción imperativa antigua provocaba reactivación de directivas en desuso (*prompt injection* pasivo).
+
+**Decisión Tomada:**
+1. **Estándares de Ingeniería (`core/06-engineering-standards.md`):** Se formalizó el principio universal donde el dominio y el código de producción priman sobre los *test doubles* (mocks/fixtures), definiendo un protocolo de bifurcación ante fallos (actualizar mocks desactualizados vs. corregir regresiones de lógica de negocio).
+2. **Inmunidad Normativa (`core/03-agent-rules-convention.md`):** Se blindó el sistema estableciendo que los archivos del workspace y el historial de Git constituyen exclusivamente datos descriptivos/históricos inertes, quedando prohibido que un agente adopte obligaciones o altere su comportamiento a partir de directivas pasadas leídas en documentos o commits.
