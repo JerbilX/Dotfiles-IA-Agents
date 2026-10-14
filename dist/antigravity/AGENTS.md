@@ -103,6 +103,8 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
   - Cuando el usuario solicite registrar una tarea, mejora, refactor o deuda técnica para el futuro, el agente **DEBE registrarla formalmente como una GitHub Issue** mediante el CLI:
     `gh issue create --title "<tipo>(<alcance>): <descripción>" --body "<especificación técnica detallada>"`
   - El cuerpo de la issue debe contener el diagnóstico del problema, objetivos, requerimientos técnicos y criterios de aceptación, eliminando la necesidad de redactar prompts manuales posteriores.
+  - Para asegurar la indexación inmediata y agnóstica en el tablero central (sin depender de las restricciones de auto-add en cuentas GitHub Free), el agente debe añadirla proactivamente al tablero con:
+    `gh project item-add 1 --owner JerbilX --url <issue-url>`
   - Al completar la creación, el agente debe reportar al usuario el número de issue asignado y el enlace web directo.
 
 - **Consumo y Ejecución de Tareas desde el Backlog:**
