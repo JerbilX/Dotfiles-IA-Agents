@@ -7,3 +7,4 @@ Este archivo centraliza las configuraciones del entorno de Antigravity. Las dist
 Lista de skills (nombres de los directorios) que deben habilitarse en el sistema mediante enlaces simbólicos.
 
 - eso-addon-development
+- adr-manager

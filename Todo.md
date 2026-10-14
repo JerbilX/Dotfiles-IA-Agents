@@ -1,5 +1,0 @@
-# Tareas Pendientes (TODO)
-
-- [ ] **Protocolo de "Fallback de Comandos":** Desarrollar un protocolo de resolución para cuando el agente no pueda ejecutar algo por restricciones del sandbox (y no deba usar `BypassSandbox`). El agente debe proveer automáticamente un bloque de código copiable para que el usuario lo ejecute en su consola terminal, evitando fricción y bloqueos operativos.
-- [ ] **Skill de Aprendizaje:** Revisar el archivo `HISTORIAL.md` como fuente de datos para desarrollar un skill que permita al agente aprender de decisiones pasadas, analizando las razones detrás de dichas decisiones y mejorando su comportamiento autónomo.
-- [ ] **Skill de Gestión de Historial:** Crear un Skill dedicado (ej. `historial-aprendizaje`) para estandarizar el registro, lectura y análisis de `HISTORIAL.md`. La regla global en `core/` simplemente delegará a este Skill. **Restricción crítica:** El Skill debe enforcing un "Gate de Aprobación" donde el agente sintetiza el aprendizaje y pide permiso explícito al usuario ANTES de escribir, evitando la auto-escritura autónoma y la recursividad en la toma de decisiones.

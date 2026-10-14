@@ -14,4 +14,6 @@
   - Si el usuario **confirma**: El agente debe ejecutar de forma autónoma el aprovisionamiento y push mediante:
     `gh repo create JerbilX/<nombre-del-directorio> --private --source=. --remote=origin --push`
     *(Sin delegar comandos de consola ni pedirle al usuario que los ejecute manualmente).*
+    Adicionalmente, si el entorno cuenta con permisos para Projects (`gh project`), procederá a enlazar el repositorio al tablero central:
+    `gh project link 1 --owner JerbilX --repo JerbilX/<nombre-del-directorio>`
   - Si el usuario **rechaza**: El repositorio permanece exclusivamente bajo control de versiones local hasta nueva orden explícita.
