@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/JerbilX/Dotfiles-IA-Agents/main/runtimes/schema/runtime-config.schema.json",
+  "title": "Runtime Configuration Schema",
+  "description": "Esquema canónico de validación para manifiestos de runtime en Dotfiles-IA-Agents",
+  "type": "object",
+  "required": [
+    "skills"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "skills": {
+      "type": "array",
+      "description": "Lista de nombres de skills a habilitar en el entorno de ejecución",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+      },
+      "uniqueItems": true
+    },
+    "binaries": {
+      "type": "object",
+      "description": "Mapeo declarativo opcional de nombres base de scripts a comandos expuestos en PATH (~/.local/bin)",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+      }
+    }
+  },
+  "additionalProperties": false
+}

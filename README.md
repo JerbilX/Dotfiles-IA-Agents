@@ -25,12 +25,15 @@ Dotfiles-IA-Agents/
 │       ├── 0003-jerarquia-de-produccion-sobre-tests-e-inmunidad-normativa.md
 │       ├── 0004-adopcion-del-estandar-madr-y-skill-adr-manager.md
 │       ├── 0005-protocolo-de-desarrollo-guiado-por-issues-y-flujo-de-pull-requests.md
-│       └── 0006-desacoplamiento-de-directivas-y-configuracion-de-runtimes.md
+│       ├── 0006-desacoplamiento-de-directivas-y-configuracion-de-runtimes.md
+│       └── 0007-esquema-de-validacion-y-desacoplamiento-de-binarios-en-runtimes.md
 ├── runtimes/                            # Configuraciones y restricciones por entorno
+│   ├── schema/                          # Esquemas JSON canónicos de validación
+│   │   └── runtime-config.schema.json   # JSON Schema para manifiestos de runtime
 │   └── antigravity/
 │       ├── rules/                       # Directivas y restricciones para el System Prompt
 │       │   └── 01-sandbox.md            # Restricciones de sandbox, I/O nativo y comandos de red
-│       └── config.json                  # Manifiesto estructurado de configuración y skills
+│       └── config.json                  # Manifiesto estructurado de configuración, skills y binarios
 ├── dist/                                # Artefactos compilados listos para distribución
 │   └── antigravity/
 │       └── AGENTS.md                    # Versión consolidada generada automáticamente
@@ -56,7 +59,7 @@ Verifica la existencia del directorio destino `~/.gemini/config/`, respalda de f
 ```
 
 ### 3. Aprovisionamiento de Skills (`skills`)
-Lee declarativamente `runtimes/antigravity/config.json`, purga symlinks obsoletos y aprovisiona los skills habilitados en `~/.gemini/config/skills/`, exponiendo adicionalmente sus scripts ejecutables en `~/.local/bin/`:
+Valida `runtimes/antigravity/config.json` contra `runtimes/schema/runtime-config.schema.json` (fail-fast), purga symlinks obsoletos, aprovisiona los skills habilitados en `~/.gemini/config/skills/`, y expone sus scripts ejecutables en `~/.local/bin/` aplicando alias declarativos si se definen en `binaries`:
 ```bash
 ./build.sh skills
 ```
