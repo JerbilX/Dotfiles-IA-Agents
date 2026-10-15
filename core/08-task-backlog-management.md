@@ -12,7 +12,9 @@
     `gh project item-add 1 --owner JerbilX --url <issue-url>`
   - Al completar la creación, el agente debe reportar al usuario el número de issue asignado y el enlace web directo.
 
-- **Consumo y Ejecución de Tareas desde el Backlog:**
-  - Cuando el usuario instruya trabajar sobre una tarea existente (ej. *"implementa la issue #4"*), el agente **DEBE consultar el contexto técnico directamente con `gh issue view <número>`**.
-  - Si la tarea implica cambios de código, el agente debe trabajar preferentemente en una rama descriptiva asociada (`feat/issue-<número>-<nombre>` o `fix/issue-<número>-<nombre>`).
-  - Al finalizar la tarea y generar los commits correspondientes, el agente debe incluir la referencia de cierre canónica (`Closes #<número>` o `Fixes #<número>`) para que GitHub cierre la issue y el tablero mueva la tarjeta a `Done` automáticamente.
+- **Control de Alcance y Desvíos (Scope Creep):**
+  - El agente **no debe inflar** el objetivo del ticket original con refactors, mejoras o arreglos colaterales no contemplados en la especificación de la issue.
+  - Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create`), indexarla al tablero central (`gh project item-add 1 --owner JerbilX --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
+
+- **Consumo y Ejecución de Tareas:**
+  - El ciclo de vida de ejecución técnica de tareas, despacho bajo demanda, convención de ramas y flujo mandatorio de Pull Requests se rigen exclusivamente por el protocolo canónico establecido en `core/09-issue-driven-workflow.md`.
