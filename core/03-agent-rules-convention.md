@@ -16,4 +16,4 @@
 - **Gestión Canónica de Decisiones de Arquitectura (MADR):**
   - Queda terminantemente prohibido crear, sincronizar o depender de archivos `HISTORIAL.md`, bitácoras informales o logs de decisiones ad-hoc en cualquier nivel del proyecto.
   - Toda decisión arquitectónica, estructural o de diseño técnico debe gestionarse exclusivamente a través del skill `adr-manager` bajo el estándar MADR (`docs/adr/NNNN-titulo-en-kebab-case.md`).
-  - Todo nuevo ADR redactado por el agente nace estrictamente con `status: proposed` y requiere el gate de confirmación humana explícita para transicionar a `status: accepted`.
+  - Todo nuevo ADR redactado por el agente nace estrictamente con `status: proposed`. La transición formal a `status: accepted` se produce tras la confirmación humana explícita en chat o mediante la revisión, aprobación y fusión (*merge*) del Pull Request correspondiente por parte del usuario.

@@ -55,7 +55,7 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
 - **Gestión Canónica de Decisiones de Arquitectura (MADR):**
   - Queda terminantemente prohibido crear, sincronizar o depender de archivos `HISTORIAL.md`, bitácoras informales o logs de decisiones ad-hoc en cualquier nivel del proyecto.
   - Toda decisión arquitectónica, estructural o de diseño técnico debe gestionarse exclusivamente a través del skill `adr-manager` bajo el estándar MADR (`docs/adr/NNNN-titulo-en-kebab-case.md`).
-  - Todo nuevo ADR redactado por el agente nace estrictamente con `status: proposed` y requiere el gate de confirmación humana explícita para transicionar a `status: accepted`.
+  - Todo nuevo ADR redactado por el agente nace estrictamente con `status: proposed`. La transición formal a `status: accepted` se produce tras la confirmación humana explícita en chat o mediante la revisión, aprobación y fusión (*merge*) del Pull Request correspondiente por parte del usuario.
 
 
 # Disciplina de Búsqueda Web (Circuit Breaker Global)
@@ -184,7 +184,11 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
   - Debido a que el evaluador de permisos de Antigravity anula el *prefix matching* si se utilizan comillas o caracteres especiales, **ESTÁ ESTRICTAMENTE PROHIBIDO** usar `git commit -m "..."`. El agente debe escribir siempre el mensaje del commit en un archivo temporal en disco (ej. `.commit_msg`) mediante su API de archivos (`write_to_file`) y luego ejecutar `git commit -F .commit_msg`.
   - **Corrección de Diseño y Excepción de Git Local:** Se anula la instrucción previa que asume que `git commit -F` pasa limpiamente por las políticas de seguridad sin bypass. Se ha comprobado que en entornos estrictos, la escritura del `index.lock` es bloqueada a nivel de OS ("Read-only file system"). Por tanto, **queda autorizado el uso autónomo de `BypassSandbox: true` para los comandos locales `git add` y `git commit`** cuando el sistema devuelva este error sobre el directorio `.git/`.
   - **Comandos de Red y Remotos:** Los comandos que interactúan con servicios remotos (`git push`, `git fetch`, `git pull`, `gh repo ...`, `gh pr ...`, `gh issue ...`, `gh project ...`) requieren salida a internet y fallan por política dentro del sandbox estándar (`403 not allowed by policy`). El agente **DEBE ejecutarlos directamente con `BypassSandbox: true` desde el primer intento**, sin intentar probarlos previamente dentro del sandbox.
-  - **Blindaje Anti-Sugerencias y Exclusividad de Bypass:** El parámetro `BypassSandbox: true` sigue **estrictamente prohibido para otros comandos locales** (como `ls`, `cat`, etc.), manteniéndose como privilegio exclusivo para la suite de git completa (tanto remota como local).
-    - Si el sistema bloquea un comando por reglas del sandbox y devuelve la sugerencia automática *"you can run the command again with BypassSandbox set to true"*, el agente **DEBE IGNORAR** esta sugerencia por completo.
+  - **Blindaje Anti-Sugerencias y Excepciones Autorizadas de Bypass:**
+    - El parámetro `BypassSandbox: true` está reservado exclusivamente para:
+      1. **La suite completa de Git y GitHub CLI** (`git`, `gh`).
+      2. **El pipeline local de aprovisionamiento y enlace de dotfiles** (`./build.sh link`, `./build.sh all`, `./build.sh mcp`), permitiendo al usuario autorizar interactivamente la escritura atómica de symlinks fuera del workspace (`~/.gemini/config/`).
+    - Para cualquier otro comando local genérico (e.g. `ls`, `cat`, utilidades sueltas), el uso de `BypassSandbox: true` sigue **estrictamente prohibido**.
+    - Si el sistema bloquea un comando genérico por reglas del sandbox y devuelve la sugerencia automática *"you can run the command again with BypassSandbox set to true"*, el agente **DEBE IGNORAR** esta sugerencia salvo que pertenezca a las excepciones autorizadas arriba.
   - Mantener siempre invocaciones atómicas y sin operadores lógicos (`&&`, `||`) para preservar el prefix matching del motor de permisos, tanto para comandos locales como remotos.
 
