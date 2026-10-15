@@ -3,3 +3,4 @@
 *.bak.*
 *.tmp
 .commit_msg
+.pr_body
