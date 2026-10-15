@@ -5,11 +5,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="${SCRIPT_DIR}/core"
 RUNTIMES_DIR="${SCRIPT_DIR}/runtimes/antigravity"
 RULES_DIR="${RUNTIMES_DIR}/rules"
+MCP_DIR="${RUNTIMES_DIR}/mcp"
 DIST_DIR="${SCRIPT_DIR}/dist/antigravity"
 DIST_FILE="${DIST_DIR}/AGENTS.md"
+DIST_MCP_FILE="${DIST_DIR}/mcp_config.json"
 TARGET_DIR="${HOME}/.gemini/config"
 TARGET_FILE="${TARGET_DIR}/AGENTS.md"
+TARGET_MCP_FILE="${TARGET_DIR}/mcp_config.json"
 SCHEMA_FILE="${SCRIPT_DIR}/runtimes/schema/runtime-config.schema.json"
+MCP_SCHEMA_FILE="${SCRIPT_DIR}/runtimes/schema/mcp-server.schema.json"
 GEMINI_SKILLS_DIR="${HOME}/.gemini/config/skills"
 CONFIG_FILE="${RUNTIMES_DIR}/config.json"
 AGY_SKILLS_PATH="${AGY_SKILLS_PATH:-"${SCRIPT_DIR}/../AGY-Skills/skills"}"
@@ -69,6 +73,9 @@ EOF
         echo "  [!] Advertencia: El contexto compilado supera el límite recomendado (${words} > ${MAX_CONTEXT_WORDS} palabras)." >&2
         echo "      Considera modularizar directivas extensas hacia skills bajo demanda." >&2
     fi
+
+    # Compilación modular de configuración MCP
+    compile_mcp_config
 }
 
 cmd_link() {
@@ -88,18 +95,23 @@ cmd_link() {
 
         if [ "${current_target}" = "${DIST_FILE}" ]; then
             echo "==> [link] El symlink ya apunta correctamente a ${DIST_FILE}."
-            return 0
+        else
+            local timestamp
+            timestamp="$(date +%Y%m%d_%H%M%S)"
+            echo "==> [link] Respaldando archivo/symlink preexistente en ${TARGET_FILE}.bak.${timestamp}..."
+            mv "${TARGET_FILE}" "${TARGET_FILE}.bak.${timestamp}"
+            echo "==> [link] Creando symlink atómico: ${TARGET_FILE} -> ${DIST_FILE}..."
+            ln -sfn "${DIST_FILE}" "${TARGET_FILE}"
+            echo "==> [link] Symlink establecido exitosamente."
         fi
-
-        local timestamp
-        timestamp="$(date +%Y%m%d_%H%M%S)"
-        echo "==> [link] Respaldando archivo/symlink preexistente en ${TARGET_FILE}.bak.${timestamp}..."
-        mv "${TARGET_FILE}" "${TARGET_FILE}.bak.${timestamp}"
+    else
+        echo "==> [link] Creando symlink atómico: ${TARGET_FILE} -> ${DIST_FILE}..."
+        ln -sfn "${DIST_FILE}" "${TARGET_FILE}"
+        echo "==> [link] Symlink establecido exitosamente."
     fi
 
-    echo "==> [link] Creando symlink atómico: ${TARGET_FILE} -> ${DIST_FILE}..."
-    ln -sfn "${DIST_FILE}" "${TARGET_FILE}"
-    echo "==> [link] Symlink establecido exitosamente."
+    # Enlace de configuración de servidores MCP
+    link_mcp
 }
 
 cmd_status() {
@@ -121,6 +133,9 @@ cmd_status() {
         echo "Tipo: Inexistente"
         echo "Estado: No configurado. Ejecuta './build.sh link'"
     fi
+
+    echo ""
+    status_mcp
 }
 
 validate_config() {
@@ -186,6 +201,15 @@ if "binaries" in config:
         if not isinstance(k, str) or not isinstance(v, str) or not k.strip() or not v.strip():
             print("Error de validación: Claves y valores de '\''binaries'\'' deben ser cadenas no vacías.", file=sys.stderr)
             sys.exit(1)
+
+if "mcp_servers" in config:
+    if not isinstance(config["mcp_servers"], list):
+        print("Error de validación: '\''mcp_servers'\'' debe ser un array.", file=sys.stderr)
+        sys.exit(1)
+    for server in config["mcp_servers"]:
+        if not isinstance(server, str) or not server.strip():
+            print("Error de validación: Cada elemento de '\''mcp_servers'\'' debe ser una cadena no vacía.", file=sys.stderr)
+            sys.exit(1)
 ' "${config_file}" "${schema_file}"; then
             return 1
         fi
@@ -232,6 +256,239 @@ get_declared_binaries() {
     elif command -v python3 >/dev/null 2>&1; then
         python3 -c "import json; [print(f'{k}={v}') for k, v in json.load(open('${config_file}')).get('binaries', {}).items()]" 2>/dev/null || true
     fi
+}
+
+get_enabled_mcp_servers() {
+    local config_file="$1"
+    if command -v jq >/dev/null 2>&1; then
+        jq -r '.mcp_servers[]?' "${config_file}" 2>/dev/null || true
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -c "import json; [print(s) for s in json.load(open('${config_file}')).get('mcp_servers', [])]" 2>/dev/null || true
+    fi
+}
+
+validate_mcp_server() {
+    local mcp_file="$1"
+    local schema_file="$2"
+    local caller="${3:-validate}"
+
+    if [[ ! -f "${mcp_file}" ]]; then
+        echo "Error: Módulo MCP no encontrado en ${mcp_file}" >&2
+        return 1
+    fi
+
+    if [[ ! -f "${schema_file}" ]]; then
+        echo "Error: Esquema MCP no encontrado en ${schema_file}" >&2
+        return 1
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        if ! python3 -c '
+import json, sys
+
+mcp_path, schema_path = sys.argv[1], sys.argv[2]
+try:
+    with open(mcp_path, "r", encoding="utf-8") as f:
+        mcp = json.load(f)
+    with open(schema_path, "r", encoding="utf-8") as f:
+        schema = json.load(f)
+except Exception as e:
+    print(f"Error de sintaxis JSON en {mcp_path}: {e}", file=sys.stderr)
+    sys.exit(1)
+
+if not isinstance(mcp, dict):
+    print(f"Error de validación en {mcp_path}: Debe ser un objeto JSON.", file=sys.stderr)
+    sys.exit(1)
+
+allowed_props = set(schema.get("properties", {}).keys())
+if not schema.get("additionalProperties", True):
+    extra = set(mcp.keys()) - allowed_props
+    if extra:
+        print(f"Error de validación en {mcp_path}: Propiedades no permitidas encontradas: {extra}", file=sys.stderr)
+        sys.exit(1)
+
+has_command = "command" in mcp
+has_url = "serverUrl" in mcp
+
+if not has_command and not has_url:
+    print(f"Error de validación en {mcp_path}: Debe definir '\''command'\'' (stdio) o '\''serverUrl'\'' (sse).", file=sys.stderr)
+    sys.exit(1)
+
+if has_command and has_url:
+    print(f"Error de validación en {mcp_path}: No puede definir '\''command'\'' y '\''serverUrl'\'' simultáneamente.", file=sys.stderr)
+    sys.exit(1)
+
+if has_command:
+    if not isinstance(mcp["command"], str) or not mcp["command"].strip():
+        print(f"Error de validación en {mcp_path}: '\''command'\'' debe ser una cadena no vacía.", file=sys.stderr)
+        sys.exit(1)
+
+if has_url:
+    if not isinstance(mcp["serverUrl"], str) or not mcp["serverUrl"].strip():
+        print(f"Error de validación en {mcp_path}: '\''serverUrl'\'' debe ser una cadena no vacía.", file=sys.stderr)
+        sys.exit(1)
+
+if "args" in mcp:
+    if not isinstance(mcp["args"], list):
+        print(f"Error de validación en {mcp_path}: '\''args'\'' debe ser un array.", file=sys.stderr)
+        sys.exit(1)
+    for arg in mcp["args"]:
+        if not isinstance(arg, str):
+            print(f"Error de validación en {mcp_path}: Cada elemento de '\''args'\'' debe ser una cadena.", file=sys.stderr)
+            sys.exit(1)
+
+if "env" in mcp:
+    if not isinstance(mcp["env"], dict):
+        print(f"Error de validación en {mcp_path}: '\''env'\'' debe ser un objeto.", file=sys.stderr)
+        sys.exit(1)
+    for k, v in mcp["env"].items():
+        if not isinstance(k, str) or not isinstance(v, str):
+            print(f"Error de validación en {mcp_path}: Claves y valores de '\''env'\'' deben ser cadenas.", file=sys.stderr)
+            sys.exit(1)
+' "${mcp_file}" "${schema_file}"; then
+            return 1
+        fi
+    elif command -v jq >/dev/null 2>&1; then
+        if ! jq empty "${mcp_file}" >/dev/null 2>&1; then
+            echo "Error de sintaxis JSON en ${mcp_file}" >&2
+            return 1
+        fi
+    fi
+}
+
+compile_mcp_config() {
+    echo "==> [build] Compilando configuración MCP en ${DIST_MCP_FILE}..."
+    mkdir -p "${DIST_DIR}"
+
+    local enabled_mcps=()
+    mapfile -t enabled_mcps < <(get_enabled_mcp_servers "${CONFIG_FILE}")
+
+    if [ ${#enabled_mcps[@]} -eq 0 ]; then
+        echo '{"mcpServers":{}}' > "${DIST_MCP_FILE}"
+        echo "==> [build] Configuración MCP compilada (0 servidores habilitados): ${DIST_MCP_FILE}"
+        return 0
+    fi
+
+    # Validar que cada módulo habilitado exista en MCP_DIR y cumpla el esquema
+    for s_name in "${enabled_mcps[@]}"; do
+        [ -z "${s_name}" ] && continue
+        local s_path="${MCP_DIR}/${s_name}.json"
+        if [ ! -f "${s_path}" ]; then
+            echo "Error: Módulo de servidor MCP '${s_name}' declarado en config.json no existe en ${s_path}" >&2
+            return 1
+        fi
+        validate_mcp_server "${s_path}" "${MCP_SCHEMA_FILE}" "build-mcp" || return 1
+    done
+
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c '
+import json, os, sys
+
+config_file, mcp_dir, dist_file = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(config_file, "r", encoding="utf-8") as f:
+    config = json.load(f)
+
+enabled_servers = config.get("mcp_servers", [])
+mcp_servers_dict = {}
+
+def expand_val(val):
+    if isinstance(val, str):
+        return os.path.expandvars(val)
+    elif isinstance(val, list):
+        return [expand_val(x) for x in val]
+    elif isinstance(val, dict):
+        return {k: expand_val(v) for k, v in val.items()}
+    return val
+
+for s_name in enabled_servers:
+    s_path = os.path.join(mcp_dir, f"{s_name}.json")
+    with open(s_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    
+    data.pop("$schema", None)
+    data.pop("description", None)
+
+    expanded_data = expand_val(data)
+    mcp_servers_dict[s_name] = expanded_data
+
+output = {
+    "mcpServers": mcp_servers_dict
+}
+
+tmp_file = f"{dist_file}.tmp"
+with open(tmp_file, "w", encoding="utf-8") as f:
+    json.dump(output, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+
+os.replace(tmp_file, dist_file)
+' "${CONFIG_FILE}" "${MCP_DIR}" "${DIST_MCP_FILE}"
+    else
+        echo "Error: Se requiere python3 para compilar la configuración de MCP." >&2
+        return 1
+    fi
+
+    local server_count
+    server_count=$(get_enabled_mcp_servers "${CONFIG_FILE}" | grep -c . || true)
+    echo "==> [build] Configuración MCP compilada con éxito: ${DIST_MCP_FILE} (${server_count} servidor(es))"
+}
+
+link_mcp() {
+    echo "==> [link] Asegurando enlace simbólico para MCP en ${TARGET_DIR}..."
+    mkdir -p "${TARGET_DIR}"
+
+    if [ ! -f "${DIST_MCP_FILE}" ]; then
+        echo "Error: ${DIST_MCP_FILE} no existe. Ejecuta './build.sh build' primero." >&2
+        return 1
+    fi
+
+    if [ -e "${TARGET_MCP_FILE}" ] || [ -L "${TARGET_MCP_FILE}" ]; then
+        local current_target=""
+        if [ -L "${TARGET_MCP_FILE}" ]; then
+            current_target="$(readlink "${TARGET_MCP_FILE}" || true)"
+        fi
+
+        if [ "${current_target}" = "${DIST_MCP_FILE}" ]; then
+            echo "==> [link] El symlink MCP ya apunta correctamente a ${DIST_MCP_FILE}."
+            return 0
+        fi
+
+        local timestamp
+        timestamp="$(date +%Y%m%d_%H%M%S)"
+        echo "==> [link] Respaldando archivo/symlink MCP preexistente en ${TARGET_MCP_FILE}.bak.${timestamp}..."
+        mv "${TARGET_MCP_FILE}" "${TARGET_MCP_FILE}.bak.${timestamp}"
+    fi
+
+    echo "==> [link] Creando symlink atómico: ${TARGET_MCP_FILE} -> ${DIST_MCP_FILE}..."
+    ln -sfn "${DIST_MCP_FILE}" "${TARGET_MCP_FILE}"
+    echo "==> [link] Symlink MCP establecido exitosamente."
+}
+
+status_mcp() {
+    echo "==> [status] Inspeccionando ${TARGET_MCP_FILE}:"
+    if [ -L "${TARGET_MCP_FILE}" ]; then
+        local target
+        target="$(readlink "${TARGET_MCP_FILE}")"
+        echo "Tipo: Enlace simbólico (symlink)"
+        echo "Apunta a: ${target}"
+        if [ -e "${TARGET_MCP_FILE}" ]; then
+            echo "Estado: VÁLIDO (el destino existe)"
+        else
+            echo "Estado: ROTO (el archivo destino no existe)"
+        fi
+    elif [ -e "${TARGET_MCP_FILE}" ]; then
+        echo "Tipo: Archivo regular / directorio preexistente (NO es symlink)"
+        echo "Estado: Requiere ejecución de './build.sh link' para migrar al symlink"
+    else
+        echo "Tipo: Inexistente"
+        echo "Estado: No configurado. Ejecuta './build.sh link' o './build.sh mcp'"
+    fi
+}
+
+cmd_mcp() {
+    echo "==> [mcp] Aprovisionando servidores MCP de Antigravity..."
+    compile_mcp_config
+    link_mcp
+    status_mcp
 }
 
 cmd_skills() {
@@ -382,7 +639,65 @@ cmd_check() {
         fi
     fi
 
-    # 4. Verificación de colisiones de directivas
+    # 4. Verificación de servidores MCP
+    local enabled_mcps=()
+    mapfile -t enabled_mcps < <(get_enabled_mcp_servers "${CONFIG_FILE}")
+    local count_mcps=0
+    local mcps_ok=true
+
+    for s_name in "${enabled_mcps[@]}"; do
+        [ -z "${s_name}" ] && continue
+        count_mcps=$((count_mcps + 1))
+        local s_path="${MCP_DIR}/${s_name}.json"
+        if [ ! -f "${s_path}" ]; then
+            echo "  [✗] Servidor MCP habilitado '${s_name}' no existe en ${MCP_DIR}" >&2
+            mcps_ok=false
+            errors=$((errors + 1))
+        else
+            if ! validate_mcp_server "${s_path}" "${MCP_SCHEMA_FILE}" "check"; then
+                echo "  [✗] Esquema o sintaxis inválida en módulo MCP '${s_name}'" >&2
+                mcps_ok=false
+                errors=$((errors + 1))
+            else
+                local cmd=""
+                if command -v jq >/dev/null 2>&1; then
+                    cmd="$(jq -r '.command // empty' "${s_path}")"
+                elif command -v python3 >/dev/null 2>&1; then
+                    cmd="$(python3 -c "import json; print(json.load(open('${s_path}')).get('command', ''))")"
+                fi
+
+                if [ -n "${cmd}" ]; then
+                    local expanded_cmd
+                    expanded_cmd="$(eval echo "${cmd}")"
+                    if [[ "${expanded_cmd}" == *"/"* ]]; then
+                        if [ ! -e "${expanded_cmd}" ]; then
+                            echo "  [!] Advertencia: Ejecutable MCP '${expanded_cmd}' del servidor '${s_name}' no existe en disco" >&2
+                            warnings=$((warnings + 1))
+                        elif [ ! -x "${expanded_cmd}" ]; then
+                            echo "  [✗] Ejecutable MCP '${expanded_cmd}' del servidor '${s_name}' no tiene permisos de ejecución (+x)" >&2
+                            mcps_ok=false
+                            errors=$((errors + 1))
+                        fi
+                    else
+                        if ! command -v "${cmd}" >/dev/null 2>&1; then
+                            echo "  [!] Advertencia: Comando MCP '${cmd}' del servidor '${s_name}' no encontrado en \$PATH" >&2
+                            warnings=$((warnings + 1))
+                        fi
+                    fi
+                fi
+            fi
+        fi
+    done
+
+    if [ "${mcps_ok}" = true ]; then
+        if [ "${count_mcps}" -gt 0 ]; then
+            echo "  [✓] Servidores MCP: ${count_mcps} módulo(s) verificado(s) contra esquema"
+        else
+            echo "  [✓] Servidores MCP: 0 servidores habilitados"
+        fi
+    fi
+
+    # 5. Verificación de colisiones de directivas
     local collision_error=false
 
     # 4a. Prefijos numéricos intra-directorio en CORE_DIR
@@ -456,10 +771,10 @@ cmd_check() {
         echo "  [✓] Ausencia de colisiones: Prefijos numéricos intra-directorio y títulos H1 únicos"
     fi
 
-    # 5. Integridad de enlaces simbólicos (solo lectura)
+    # 6. Integridad de enlaces simbólicos (solo lectura)
     local symlink_error=false
 
-    # 5a. TARGET_FILE (~/.gemini/config/AGENTS.md)
+    # 6a. TARGET_FILE (~/.gemini/config/AGENTS.md)
     if [ -L "${TARGET_FILE}" ]; then
         if [ ! -e "${TARGET_FILE}" ]; then
             echo "  [✗] Symlink roto: ${TARGET_FILE} -> $(readlink "${TARGET_FILE}" || true)" >&2
@@ -471,7 +786,7 @@ cmd_check() {
         warnings=$((warnings + 1))
     fi
 
-    # 5b. Symlinks en GEMINI_SKILLS_DIR (~/.gemini/config/skills)
+    # 6b. Symlinks en GEMINI_SKILLS_DIR (~/.gemini/config/skills)
     if [ -d "${GEMINI_SKILLS_DIR}" ]; then
         for item in "${GEMINI_SKILLS_DIR}"/*; do
             [ ! -e "${item}" ] && [ ! -L "${item}" ] && continue
@@ -485,7 +800,7 @@ cmd_check() {
         done
     fi
 
-    # 5c. Symlinks en ~/.local/bin gobernados por este repositorio
+    # 6c. Symlinks en ~/.local/bin gobernados por este repositorio
     if [ -d "${HOME}/.local/bin" ]; then
         for item in "${HOME}/.local/bin"/*; do
             [ ! -e "${item}" ] && [ ! -L "${item}" ] && continue
@@ -504,11 +819,25 @@ cmd_check() {
         done
     fi
 
+    # 6d. TARGET_MCP_FILE (~/.gemini/config/mcp_config.json)
+    if [ -L "${TARGET_MCP_FILE}" ]; then
+        if [ ! -e "${TARGET_MCP_FILE}" ]; then
+            echo "  [✗] Symlink roto en MCP: ${TARGET_MCP_FILE} -> $(readlink "${TARGET_MCP_FILE}" || true)" >&2
+            symlink_error=true
+            errors=$((errors + 1))
+        fi
+    elif [ ! -e "${TARGET_MCP_FILE}" ]; then
+        if [ "${count_mcps}" -gt 0 ]; then
+            echo "  [!] Advertencia: ${TARGET_MCP_FILE} no existe aún (ejecuta './build.sh link' o './build.sh mcp')" >&2
+            warnings=$((warnings + 1))
+        fi
+    fi
+
     if [ "${symlink_error}" = false ]; then
         echo "  [✓] Integridad de symlinks: Sin enlaces rotos detectados"
     fi
 
-    # 6. Presupuesto de contexto
+    # 7. Presupuesto de contexto
     if [ -f "${DIST_FILE}" ]; then
         local w
         w="$(wc -w < "${DIST_FILE}" | tr -d ' ')"
@@ -554,6 +883,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         skills)
             cmd_skills
             ;;
+        mcp)
+            cmd_mcp
+            ;;
         status)
             cmd_status
             ;;
@@ -564,7 +896,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             cmd_all
             ;;
         *)
-            echo "Uso: $0 {build|link|skills|status|check|all}" >&2
+            echo "Uso: $0 {build|link|skills|mcp|status|check|all}" >&2
             exit 1
             ;;
     esac

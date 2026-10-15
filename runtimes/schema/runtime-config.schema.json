@@ -27,6 +27,15 @@
         "type": "string",
         "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
       }
+    },
+    "mcp_servers": {
+      "type": "array",
+      "description": "Lista opcional de nombres de servidores MCP a compilar y habilitar en el entorno de ejecución",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+      },
+      "uniqueItems": true
     }
   },
   "additionalProperties": false

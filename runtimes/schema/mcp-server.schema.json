@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/JerbilX/Dotfiles-IA-Agents/main/runtimes/schema/mcp-server.schema.json",
+  "title": "MCP Server Definition Schema",
+  "description": "Esquema canónico de validación para definiciones modulares de servidores MCP en Dotfiles-IA-Agents",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descripción informativa del servidor MCP y sus capacidades"
+    },
+    "command": {
+      "type": "string",
+      "description": "Comando o ruta del ejecutable para transporte Stdio"
+    },
+    "args": {
+      "type": "array",
+      "description": "Argumentos pasados al comando de transporte Stdio",
+      "items": {
+        "type": "string"
+      }
+    },
+    "env": {
+      "type": "object",
+      "description": "Variables de entorno inyectadas al proceso del servidor MCP",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "serverUrl": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL del endpoint remoto para transporte SSE"
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["command"],
+      "not": {
+        "required": ["serverUrl"]
+      }
+    },
+    {
+      "required": ["serverUrl"],
+      "not": {
+        "required": ["command"]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

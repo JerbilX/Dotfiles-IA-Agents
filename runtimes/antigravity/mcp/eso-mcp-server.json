@@ -1,0 +1,7 @@
+{
+  "$schema": "../../schema/mcp-server.schema.json",
+  "description": "Servidor MCP para consultas de API y documentación de Elder Scrolls Online (EsoUI)",
+  "command": "eso-mcp-server",
+  "args": [],
+  "env": {}
+}

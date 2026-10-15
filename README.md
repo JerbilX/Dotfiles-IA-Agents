@@ -27,34 +27,80 @@ Dotfiles-IA-Agents/
 │       ├── 0005-protocolo-de-desarrollo-guiado-por-issues-y-flujo-de-pull-requests.md
 │       ├── 0006-desacoplamiento-de-directivas-y-configuracion-de-runtimes.md
 │       ├── 0007-esquema-de-validacion-y-desacoplamiento-de-binarios-en-runtimes.md
-│       └── 0008-telemetria-de-presupuesto-de-contexto-y-subcomando-check.md
+│       ├── 0008-telemetria-de-presupuesto-de-contexto-y-subcomando-check.md
+│       └── 0009-estandarizacion-y-gestion-modular-de-servidores-mcp.md
 ├── runtimes/                            # Configuraciones y restricciones por entorno
 │   ├── schema/                          # Esquemas JSON canónicos de validación
-│   │   └── runtime-config.schema.json   # JSON Schema para manifiestos de runtime
+│   │   ├── runtime-config.schema.json   # JSON Schema para manifiestos de runtime
+│   │   └── mcp-server.schema.json       # JSON Schema para módulos de servidores MCP
 │   └── antigravity/
 │       ├── rules/                       # Directivas y restricciones para el System Prompt
 │       │   └── 01-sandbox.md            # Restricciones de sandbox, I/O nativo y comandos de red
-│       └── config.json                  # Manifiesto estructurado de configuración, skills y binarios
+│       ├── mcp/                         # Catálogo modular de servidores MCP
+│       │   └── eso-mcp-server.json      # Definición de servidor MCP con transporte Stdio
+│       └── config.json                  # Manifiesto estructurado (skills, binaries, mcp_servers)
 ├── dist/                                # Artefactos compilados listos para distribución
 │   └── antigravity/
-│       └── AGENTS.md                    # Versión consolidada generada automáticamente
+│       ├── AGENTS.md                    # Versión consolidada de directivas de prompt
+│       └── mcp_config.json              # Configuración MCP consolidada con macros resueltas
 ├── .gitignore                           # Exclusión de temporales (*.bak, *.tmp, .commit_msg)
 ├── build.sh                             # Script de compilación y gestión de enlaces simbólicos
 └── README.md                            # Documentación y referencia de comandos
 ```
 
+## Puesta en Marcha en Nueva Máquina (Quickstart / Bootstrap)
+
+Para configurar todo el entorno de directivas, skills, binarios y servidores MCP en una máquina nueva o tras un formateo:
+
+### 1. Precondiciones
+- **Bash** y utilidades estándar POSIX (`ln`, `mkdir`, `date`, `wc`).
+- **Python 3** (módulo estándar `json`, sin dependencias adicionales) o `jq`.
+- **Git** y **GitHub CLI (`gh`)** configurados.
+- Asegurar que `~/.local/bin` esté en tu `$PATH` (añadir a `~/.bashrc` o `~/.zshrc` si aún no está presente):
+  ```bash
+  export PATH="${HOME}/.local/bin:${PATH}"
+  ```
+
+### 2. Clonado de Repositorios Hermanos
+El orquestador espera por defecto que los repositorios de Dotfiles y Skills residan en el mismo directorio de proyectos (ej. `~/Proyectos-IA-V3/`):
+
+```bash
+mkdir -p ~/Proyectos-IA-V3 && cd ~/Proyectos-IA-V3
+git clone https://github.com/JerbilX/Dotfiles-IA-Agents.git
+git clone https://github.com/JerbilX/AGY-Skills.git
+```
+
+*(Nota: si utilizas otra ruta para los skills, puedes exportar `AGY_SKILLS_PATH=/ruta/a/AGY-Skills/skills`).*
+
+### 3. Aprovisionamiento Automático E2E
+Ingresa al repositorio y ejecuta el orquestador principal:
+
+```bash
+cd Dotfiles-IA-Agents
+./build.sh
+```
+
+Este comando ejecuta el flujo completo (`all`): compila `AGENTS.md` y `mcp_config.json`, respalda archivos previos con `.bak.<timestamp>`, crea los enlaces simbólicos atómicos (`AGENTS.md`, `mcp_config.json`, `~/.gemini/config/skills/`, y binarios en `~/.local/bin/`), y corre la suite de auditoría estática.
+
+### 4. Verificación de Salud
+Si en cualquier momento deseas auditar la integridad de la configuración sin alterar archivos ni enlaces:
+
+```bash
+./build.sh check
+```
+
 ## Flujo de Trabajo y Comandos (`build.sh`)
 
-El script `build.sh` permite compilar las directivas modulares, aprovisionar dependencias de runtime y enlazar el resultado compilado con la ubicación canónica del sistema (`~/.gemini/config/AGENTS.md`):
+El script `build.sh` permite compilar las directivas modulares, aprovisionar dependencias de runtime, compilar la configuración de servidores MCP y enlazar el resultado compilado con las ubicaciones canónicas del sistema (`~/.gemini/config/AGENTS.md` y `~/.gemini/config/mcp_config.json`):
 
 ### 1. Compilación (`build`)
-Concatena en orden determinista los archivos de `core/*.md` y `runtimes/antigravity/rules/*.md` en `dist/antigravity/AGENTS.md`, emitiendo telemetría de contexto (líneas, palabras, tamaño y tokens estimados) y alertando si se excede el presupuesto recomendado (`MAX_CONTEXT_WORDS`, default: 4.000 palabras):
+Concatena en orden determinista los archivos de `core/*.md` y `runtimes/antigravity/rules/*.md` en `dist/antigravity/AGENTS.md` (emitiendo telemetría de contexto y alertas de presupuesto) y compila las definiciones activas de servidores MCP en `dist/antigravity/mcp_config.json` resolviendo macros de rutas (`$HOME`):
 ```bash
 ./build.sh build
 ```
 
 ### 2. Enlace Simbólico (`link`)
-Verifica la existencia del directorio destino `~/.gemini/config/`, respalda de forma segura cualquier archivo o symlink preexistente con timestamp (`.bak.YYYYMMDD_HHMMSS`), y crea de manera atómica el enlace simbólico `ln -sfn`:
+Verifica la existencia del directorio destino `~/.gemini/config/`, respalda de forma segura cualquier archivo o symlink preexistente con timestamp (`.bak.YYYYMMDD_HHMMSS`), y crea de manera atómica los enlaces simbólicos `ln -sfn` tanto para `AGENTS.md` como para `mcp_config.json`:
 ```bash
 ./build.sh link
 ```
@@ -65,19 +111,25 @@ Valida `runtimes/antigravity/config.json` contra `runtimes/schema/runtime-config
 ./build.sh skills
 ```
 
-### 4. Inspección (`status`)
-Verifica el estado del symlink en `~/.gemini/config/AGENTS.md` reportando tipo, archivo de destino y validez del enlace:
+### 4. Servidores MCP (`mcp`)
+Subcomando dedicado para compilar, respaldar, enlazar y auditar exclusivamente la configuración de servidores MCP hacia `~/.gemini/config/mcp_config.json`:
+```bash
+./build.sh mcp
+```
+
+### 5. Inspección (`status`)
+Verifica el estado de los enlaces simbólicos en `~/.gemini/config/AGENTS.md` y `~/.gemini/config/mcp_config.json`, reportando tipo, archivo de destino y validez de cada enlace:
 ```bash
 ./build.sh status
 ```
 
-### 5. Verificación Estática (`check`)
-Ejecuta una auditoría de integridad estática y de **solo lectura** (read-only), ideal para pre-commit o CI/CD. Valida esquema y sintaxis de `config.json`, existencia de skills y `SKILL.md` en disco, permisos de binarios, ausencia de colisiones de prefijos numéricos o títulos H1, integridad de symlinks en el sistema y presupuesto de contexto:
+### 6. Verificación Estática (`check`)
+Ejecuta una auditoría de integridad estática y de **solo lectura** (read-only), ideal para pre-commit o CI/CD. Valida esquema y sintaxis de `config.json` y de los módulos MCP activos, existencia de skills y `SKILL.md` en disco, presencia y permisos de binarios y comandos MCP, ausencia de colisiones de prefijos numéricos o títulos H1, integridad de symlinks en el sistema y presupuesto de contexto:
 ```bash
 ./build.sh check
 ```
 
-### 6. Flujo Completo (`all` / por defecto)
+### 7. Flujo Completo (`all` / por defecto)
 Ejecuta secuencialmente `build`, `link`, `skills`, `status` y la verificación final `check`:
 ```bash
 ./build.sh
