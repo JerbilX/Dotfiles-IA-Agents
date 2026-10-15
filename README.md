@@ -26,7 +26,8 @@ Dotfiles-IA-Agents/
 │       ├── 0004-adopcion-del-estandar-madr-y-skill-adr-manager.md
 │       ├── 0005-protocolo-de-desarrollo-guiado-por-issues-y-flujo-de-pull-requests.md
 │       ├── 0006-desacoplamiento-de-directivas-y-configuracion-de-runtimes.md
-│       └── 0007-esquema-de-validacion-y-desacoplamiento-de-binarios-en-runtimes.md
+│       ├── 0007-esquema-de-validacion-y-desacoplamiento-de-binarios-en-runtimes.md
+│       └── 0008-telemetria-de-presupuesto-de-contexto-y-subcomando-check.md
 ├── runtimes/                            # Configuraciones y restricciones por entorno
 │   ├── schema/                          # Esquemas JSON canónicos de validación
 │   │   └── runtime-config.schema.json   # JSON Schema para manifiestos de runtime
@@ -47,7 +48,7 @@ Dotfiles-IA-Agents/
 El script `build.sh` permite compilar las directivas modulares, aprovisionar dependencias de runtime y enlazar el resultado compilado con la ubicación canónica del sistema (`~/.gemini/config/AGENTS.md`):
 
 ### 1. Compilación (`build`)
-Concatena en orden determinista los archivos de `core/*.md` y `runtimes/antigravity/rules/*.md` en `dist/antigravity/AGENTS.md`, insertando un encabezado de autogeneración:
+Concatena en orden determinista los archivos de `core/*.md` y `runtimes/antigravity/rules/*.md` en `dist/antigravity/AGENTS.md`, emitiendo telemetría de contexto (líneas, palabras, tamaño y tokens estimados) y alertando si se excede el presupuesto recomendado (`MAX_CONTEXT_WORDS`, default: 4.000 palabras):
 ```bash
 ./build.sh build
 ```
@@ -70,8 +71,14 @@ Verifica el estado del symlink en `~/.gemini/config/AGENTS.md` reportando tipo, 
 ./build.sh status
 ```
 
-### 5. Flujo Completo (`all` / por defecto)
-Ejecuta secuencialmente `build`, `link`, `skills` y `status`:
+### 5. Verificación Estática (`check`)
+Ejecuta una auditoría de integridad estática y de **solo lectura** (read-only), ideal para pre-commit o CI/CD. Valida esquema y sintaxis de `config.json`, existencia de skills y `SKILL.md` en disco, permisos de binarios, ausencia de colisiones de prefijos numéricos o títulos H1, integridad de symlinks en el sistema y presupuesto de contexto:
+```bash
+./build.sh check
+```
+
+### 6. Flujo Completo (`all` / por defecto)
+Ejecuta secuencialmente `build`, `link`, `skills`, `status` y la verificación final `check`:
 ```bash
 ./build.sh
 # o
