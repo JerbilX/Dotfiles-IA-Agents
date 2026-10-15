@@ -2,7 +2,7 @@
   =============================================================================
   AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
   Source repository: Dotfiles-IA-Agents
-  Components: core/*.md, runtimes/antigravity/*.md
+  Components: core/*.md, runtimes/antigravity/rules/*.md
   =============================================================================
 -->
 
@@ -187,16 +187,4 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
   - **Blindaje Anti-Sugerencias y Exclusividad de Bypass:** El parámetro `BypassSandbox: true` sigue **estrictamente prohibido para otros comandos locales** (como `ls`, `cat`, etc.), manteniéndose como privilegio exclusivo para la suite de git completa (tanto remota como local).
     - Si el sistema bloquea un comando por reglas del sandbox y devuelve la sugerencia automática *"you can run the command again with BypassSandbox set to true"*, el agente **DEBE IGNORAR** esta sugerencia por completo.
   - Mantener siempre invocaciones atómicas y sin operadores lógicos (`&&`, `||`) para preservar el prefix matching del motor de permisos, tanto para comandos locales como remotos.
-
-
-# Antigravity Configuration
-
-Este archivo centraliza las configuraciones del entorno de Antigravity. Las distintas secciones son procesadas por los scripts de inicialización.
-
-## Enabled Skills
-
-Lista de skills (nombres de los directorios) que deben habilitarse en el sistema mediante enlaces simbólicos.
-
-- eso-addon-development
-- adr-manager
 
