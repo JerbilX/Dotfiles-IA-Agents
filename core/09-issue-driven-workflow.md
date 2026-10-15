@@ -20,7 +20,11 @@
 
 - **Ciclo de Vida E2E de la Tarea:**
   1. **Ingesta:** Lectura del ticket con `gh issue view <id>`.
-  2. **Aislamiento:** Creación y cambio a la rama descriptiva (`git checkout -b ...`).
+  2. **Aislamiento e Higiene del Workspace:**
+     - Posicionarse en la rama principal (`git checkout main`) y sincronizar cambios (`git pull`).
+     - Ejecutar la poda de higiene local para remover ramas ya fusionadas cuyo upstream remoto fue eliminado:
+       `git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -d`
+     - Crear y cambiar a la rama descriptiva (`git checkout -b <nombre-de-rama>`).
   3. **Planificación y Refinamiento:** Elaboración del plan en `implementation_plan.md` si el alcance lo amerita (obligatorio ante bug fixing o arquitectura). Si se toman decisiones arquitectónicas, registrar nuevo ADR con `status: proposed` mediante el skill `adr-manager`.
   4. **Desarrollo y Verificación:** Modificaciones atómicas mediante herramientas nativas de archivos (`write_to_file`, `replace_file_content`), ejecución de builds y suites de pruebas locales.
   5. **Commit Atómico:** Redacción del mensaje convencional en `.commit_msg` con la API nativa de archivos y ejecución de `git commit -F .commit_msg`.
