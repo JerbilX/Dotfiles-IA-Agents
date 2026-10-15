@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="${SCRIPT_DIR}/core"
 RUNTIMES_DIR="${SCRIPT_DIR}/runtimes/antigravity"
+RULES_DIR="${RUNTIMES_DIR}/rules"
 DIST_DIR="${SCRIPT_DIR}/dist/antigravity"
 DIST_FILE="${DIST_DIR}/AGENTS.md"
 TARGET_DIR="${HOME}/.gemini/config"
@@ -21,7 +22,7 @@ cmd_build() {
   =============================================================================
   AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
   Source repository: Dotfiles-IA-Agents
-  Components: core/*.md, runtimes/antigravity/*.md
+  Components: core/*.md, runtimes/antigravity/rules/*.md
   =============================================================================
 -->
 
@@ -36,13 +37,15 @@ EOF
         first=false
     done
 
-    for f in $(find "${RUNTIMES_DIR}" -maxdepth 1 -name "*.md" | sort); do
-        if [ "$first" = false ]; then
-            printf "\n\n" >> "${tmp_file}"
-        fi
-        cat "$f" >> "${tmp_file}"
-        first=false
-    done
+    if [ -d "${RULES_DIR}" ]; then
+        for f in $(find "${RULES_DIR}" -maxdepth 1 -name "*.md" | sort); do
+            if [ "$first" = false ]; then
+                printf "\n\n" >> "${tmp_file}"
+            fi
+            cat "$f" >> "${tmp_file}"
+            first=false
+        done
+    fi
 
     printf "\n" >> "${tmp_file}"
     mv -f "${tmp_file}" "${DIST_FILE}"
@@ -105,7 +108,7 @@ cmd_skills() {
     echo "==> [skills] Provisionando entorno de skills de Antigravity..."
     local AGY_SKILLS_PATH="${AGY_SKILLS_PATH:-"${SCRIPT_DIR}/../AGY-Skills/skills"}"
     local GEMINI_SKILLS_DIR="${HOME}/.gemini/config/skills"
-    local CONFIG_FILE="${RUNTIMES_DIR}/config.md"
+    local CONFIG_FILE="${RUNTIMES_DIR}/config.json"
 
     # Garantizar directorios base
     mkdir -p "${GEMINI_SKILLS_DIR}"
@@ -114,55 +117,48 @@ cmd_skills() {
     # 1. Purgar symlinks previos en el entorno de ejecución (Idempotencia)
     find "${GEMINI_SKILLS_DIR}" -maxdepth 1 -type l -delete
 
-    # 2. Leer configuración (sección ## Enabled Skills) y aprovisionar
+    # 2. Leer configuración estructurada (skills) y aprovisionar
     if [[ -f "${CONFIG_FILE}" ]]; then
-        local in_section=false
-        while IFS= read -r line; do
-            # Detectar inicio de sección
-            if [[ "$line" =~ ^"## Enabled Skills" ]]; then
-                in_section=true
-                continue
-            fi
+        local enabled_skills=()
+        if command -v jq >/dev/null 2>&1; then
+            mapfile -t enabled_skills < <(jq -r '.skills[]?' "${CONFIG_FILE}")
+        elif command -v python3 >/dev/null 2>&1; then
+            mapfile -t enabled_skills < <(python3 -c "import json; [print(s) for s in json.load(open('${CONFIG_FILE}'))['skills']]")
+        else
+            echo "Error: Se requiere 'jq' o 'python3' para parsear ${CONFIG_FILE}" >&2
+            exit 1
+        fi
+
+        for skill_name in "${enabled_skills[@]}"; do
+            [[ -z "${skill_name}" ]] && continue
+            local target_dir
+            target_dir="$(realpath -m "${AGY_SKILLS_PATH}/${skill_name}")"
             
-            # Si estamos en la sección y encontramos otra cabecera, salimos
-            if [[ "$in_section" = true && "$line" =~ ^"#" ]]; then
-                break
-            fi
-            
-            if [[ "$in_section" = true ]]; then
-                # Buscar líneas que empiecen con guión (lista markdown)
-                if [[ "$line" =~ ^-[[:space:]]+([a-zA-Z0-9_-]+) ]]; then
-                    local skill_name="${BASH_REMATCH[1]}"
-                    local target_dir
-                    target_dir="$(realpath -m "${AGY_SKILLS_PATH}/${skill_name}")"
-                    
-                    if [[ -d "${target_dir}" ]]; then
-                        # Habilitar el skill
-                        ln -sfn "${target_dir}" "${GEMINI_SKILLS_DIR}/${skill_name}"
-                        echo "  [+] Skill habilitado: ${skill_name}"
-                        
-                        # (Opcional) Aprovisionamiento dinámico de binarios del skill
-                        if [[ -d "${target_dir}/scripts" ]]; then
-                            for script in "${target_dir}/scripts/"*.sh; do
-                                if [[ -f "${script}" && -x "${script}" ]]; then
-                                    local bin_name
-                                    bin_name=$(basename "${script}" .sh)
-                                    # Sobreescribir nombre genérico por comando global de ecosistema
-                                    if [[ "${bin_name}" == "build_release" && "${skill_name}" == "eso-addon"* ]]; then
-                                        bin_name="eso-build"
-                                    fi
-                                    
-                                    ln -sfn "${script}" "${HOME}/.local/bin/${bin_name}"
-                                    echo "      -> Binario expuesto en PATH: ~/.local/bin/${bin_name}"
-                                fi
-                            done
+            if [[ -d "${target_dir}" ]]; then
+                # Habilitar el skill
+                ln -sfn "${target_dir}" "${GEMINI_SKILLS_DIR}/${skill_name}"
+                echo "  [+] Skill habilitado: ${skill_name}"
+                
+                # (Opcional) Aprovisionamiento dinámico de binarios del skill
+                if [[ -d "${target_dir}/scripts" ]]; then
+                    for script in "${target_dir}/scripts/"*.sh; do
+                        if [[ -f "${script}" && -x "${script}" ]]; then
+                            local bin_name
+                            bin_name=$(basename "${script}" .sh)
+                            # Sobreescribir nombre genérico por comando global de ecosistema
+                            if [[ "${bin_name}" == "build_release" && "${skill_name}" == "eso-addon"* ]]; then
+                                bin_name="eso-build"
+                            fi
+                            
+                            ln -sfn "${script}" "${HOME}/.local/bin/${bin_name}"
+                            echo "      -> Binario expuesto en PATH: ~/.local/bin/${bin_name}"
                         fi
-                    else
-                        echo "  [!] Advertencia: No se encontró el origen '${skill_name}' en ${AGY_SKILLS_PATH}"
-                    fi
+                    done
                 fi
+            else
+                echo "  [!] Advertencia: No se encontró el origen '${skill_name}' en ${AGY_SKILLS_PATH}"
             fi
-        done < "${CONFIG_FILE}"
+        done
         echo "==> [skills] Provisionamiento finalizado."
     else
         echo "Error: Archivo de configuración no encontrado en ${CONFIG_FILE}" >&2

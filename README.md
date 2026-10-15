@@ -24,11 +24,13 @@ Dotfiles-IA-Agents/
 │       ├── 0002-cero-tolerancia-a-la-alucinacion-y-freno-obligatorio.md
 │       ├── 0003-jerarquia-de-produccion-sobre-tests-e-inmunidad-normativa.md
 │       ├── 0004-adopcion-del-estandar-madr-y-skill-adr-manager.md
-│       └── 0005-protocolo-de-desarrollo-guiado-por-issues-y-flujo-de-pull-requests.md
+│       ├── 0005-protocolo-de-desarrollo-guiado-por-issues-y-flujo-de-pull-requests.md
+│       └── 0006-desacoplamiento-de-directivas-y-configuracion-de-runtimes.md
 ├── runtimes/                            # Configuraciones y restricciones por entorno
 │   └── antigravity/
-│       ├── 01-sandbox.md                # Restricciones de sandbox, I/O nativo y comandos de red
-│       └── config.md                    # Habilitación y configuración de skills de Antigravity
+│       ├── rules/                       # Directivas y restricciones para el System Prompt
+│       │   └── 01-sandbox.md            # Restricciones de sandbox, I/O nativo y comandos de red
+│       └── config.json                  # Manifiesto estructurado de configuración y skills
 ├── dist/                                # Artefactos compilados listos para distribución
 │   └── antigravity/
 │       └── AGENTS.md                    # Versión consolidada generada automáticamente
@@ -39,10 +41,10 @@ Dotfiles-IA-Agents/
 
 ## Flujo de Trabajo y Comandos (`build.sh`)
 
-El script `build.sh` permite compilar las directivas modulares y enlazar el resultado compilado con la ubicación canónica del sistema (`~/.gemini/config/AGENTS.md`):
+El script `build.sh` permite compilar las directivas modulares, aprovisionar dependencias de runtime y enlazar el resultado compilado con la ubicación canónica del sistema (`~/.gemini/config/AGENTS.md`):
 
 ### 1. Compilación (`build`)
-Concatena en orden determinista los archivos de `core/*.md` y `runtimes/antigravity/*.md` en `dist/antigravity/AGENTS.md`, insertando un encabezado de autogeneración:
+Concatena en orden determinista los archivos de `core/*.md` y `runtimes/antigravity/rules/*.md` en `dist/antigravity/AGENTS.md`, insertando un encabezado de autogeneración:
 ```bash
 ./build.sh build
 ```
@@ -53,14 +55,20 @@ Verifica la existencia del directorio destino `~/.gemini/config/`, respalda de f
 ./build.sh link
 ```
 
-### 3. Inspección (`status`)
+### 3. Aprovisionamiento de Skills (`skills`)
+Lee declarativamente `runtimes/antigravity/config.json`, purga symlinks obsoletos y aprovisiona los skills habilitados en `~/.gemini/config/skills/`, exponiendo adicionalmente sus scripts ejecutables en `~/.local/bin/`:
+```bash
+./build.sh skills
+```
+
+### 4. Inspección (`status`)
 Verifica el estado del symlink en `~/.gemini/config/AGENTS.md` reportando tipo, archivo de destino y validez del enlace:
 ```bash
 ./build.sh status
 ```
 
-### 4. Flujo Completo (`all` / por defecto)
-Ejecuta secuencialmente `build`, `link` y `status`:
+### 5. Flujo Completo (`all` / por defecto)
+Ejecuta secuencialmente `build`, `link`, `skills` y `status`:
 ```bash
 ./build.sh
 # o
