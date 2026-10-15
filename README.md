@@ -48,6 +48,47 @@ Dotfiles-IA-Agents/
 └── README.md                            # Documentación y referencia de comandos
 ```
 
+## Puesta en Marcha en Nueva Máquina (Quickstart / Bootstrap)
+
+Para configurar todo el entorno de directivas, skills, binarios y servidores MCP en una máquina nueva o tras un formateo:
+
+### 1. Precondiciones
+- **Bash** y utilidades estándar POSIX (`ln`, `mkdir`, `date`, `wc`).
+- **Python 3** (módulo estándar `json`, sin dependencias adicionales) o `jq`.
+- **Git** y **GitHub CLI (`gh`)** configurados.
+- Asegurar que `~/.local/bin` esté en tu `$PATH` (añadir a `~/.bashrc` o `~/.zshrc` si aún no está presente):
+  ```bash
+  export PATH="${HOME}/.local/bin:${PATH}"
+  ```
+
+### 2. Clonado de Repositorios Hermanos
+El orquestador espera por defecto que los repositorios de Dotfiles y Skills residan en el mismo directorio de proyectos (ej. `~/Proyectos-IA-V3/`):
+
+```bash
+mkdir -p ~/Proyectos-IA-V3 && cd ~/Proyectos-IA-V3
+git clone https://github.com/JerbilX/Dotfiles-IA-Agents.git
+git clone https://github.com/JerbilX/AGY-Skills.git
+```
+
+*(Nota: si utilizas otra ruta para los skills, puedes exportar `AGY_SKILLS_PATH=/ruta/a/AGY-Skills/skills`).*
+
+### 3. Aprovisionamiento Automático E2E
+Ingresa al repositorio y ejecuta el orquestador principal:
+
+```bash
+cd Dotfiles-IA-Agents
+./build.sh
+```
+
+Este comando ejecuta el flujo completo (`all`): compila `AGENTS.md` y `mcp_config.json`, respalda archivos previos con `.bak.<timestamp>`, crea los enlaces simbólicos atómicos (`AGENTS.md`, `mcp_config.json`, `~/.gemini/config/skills/`, y binarios en `~/.local/bin/`), y corre la suite de auditoría estática.
+
+### 4. Verificación de Salud
+Si en cualquier momento deseas auditar la integridad de la configuración sin alterar archivos ni enlaces:
+
+```bash
+./build.sh check
+```
+
 ## Flujo de Trabajo y Comandos (`build.sh`)
 
 El script `build.sh` permite compilar las directivas modulares, aprovisionar dependencias de runtime, compilar la configuración de servidores MCP y enlazar el resultado compilado con las ubicaciones canónicas del sistema (`~/.gemini/config/AGENTS.md` y `~/.gemini/config/mcp_config.json`):
