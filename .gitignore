@@ -4,3 +4,7 @@
 *.tmp
 .commit_msg
 .pr_body
+.comment_body
+.issue_body
+*.probe
+.probe_*

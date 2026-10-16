@@ -2,3 +2,4 @@
 
 - Antes de iniciar búsquedas web (`search_web`) para documentación técnica, el agente **DEBE** verificar si existe un Skill local o documentación en el workspace.
 - **Prohibición de Bucles:** Si tras 3 consultas web sucesivas no se encuentra la respuesta técnica exacta, el agente debe **DETENERSE INMEDIATAMENTE** y consultar al usuario, bajo riesgo de ser penalizado por pérdida de tiempo y recursos.
+- **Prohibición de Bucles Secuenciales en Servicios Remotos (Anti-Loops de Red):** Queda terminantemente prohibido ejecutar bucles de terminal (`for`, `while`, `xargs`, etc.) que disparen invocaciones de red consecutivas a servicios remotos (`gh repo view`, `gh issue view`, `curl`, `git fetch`). Toda inspección multi-repositorio o consulta de lote DEBE resolverse mediante una única consulta agregada vía GraphQL (`gh api graphql`) o la API REST con filtros. Si no existe soporte atómico, solicitar la lista puntual al usuario en lugar de iterar en consola.
