@@ -16,7 +16,7 @@ SCHEMA_FILE="${SCRIPT_DIR}/runtimes/schema/runtime-config.schema.json"
 MCP_SCHEMA_FILE="${SCRIPT_DIR}/runtimes/schema/mcp-server.schema.json"
 GEMINI_SKILLS_DIR="${HOME}/.gemini/config/skills"
 CONFIG_FILE="${RUNTIMES_DIR}/config.json"
-AGY_SKILLS_PATH="${AGY_SKILLS_PATH:-"${SCRIPT_DIR}/../AGY-Skills/skills"}"
+SKILLS_DIR="${SCRIPT_DIR}/skills"
 MAX_CONTEXT_WORDS="${MAX_CONTEXT_WORDS:-4000}"
 
 cmd_build() {
@@ -241,16 +241,7 @@ get_enabled_skills() {
 
 resolve_skill_dir() {
     local skill_name="$1"
-    local local_dir="${SCRIPT_DIR}/skills/${skill_name}"
-    local remote_dir="${AGY_SKILLS_PATH}/${skill_name}"
-
-    if [[ -d "${local_dir}" ]]; then
-        echo "${local_dir}"
-    elif [[ -d "${remote_dir}" ]]; then
-        echo "${remote_dir}"
-    else
-        echo "${local_dir}"
-    fi
+    echo "${SKILLS_DIR}/${skill_name}"
 }
 
 
@@ -555,7 +546,7 @@ cmd_skills() {
                 done
             fi
         else
-            echo "  [!] Advertencia: No se encontró el origen '${skill_name}' en ${SCRIPT_DIR}/skills ni en ${AGY_SKILLS_PATH}"
+            echo "  [!] Advertencia: No se encontró el origen '${skill_name}' en ${SKILLS_DIR}"
         fi
     done
     echo "==> [skills] Provisionamiento finalizado."
@@ -586,7 +577,7 @@ cmd_check() {
         local skill_dir
         skill_dir="$(resolve_skill_dir "${skill_name}")"
         if [ ! -d "${skill_dir}" ]; then
-            echo "  [✗] Skill habilitado '${skill_name}' no existe en ${SCRIPT_DIR}/skills ni en ${AGY_SKILLS_PATH}" >&2
+            echo "  [✗] Skill habilitado '${skill_name}' no existe en ${SKILLS_DIR}" >&2
             skills_ok=false
             errors=$((errors + 1))
         else
@@ -823,8 +814,8 @@ cmd_check() {
             if [ -L "${item}" ]; then
                 local link_target
                 link_target="$(readlink "${item}" || true)"
-                # Solo verificar si apunta a SCRIPT_DIR o AGY_SKILLS_PATH
-                if [[ "${link_target}" == "${SCRIPT_DIR}"* ]] || [[ "${link_target}" == "${AGY_SKILLS_PATH}"* ]]; then
+                # Solo verificar si apunta a SCRIPT_DIR
+                if [[ "${link_target}" == "${SCRIPT_DIR}"* ]]; then
                     if [ ! -e "${item}" ]; then
                         echo "  [✗] Symlink roto en ~/.local/bin: ${item} -> ${link_target}" >&2
                         symlink_error=true
