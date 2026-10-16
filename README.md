@@ -28,7 +28,12 @@ Dotfiles-IA-Agents/
 │       ├── 0006-desacoplamiento-de-directivas-y-configuracion-de-runtimes.md
 │       ├── 0007-esquema-de-validacion-y-desacoplamiento-de-binarios-en-runtimes.md
 │       ├── 0008-telemetria-de-presupuesto-de-contexto-y-subcomando-check.md
-│       └── 0009-estandarizacion-y-gestion-modular-de-servidores-mcp.md
+│       ├── 0009-estandarizacion-y-gestion-modular-de-servidores-mcp.md
+│       ├── 0010-politica-transversal-de-limpieza-y-ciclo-de-vida-de-ramas.md
+│       ├── 0011-ratificacion-de-bypass-en-git-y-gh-por-restricciones-del-sandbox.md
+│       ├── 0012-optimizacion-de-latencia-y-eliminacion-de-friccion-operativa.md
+│       ├── 0013-estrategia-de-modularizacion-de-directivas-extensas-a-skills.md
+│       └── 0014-consolidacion-del-catalogo-de-skills-y-deprecacion-de-agy-skills.md
 ├── runtimes/                            # Configuraciones y restricciones por entorno
 │   ├── schema/                          # Esquemas JSON canónicos de validación
 │   │   ├── runtime-config.schema.json   # JSON Schema para manifiestos de runtime
@@ -39,9 +44,10 @@ Dotfiles-IA-Agents/
 │       ├── mcp/                         # Catálogo modular de servidores MCP
 │       │   └── eso-mcp-server.json      # Definición de servidor MCP con transporte Stdio
 │       └── config.json                  # Manifiesto estructurado (skills, binaries, mcp_servers)
-├── skills/                              # Catálogo canónico de skills para agentes
+├── skills/                              # Catálogo canónico y autocontenido de skills para agentes
+│   ├── adr-manager/                     # Gestión de Architecture Decision Records (MADR)
+│   ├── eso-addon-development/           # Estándares y utilidades para addons de ESO
 │   └── issue-driven-workflow/           # Orquestación de desarrollo guiado por issues y PRs
-│       └── SKILL.md
 ├── dist/                                # Artefactos compilados listos para distribución
 │   └── antigravity/
 │       ├── AGENTS.md                    # Versión consolidada de directivas de prompt
@@ -64,16 +70,13 @@ Para configurar todo el entorno de directivas, skills, binarios y servidores MCP
   export PATH="${HOME}/.local/bin:${PATH}"
   ```
 
-### 2. Clonado de Repositorios Hermanos
-El orquestador espera por defecto que los repositorios de Dotfiles y Skills residan en el mismo directorio de proyectos (ej. `~/Proyectos-IA-V3/`):
+### 2. Clonado del Repositorio
+El repositorio es 100% autocontenido y aloja directivas, configuraciones de runtime y el catálogo canónico de skills:
 
 ```bash
 mkdir -p ~/Proyectos-IA-V3 && cd ~/Proyectos-IA-V3
 git clone https://github.com/JerbilX/Dotfiles-IA-Agents.git
-git clone https://github.com/JerbilX/AGY-Skills.git
 ```
-
-*(Nota: si utilizas otra ruta para los skills, puedes exportar `AGY_SKILLS_PATH=/ruta/a/AGY-Skills/skills`).*
 
 ### 3. Aprovisionamiento Automático E2E
 Ingresa al repositorio y ejecuta el orquestador principal:
