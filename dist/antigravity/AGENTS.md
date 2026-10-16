@@ -32,6 +32,8 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
   - Si el usuario **confirma**: El agente debe ejecutar de forma autónoma el aprovisionamiento y push mediante:
     `gh repo create JerbilX/<nombre-del-directorio> --private --source=. --remote=origin --push`
     *(Sin delegar comandos de consola ni pedirle al usuario que los ejecute manualmente).*
+    Inmediatamente después, el agente debe configurar la eliminación automática de ramas fusionadas en el repositorio remoto:
+    `gh repo edit JerbilX/<nombre-del-directorio> --delete-branch-on-merge`
     Adicionalmente, si el entorno cuenta con permisos para Projects (`gh project`), procederá a enlazar el repositorio al tablero central:
     `gh project link 1 --owner JerbilX --repo JerbilX/<nombre-del-directorio>`
   - Si el usuario **rechaza**: El repositorio permanece exclusivamente bajo control de versiones local hasta nueva orden explícita.
@@ -142,7 +144,11 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
 
 - **Ciclo de Vida E2E de la Tarea:**
   1. **Ingesta:** Lectura del ticket con `gh issue view <id>`.
-  2. **Aislamiento:** Creación y cambio a la rama descriptiva (`git checkout -b ...`).
+  2. **Aislamiento e Higiene del Workspace:**
+     - Posicionarse en la rama principal (`git checkout main`) y sincronizar cambios (`git pull`).
+     - Ejecutar la poda de higiene local para remover ramas ya fusionadas cuyo upstream remoto fue eliminado:
+       `git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -d`
+     - Crear y cambiar a la rama descriptiva (`git checkout -b <nombre-de-rama>`).
   3. **Planificación y Refinamiento:** Elaboración del plan en `implementation_plan.md` si el alcance lo amerita (obligatorio ante bug fixing o arquitectura). Si se toman decisiones arquitectónicas, registrar nuevo ADR con `status: proposed` mediante el skill `adr-manager`.
   4. **Desarrollo y Verificación:** Modificaciones atómicas mediante herramientas nativas de archivos (`write_to_file`, `replace_file_content`), ejecución de builds y suites de pruebas locales.
   5. **Commit Atómico:** Redacción del mensaje convencional en `.commit_msg` con la API nativa de archivos y ejecución de `git commit -F .commit_msg`.
