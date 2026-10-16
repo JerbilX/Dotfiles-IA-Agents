@@ -34,7 +34,7 @@ El desglose de los cuellos de botella aislados evidenció:
 ## Decisión Adoptada
 
 Opción elegida: **"Opción 3"**, implementada mediante:
-1. **Anti-Bucles Remotos en Red (`core/04-web-search-discipline.md` y `runtimes/antigravity/rules/01-sandbox.md`):** Prohibición taxativa de bucles de consola sobre comandos remotos (`gh`, `git`, `curl`); obligatoriedad de usar consultas agregadas en un solo paso vía GraphQL (`gh api graphql`).
+1. **Prevención de Bucles Remotos y Circuit Breaker (`core/04-web-search-discipline.md` y `runtimes/antigravity/rules/01-sandbox.md`):** Priorización obligatoria de consultas agregadas en un solo paso vía GraphQL (`gh api graphql`) o endpoints batch; autorización de iteraciones secuenciales en consola únicamente bajo un Circuit Breaker estricto de máximo 3 a 5 llamadas cuando la API carezca de soporte atómico, con freno mandatorio si se excede el umbral o se detecta lentitud.
 2. **Fast-Path Ejecutivo ante Consenso Previo (`core/07-anti-hallucination.md` y `core/09-issue-driven-workflow.md`):** Exención de generar planes bloqueantes cuando el diagnóstico o diseño ya fue consensuado y el usuario emite una directiva ejecutiva directa (*"procedé"*, *"avanza"*, *"cerralo"*).
 3. **Comandos Deterministas de Projects v2 (`core/09-issue-driven-workflow.md`):** Estandarización de `--field "Status" --value "..."` por URL directa, prohibiendo listados exploratorios de fields/items si la URL es conocida.
 4. **Higiene de Temporales (`.gitignore` y `01-sandbox.md`):** Exclusión de `.comment_body`, `.issue_body` y `.probe_*`, y requerimiento de poda inmediata post-uso.
