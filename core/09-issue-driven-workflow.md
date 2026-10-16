@@ -25,7 +25,7 @@
      - Ejecutar la poda de higiene local para remover ramas ya fusionadas cuyo upstream remoto fue eliminado:
        `git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -d`
      - Crear y cambiar a la rama descriptiva (`git checkout -b <nombre-de-rama>`).
-  3. **Planificación y Refinamiento:** Elaboración del plan en `implementation_plan.md` si el alcance lo amerita (obligatorio ante bug fixing o arquitectura). Si se toman decisiones arquitectónicas, registrar nuevo ADR con `status: proposed` mediante el skill `adr-manager`.
+  3. **Planificación y Refinamiento:** Elaboración del plan en `implementation_plan.md` si el alcance lo amerita (obligatorio ante bug fixing o arquitectura, salvo aplicación de Fast-Path Ejecutivo por consenso previo explícito en chat según `core/07-anti-hallucination.md`). Si se toman decisiones arquitectónicas, registrar nuevo ADR con `status: proposed` mediante el skill `adr-manager`.
   4. **Desarrollo y Verificación:** Modificaciones atómicas mediante herramientas nativas de archivos (`write_to_file`, `replace_file_content`), ejecución de builds y suites de pruebas locales.
   5. **Commit Atómico:** Redacción del mensaje convencional en `.commit_msg` con la API nativa de archivos y ejecución de `git commit -F .commit_msg`.
   6. **Publicación Remota:** Subida de la rama con `git push -u origin <nombre-de-rama>` (ejecutado con `BypassSandbox: true`).
@@ -34,7 +34,9 @@
 - **Flujo Mandatorio de Pull Requests:**
   - **Prohibición Total de Push/Merge a `main`:** Queda terminantemente prohibido que el agente comitee o pushee cambios productivos directamente a la rama `main`, o que ejecute `git merge` hacia `main` por su cuenta.
   - **Vinculación Canónica de Cierre:** El cuerpo del Pull Request debe incluir obligatoriamente la directiva `Closes #<id>` o `Fixes #<id>` para asegurar el cierre automático de la issue al fusionarse.
-  - **Sincronización con el Tablero Central:** Asegurar que el estado del ítem en Project 1 pase a `👀 In Review / PR` (automáticamente o vía `gh project item-edit 1 --owner JerbilX --url <issue-url> --field "Status" --value "👀 In Review / PR"`).
+  - **Sincronización Determinista con el Tablero Central:** Asegurar que el estado del ítem en Project 1 pase a `👀 In Review / PR` mediante el comando determinista directo:
+    `gh project item-edit 1 --owner JerbilX --url <issue-url> --field "Status" --value "👀 In Review / PR"`
+    *(Queda prohibido ejecutar consultas exploratorias de `field-list` o `item-list` para resolver IDs de campos cuando el comando directo por nombre es determinista).*
   - **Gate de Aprobación Humana:** La revisión del diff, aprobación y fusión del PR es responsabilidad exclusiva del PM / Tech Lead en GitHub.
 
 - **Protocolo Operativo de Salida y Reporte:**

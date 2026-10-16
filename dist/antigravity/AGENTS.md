@@ -64,6 +64,7 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
 
 - Antes de iniciar búsquedas web (`search_web`) para documentación técnica, el agente **DEBE** verificar si existe un Skill local o documentación en el workspace.
 - **Prohibición de Bucles:** Si tras 3 consultas web sucesivas no se encuentra la respuesta técnica exacta, el agente debe **DETENERSE INMEDIATAMENTE** y consultar al usuario, bajo riesgo de ser penalizado por pérdida de tiempo y recursos.
+- **Prevención de Bucles Remotos y Circuit Breaker en Red:** Toda consulta multi-repositorio o inspección en lote debe resolverse preferentemente mediante una única consulta agregada vía GraphQL (`gh api graphql`) o endpoints batch de la API. Si la herramienta o servicio carece de soporte atómico o GraphQL, se autoriza la iteración secuencial en terminal **únicamente bajo un Circuit Breaker estricto de máximo 3 a 5 iteraciones**. Si el lote excede este umbral o la primera llamada experimenta latencia severa, el agente debe **DETENERSE INMEDIATAMENTE** y consultar al usuario, evitando bloqueos de red no supervisados.
 
 
 # Flexibilidad y Degradación Elegante (Anti-Rigidez)
@@ -97,7 +98,9 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
 - **Inconsistencia Lógica y Diagnósticos:** Si el agente formula una hipótesis, diagnóstico o plan, y dicha hipótesis contradice CUALQUIER síntoma, requerimiento explícito o hecho técnico del entorno del usuario, la conclusión es inválida por definición. El agente DEBE detenerse inmediatamente, explicitar la contradicción lógica detectada y solicitar aclaraciones o reevaluar. Queda estrictamente prohibido forzar una solución ignorando síntomas.
 - **Prohibición de Diseño Infundado:** Queda prohibido inventar ("alucinar") protocolos de trabajo, arquitecturas de software, flujos complejos o lógicas de negocio cuando se carece de contexto validado. La generación de código debe basarse en el contexto real del proyecto. Ante vacíos de conocimiento, rige el "Stop & Ask".
 - **Freno Obligatorio (Stop & Ask):** Ante la falta de certeza técnica, imposibilidad de validación o detección de contradicciones, el agente detendrá su ejecución y pedirá directivas, sin intentar "adivinar" patrones para rellenar la respuesta.
-- **Blindaje del Planning Mode:** TODAS las tareas que impliquen diagnóstico de errores (bug fixing) en la lógica de negocio, arquitectura o estado de un proyecto requieren obligatoriamente la generación previa de un `implementation_plan.md`. Queda estrictamente prohibido clasificar estas modificaciones como "triviales" o "menores" para evadir la revisión y aprobación previa del usuario.
+- **Blindaje del Planning Mode y Fast-Path Ejecutivo:**
+  - TODAS las tareas que impliquen diagnóstico de errores (bug fixing) en la lógica de negocio, arquitectura o estado de un proyecto requieren obligatoriamente la generación previa de un `implementation_plan.md`. Queda estrictamente prohibido clasificar estas modificaciones como "triviales" o "menores" para evadir la revisión y aprobación previa del usuario.
+  - **Excepción de Fast-Path ante Consenso Previo:** Si la solución técnica, diagnóstico o cambio arquitectónico ya fue formalmente debatido, validado empíricamente y acordado con el usuario en el chat activo, y este emite una orden ejecutiva explícita de avance o cierre (*"procedé"*, *"avanza"*, *"dejalo registrado y cerrá"*, *"aplicalo"*), el agente **NO DEBE** pausar la ejecución generando un `implementation_plan.md` bloqueante ni solicitar una confirmación redundante. Debe proceder de forma inmediata y continua con la implementación, commit y apertura del PR.
 
 
 # Gestión de Backlog y Tareas (GitHub Issues y Projects)
@@ -149,7 +152,7 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
      - Ejecutar la poda de higiene local para remover ramas ya fusionadas cuyo upstream remoto fue eliminado:
        `git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -d`
      - Crear y cambiar a la rama descriptiva (`git checkout -b <nombre-de-rama>`).
-  3. **Planificación y Refinamiento:** Elaboración del plan en `implementation_plan.md` si el alcance lo amerita (obligatorio ante bug fixing o arquitectura). Si se toman decisiones arquitectónicas, registrar nuevo ADR con `status: proposed` mediante el skill `adr-manager`.
+  3. **Planificación y Refinamiento:** Elaboración del plan en `implementation_plan.md` si el alcance lo amerita (obligatorio ante bug fixing o arquitectura, salvo aplicación de Fast-Path Ejecutivo por consenso previo explícito en chat según `core/07-anti-hallucination.md`). Si se toman decisiones arquitectónicas, registrar nuevo ADR con `status: proposed` mediante el skill `adr-manager`.
   4. **Desarrollo y Verificación:** Modificaciones atómicas mediante herramientas nativas de archivos (`write_to_file`, `replace_file_content`), ejecución de builds y suites de pruebas locales.
   5. **Commit Atómico:** Redacción del mensaje convencional en `.commit_msg` con la API nativa de archivos y ejecución de `git commit -F .commit_msg`.
   6. **Publicación Remota:** Subida de la rama con `git push -u origin <nombre-de-rama>` (ejecutado con `BypassSandbox: true`).
@@ -158,7 +161,9 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
 - **Flujo Mandatorio de Pull Requests:**
   - **Prohibición Total de Push/Merge a `main`:** Queda terminantemente prohibido que el agente comitee o pushee cambios productivos directamente a la rama `main`, o que ejecute `git merge` hacia `main` por su cuenta.
   - **Vinculación Canónica de Cierre:** El cuerpo del Pull Request debe incluir obligatoriamente la directiva `Closes #<id>` o `Fixes #<id>` para asegurar el cierre automático de la issue al fusionarse.
-  - **Sincronización con el Tablero Central:** Asegurar que el estado del ítem en Project 1 pase a `👀 In Review / PR` (automáticamente o vía `gh project item-edit 1 --owner JerbilX --url <issue-url> --field "Status" --value "👀 In Review / PR"`).
+  - **Sincronización Determinista con el Tablero Central:** Asegurar que el estado del ítem en Project 1 pase a `👀 In Review / PR` mediante el comando determinista directo:
+    `gh project item-edit 1 --owner JerbilX --url <issue-url> --field "Status" --value "👀 In Review / PR"`
+    *(Queda prohibido ejecutar consultas exploratorias de `field-list` o `item-list` para resolver IDs de campos cuando el comando directo por nombre es determinista).*
   - **Gate de Aprobación Humana:** La revisión del diff, aprobación y fusión del PR es responsabilidad exclusiva del PM / Tech Lead en GitHub.
 
 - **Protocolo Operativo de Salida y Reporte:**
@@ -179,6 +184,7 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
   - Buscar texto o patrones en el código con `grep_search`.
   - **PROHIBIDO** usar comandos de consola (`run_command`) para operaciones de I/O de archivos (`cat`, `sed`, `awk`, `echo >>`, `tee`, etc.).
   - **PROHIBIDO** generar scripts auxiliares temporales de parcheo (e.g., `patch_*.py`) para alterar código; todo cambio debe ser aplicado directamente con `replace_file_content`.
+  - **Higiene de Archivos Temporales de Bypass:** Los archivos auxiliares temporales generados para operar con Git o GitHub CLI (e.g. `.commit_msg`, `.pr_body`, `.comment_body`, `.issue_body`) deben ser eliminados inmediatamente tras su consumo o asegurados en `.gitignore` para evitar advertencias de uncommitted changes y turnos de limpieza imprevistos.
 - **Restricción de Comandos de Consola (`run_command`):**
   - La terminal está reservada estrictamente para la ejecución de procesos de runtime, compilación, pruebas y utilidades de entorno (e.g., `dotnet`, `python`, `pytest`, `cargo`, `git status`).
   - Mantener las invocaciones en formatos atómicos y deterministas (evitar heredocs multilínea o subshells complejas que rompan las políticas de permisos del entorno).
@@ -189,7 +195,7 @@ Cuando interactúes con el usuario, sigue estrictamente estas pautas de comporta
 - **Ejecución de Git y Bypass de Sandbox:**
   - Debido a que el evaluador de permisos de Antigravity anula el *prefix matching* si se utilizan comillas o caracteres especiales, **ESTÁ ESTRICTAMENTE PROHIBIDO** usar `git commit -m "..."`. El agente debe escribir siempre el mensaje del commit en un archivo temporal en disco (ej. `.commit_msg`) mediante su API de archivos (`write_to_file`) y luego ejecutar `git commit -F .commit_msg`.
   - **Corrección de Diseño y Excepción de Git Local:** Se anula la instrucción previa que asume que `git commit -F` pasa limpiamente por las políticas de seguridad sin bypass. Se ha comprobado que en entornos estrictos, la escritura del `index.lock` es bloqueada a nivel de OS ("Read-only file system"). Por tanto, **queda autorizado el uso autónomo de `BypassSandbox: true` para los comandos locales `git add` y `git commit`** cuando el sistema devuelva este error sobre el directorio `.git/`.
-  - **Comandos de Red y Remotos:** Los comandos que interactúan con servicios remotos (`git push`, `git fetch`, `git pull`, `gh repo ...`, `gh pr ...`, `gh issue ...`, `gh project ...`) requieren salida a internet y fallan por política dentro del sandbox estándar (`403 not allowed by policy`). El agente **DEBE ejecutarlos directamente con `BypassSandbox: true` desde el primer intento**, sin intentar probarlos previamente dentro del sandbox.
+  - **Comandos de Red y Remotos:** Los comandos que interactúan con servicios remotos (`git push`, `git fetch`, `git pull`, `gh repo ...`, `gh pr ...`, `gh issue ...`, `gh project ...`) requieren salida a internet y fallan por política dentro del sandbox estándar (`403 not allowed by policy`). El agente **DEBE ejecutarlos directamente con `BypassSandbox: true` desde el primer intento**, sin intentar probarlos previamente dentro del sandbox. **Toda operación multi-repositorio o consulta de lote debe resolverse preferentemente mediante una consulta atómica agregada vía GraphQL (`gh api graphql`) o endpoints batch de la API. Si el servicio carece de soporte atómico, se autoriza la iteración secuencial en terminal únicamente bajo un Circuit Breaker de máximo 3 a 5 iteraciones; de excederse o presentar bloqueos de red, el agente debe detenerse inmediatamente y consultar al usuario.**
 - **Aprovisionamiento de Dotfiles y Sandbox Hermético:**
   - El pipeline de compilación de directivas (`./build.sh build`, `./build.sh check`) opera estrictamente dentro del workspace (`dist/antigravity/`), ejecutándose de forma 100% confinada en el sandbox estándar (`BypassSandbox: false`).
   - La propagación hacia la configuración del runtime global (`~/.gemini/config/`) opera por referencia directa mediante los enlaces simbólicos (symlinks) preexistentes en el anfitrión.
