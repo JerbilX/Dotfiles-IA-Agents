@@ -39,6 +39,9 @@ Dotfiles-IA-Agents/
 │       ├── mcp/                         # Catálogo modular de servidores MCP
 │       │   └── eso-mcp-server.json      # Definición de servidor MCP con transporte Stdio
 │       └── config.json                  # Manifiesto estructurado (skills, binaries, mcp_servers)
+├── skills/                              # Catálogo canónico de skills para agentes
+│   └── issue-driven-workflow/           # Orquestación de desarrollo guiado por issues y PRs
+│       └── SKILL.md
 ├── dist/                                # Artefactos compilados listos para distribución
 │   └── antigravity/
 │       ├── AGENTS.md                    # Versión consolidada de directivas de prompt
