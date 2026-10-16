@@ -17,4 +17,4 @@
   - Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create`), indexarla al tablero central (`gh project item-add 1 --owner JerbilX --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
 
 - **Consumo y Ejecución de Tareas:**
-  - El ciclo de vida de ejecución técnica de tareas, despacho bajo demanda, convención de ramas y flujo mandatorio de Pull Requests se rigen exclusivamente por el protocolo canónico establecido en `core/09-issue-driven-workflow.md`.
+  - El ciclo de vida de ejecución técnica de tareas, despacho bajo demanda, convención de ramas y flujo mandatorio de Pull Requests se rigen exclusivamente por el skill `issue-driven-workflow` y la directiva de enlace en `core/09-issue-driven-workflow.md`.

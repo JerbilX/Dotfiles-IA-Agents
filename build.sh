@@ -239,6 +239,21 @@ get_enabled_skills() {
     fi
 }
 
+resolve_skill_dir() {
+    local skill_name="$1"
+    local local_dir="${SCRIPT_DIR}/skills/${skill_name}"
+    local remote_dir="${AGY_SKILLS_PATH}/${skill_name}"
+
+    if [[ -d "${local_dir}" ]]; then
+        echo "${local_dir}"
+    elif [[ -d "${remote_dir}" ]]; then
+        echo "${remote_dir}"
+    else
+        echo "${local_dir}"
+    fi
+}
+
+
 get_binary_alias() {
     local config_file="$1"
     local bin_name="$2"
@@ -511,7 +526,8 @@ cmd_skills() {
     for skill_name in "${enabled_skills[@]}"; do
         [[ -z "${skill_name}" ]] && continue
         local target_dir
-        target_dir="$(realpath -m "${AGY_SKILLS_PATH}/${skill_name}")"
+        target_dir="$(resolve_skill_dir "${skill_name}")"
+        target_dir="$(realpath -m "${target_dir}")"
         
         if [[ -d "${target_dir}" ]]; then
             # Habilitar el skill
@@ -539,7 +555,7 @@ cmd_skills() {
                 done
             fi
         else
-            echo "  [!] Advertencia: No se encontró el origen '${skill_name}' en ${AGY_SKILLS_PATH}"
+            echo "  [!] Advertencia: No se encontró el origen '${skill_name}' en ${SCRIPT_DIR}/skills ni en ${AGY_SKILLS_PATH}"
         fi
     done
     echo "==> [skills] Provisionamiento finalizado."
@@ -562,30 +578,26 @@ cmd_check() {
     local enabled_skills=()
     mapfile -t enabled_skills < <(get_enabled_skills "${CONFIG_FILE}")
 
-    if [ ! -d "${AGY_SKILLS_PATH}" ]; then
-        echo "  [✗] Directorio de origen de skills no encontrado: ${AGY_SKILLS_PATH}" >&2
-        errors=$((errors + 1))
-    else
-        local skills_ok=true
-        local count_skills=0
-        for skill_name in "${enabled_skills[@]}"; do
-            [ -z "${skill_name}" ] && continue
-            count_skills=$((count_skills + 1))
-            local skill_dir="${AGY_SKILLS_PATH}/${skill_name}"
-            if [ ! -d "${skill_dir}" ]; then
-                echo "  [✗] Skill habilitado '${skill_name}' no existe en ${AGY_SKILLS_PATH}" >&2
-                skills_ok=false
-                errors=$((errors + 1))
-            else
-                if [ ! -f "${skill_dir}/SKILL.md" ]; then
-                    echo "  [!] Advertencia: Skill '${skill_name}' no contiene SKILL.md" >&2
-                    warnings=$((warnings + 1))
-                fi
+    local skills_ok=true
+    local count_skills=0
+    for skill_name in "${enabled_skills[@]}"; do
+        [ -z "${skill_name}" ] && continue
+        count_skills=$((count_skills + 1))
+        local skill_dir
+        skill_dir="$(resolve_skill_dir "${skill_name}")"
+        if [ ! -d "${skill_dir}" ]; then
+            echo "  [✗] Skill habilitado '${skill_name}' no existe en ${SCRIPT_DIR}/skills ni en ${AGY_SKILLS_PATH}" >&2
+            skills_ok=false
+            errors=$((errors + 1))
+        else
+            if [ ! -f "${skill_dir}/SKILL.md" ]; then
+                echo "  [!] Advertencia: Skill '${skill_name}' no contiene SKILL.md" >&2
+                warnings=$((warnings + 1))
             fi
-        done
-        if [ "${skills_ok}" = true ]; then
-            echo "  [✓] Skills en disco: ${count_skills} habilitados y verificados en ${AGY_SKILLS_PATH}"
         fi
+    done
+    if [ "${skills_ok}" = true ]; then
+        echo "  [✓] Skills en disco: ${count_skills} habilitados y verificados"
     fi
 
     # 3. Verificación de binarios de skills
@@ -593,7 +605,9 @@ cmd_check() {
     local bin_scripts_ok=true
     for skill_name in "${enabled_skills[@]}"; do
         [ -z "${skill_name}" ] && continue
-        local skill_scripts_dir="${AGY_SKILLS_PATH}/${skill_name}/scripts"
+        local skill_dir
+        skill_dir="$(resolve_skill_dir "${skill_name}")"
+        local skill_scripts_dir="${skill_dir}/scripts"
         if [ -d "${skill_scripts_dir}" ]; then
             for script in "${skill_scripts_dir}"/*.sh; do
                 [ ! -e "${script}" ] && continue
@@ -618,7 +632,9 @@ cmd_check() {
 
         for skill_name in "${enabled_skills[@]}"; do
             [ -z "${skill_name}" ] && continue
-            local script_path="${AGY_SKILLS_PATH}/${skill_name}/scripts/${src_name}.sh"
+            local skill_dir
+            skill_dir="$(resolve_skill_dir "${skill_name}")"
+            local script_path="${skill_dir}/scripts/${src_name}.sh"
             if [ -f "${script_path}" ]; then
                 found=true
                 break
