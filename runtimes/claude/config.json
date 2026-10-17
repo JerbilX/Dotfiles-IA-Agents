@@ -1,0 +1,15 @@
+{
+  "$schema": "../schema/runtime-config.schema.json",
+  "skills": [
+    "adr-manager",
+    "issue-driven-workflow"
+  ],
+  "binaries": {},
+  "mcp_servers": [],
+  "target": {
+    "config_dir": "${HOME}/.claude",
+    "prompt_filename": "CLAUDE.md",
+    "mcp_filename": "mcp_config.json",
+    "skills_dir": "${HOME}/.claude/skills"
+  }
+}

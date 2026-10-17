@@ -3,157 +3,161 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="${SCRIPT_DIR}/core"
-RUNTIMES_DIR="${SCRIPT_DIR}/runtimes/antigravity"
-RULES_DIR="${RUNTIMES_DIR}/rules"
-MCP_DIR="${RUNTIMES_DIR}/mcp"
-DIST_DIR="${SCRIPT_DIR}/dist/antigravity"
-DIST_FILE="${DIST_DIR}/AGENTS.md"
-DIST_MCP_FILE="${DIST_DIR}/mcp_config.json"
-TARGET_DIR="${HOME}/.gemini/config"
-TARGET_FILE="${TARGET_DIR}/AGENTS.md"
-TARGET_MCP_FILE="${TARGET_DIR}/mcp_config.json"
-SCHEMA_FILE="${SCRIPT_DIR}/runtimes/schema/runtime-config.schema.json"
-MCP_SCHEMA_FILE="${SCRIPT_DIR}/runtimes/schema/mcp-server.schema.json"
-GEMINI_SKILLS_DIR="${HOME}/.gemini/config/skills"
-CONFIG_FILE="${RUNTIMES_DIR}/config.json"
+RUNTIMES_BASE_DIR="${SCRIPT_DIR}/runtimes"
+SCHEMA_FILE="${RUNTIMES_BASE_DIR}/schema/runtime-config.schema.json"
+MCP_SCHEMA_FILE="${RUNTIMES_BASE_DIR}/schema/mcp-server.schema.json"
 SKILLS_DIR="${SCRIPT_DIR}/skills"
 MAX_CONTEXT_WORDS="${MAX_CONTEXT_WORDS:-4000}"
 
-cmd_build() {
-    echo "==> [build] Compilando directivas en ${DIST_FILE}..."
-    mkdir -p "${DIST_DIR}"
+# ------------------------------------------------------------------------------
+# Descubrimiento y Resolución Dinámica de Runtimes
+# ------------------------------------------------------------------------------
 
-    local tmp_file
-    tmp_file="$(mktemp "${DIST_DIR}/.agents.tmp.XXXXXX")"
-
-    cat << 'EOF' > "${tmp_file}"
-<!--
-  =============================================================================
-  AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
-  Source repository: Dotfiles-IA-Agents
-  Components: core/*.md, runtimes/antigravity/rules/*.md
-  =============================================================================
--->
-
-EOF
-
-    local suppressed_rules=()
-    if [ -f "${CONFIG_FILE}" ]; then
-        mapfile -t suppressed_rules < <(get_disabled_core_rules "${CONFIG_FILE}")
-        local core_overrides=()
-        mapfile -t core_overrides < <(get_core_overrides "${CONFIG_FILE}")
-        for ovr in "${core_overrides[@]}"; do
-            [ -z "${ovr}" ] && continue
-            suppressed_rules+=("${ovr%%=*}")
-        done
-    fi
-
-    local first=true
-    for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
-        local fname
-        fname="$(basename "$f")"
-        if [ ${#suppressed_rules[@]} -gt 0 ] && is_rule_suppressed "${fname}" "${suppressed_rules[@]}"; then
-            echo "  [-] Directiva core omitida por configuración de runtime: ${fname}"
-            continue
+get_available_runtimes() {
+    local runtimes=()
+    for d in "${RUNTIMES_BASE_DIR}"/*; do
+        [ ! -d "$d" ] && continue
+        local rname
+        rname="$(basename "$d")"
+        [ "$rname" = "schema" ] && continue
+        if [ -f "$d/config.json" ]; then
+            runtimes+=("$rname")
         fi
-        if [ "$first" = false ]; then
-            printf "\n\n" >> "${tmp_file}"
-        fi
-        cat "$f" >> "${tmp_file}"
-        first=false
     done
-
-    if [ -d "${RULES_DIR}" ]; then
-        for f in $(find "${RULES_DIR}" -maxdepth 1 -name "*.md" | sort); do
-            if [ "$first" = false ]; then
-                printf "\n\n" >> "${tmp_file}"
-            fi
-            cat "$f" >> "${tmp_file}"
-            first=false
-        done
-    fi
-
-    printf "\n" >> "${tmp_file}"
-    mv -f "${tmp_file}" "${DIST_FILE}"
-    echo "==> [build] Compilación finalizada con éxito: ${DIST_FILE}"
-
-    # Telemetría de presupuesto de contexto
-    local lines words bytes approx_tokens size_kb
-    lines="$(wc -l < "${DIST_FILE}" | tr -d ' ')"
-    words="$(wc -w < "${DIST_FILE}" | tr -d ' ')"
-    bytes="$(wc -c < "${DIST_FILE}" | tr -d ' ')"
-    approx_tokens=$(( (words * 4 + 2) / 3 ))
-    size_kb="$(awk "BEGIN {printf \"%.1f\", ${bytes}/1024}")"
-
-    echo "==> [build] Telemetría de contexto: ${lines} líneas | ${words} palabras | ~${approx_tokens} tokens estimados (${size_kb} KB)"
-    if [ "${words}" -gt "${MAX_CONTEXT_WORDS}" ]; then
-        echo "  [!] Advertencia: El contexto compilado supera el límite recomendado (${words} > ${MAX_CONTEXT_WORDS} palabras)." >&2
-        echo "      Considera modularizar directivas extensas hacia skills bajo demanda." >&2
-    fi
-
-    # Compilación modular de configuración MCP
-    compile_mcp_config
+    printf '%s\n' "${runtimes[@]}"
 }
 
-cmd_link() {
-    echo "==> [link] Asegurando directorio destino: ${TARGET_DIR}..."
-    mkdir -p "${TARGET_DIR}"
-
-    if [ ! -f "${DIST_FILE}" ]; then
-        echo "Error: ${DIST_FILE} no existe. Ejecuta './build.sh build' primero." >&2
-        exit 1
-    fi
-
-    if [ -e "${TARGET_FILE}" ] || [ -L "${TARGET_FILE}" ]; then
-        local current_target=""
-        if [ -L "${TARGET_FILE}" ]; then
-            current_target="$(readlink "${TARGET_FILE}" || true)"
+validate_runtime_arg() {
+    local target_arg="${1:-all}"
+    if [ -n "${target_arg}" ] && [ "${target_arg}" != "all" ]; then
+        local config_path="${RUNTIMES_BASE_DIR}/${target_arg}/config.json"
+        if [ ! -f "${config_path}" ]; then
+            echo "Error: Runtime '${target_arg}' no encontrado en ${RUNTIMES_BASE_DIR}/ (falta config.json)" >&2
+            return 1
         fi
+    fi
+    return 0
+}
 
-        if [ "${current_target}" = "${DIST_FILE}" ]; then
-            echo "==> [link] El symlink ya apunta correctamente a ${DIST_FILE}."
+resolve_target_runtimes() {
+    local target_arg="${1:-all}"
+    validate_runtime_arg "${target_arg}" || return 1
+    if [ -z "${target_arg}" ] || [ "${target_arg}" = "all" ]; then
+        get_available_runtimes
+    else
+        echo "${target_arg}"
+    fi
+}
+
+get_runtime_dir() { echo "${RUNTIMES_BASE_DIR}/$1"; }
+get_runtime_config_file() { echo "${RUNTIMES_BASE_DIR}/$1/config.json"; }
+get_runtime_rules_dir() { echo "${RUNTIMES_BASE_DIR}/$1/rules"; }
+get_runtime_mcp_dir() { echo "${RUNTIMES_BASE_DIR}/$1/mcp"; }
+get_runtime_dist_dir() { echo "${SCRIPT_DIR}/dist/$1"; }
+get_runtime_dist_prompt_file() { echo "${SCRIPT_DIR}/dist/$1/AGENTS.md"; }
+get_runtime_dist_mcp_file() { echo "${SCRIPT_DIR}/dist/$1/mcp_config.json"; }
+
+expand_path() {
+    local p="$1"
+    if [[ "$p" =~ ^~(/.*)?$ ]]; then
+        p="${HOME}${p:1}"
+    fi
+    p="${p//\$HOME/${HOME}}"
+    p="${p//\$\{HOME\}/${HOME}}"
+    echo "$p"
+}
+
+get_runtime_target_dir() {
+    local r="$1"
+    local cfg
+    cfg="$(get_runtime_config_file "$r")"
+    local t_dir=""
+    if [ -f "${cfg}" ]; then
+        if command -v jq >/dev/null 2>&1; then
+            t_dir="$(jq -r '.target.config_dir // empty' "${cfg}" 2>/dev/null || true)"
+        elif command -v python3 >/dev/null 2>&1; then
+            t_dir="$(python3 -c "import json; print(json.load(open('${cfg}')).get('target', {}).get('config_dir', ''))" 2>/dev/null || true)"
+        fi
+    fi
+    if [ -z "${t_dir}" ]; then
+        if [ "$r" = "antigravity" ]; then
+            t_dir="${HOME}/.gemini/config"
+        elif [ "$r" = "claude" ]; then
+            t_dir="${HOME}/.claude"
         else
-            local timestamp
-            timestamp="$(date +%Y%m%d_%H%M%S)"
-            echo "==> [link] Respaldando archivo/symlink preexistente en ${TARGET_FILE}.bak.${timestamp}..."
-            mv "${TARGET_FILE}" "${TARGET_FILE}.bak.${timestamp}"
-            echo "==> [link] Creando symlink atómico: ${TARGET_FILE} -> ${DIST_FILE}..."
-            ln -sfn "${DIST_FILE}" "${TARGET_FILE}"
-            echo "==> [link] Symlink establecido exitosamente."
+            t_dir="${HOME}/.${r}"
         fi
     else
-        echo "==> [link] Creando symlink atómico: ${TARGET_FILE} -> ${DIST_FILE}..."
-        ln -sfn "${DIST_FILE}" "${TARGET_FILE}"
-        echo "==> [link] Symlink establecido exitosamente."
+        t_dir="$(expand_path "${t_dir}")"
     fi
-
-    # Enlace de configuración de servidores MCP
-    link_mcp
+    echo "${t_dir}"
 }
 
-cmd_status() {
-    echo "==> [status] Inspeccionando ${TARGET_FILE}:"
-    if [ -L "${TARGET_FILE}" ]; then
-        local target
-        target="$(readlink "${TARGET_FILE}")"
-        echo "Tipo: Enlace simbólico (symlink)"
-        echo "Apunta a: ${target}"
-        if [ -e "${TARGET_FILE}" ]; then
-            echo "Estado: VÁLIDO (el destino existe)"
-        else
-            echo "Estado: ROTO (el archivo destino no existe)"
+get_runtime_target_prompt_file() {
+    local r="$1"
+    local cfg
+    cfg="$(get_runtime_config_file "$r")"
+    local t_name=""
+    if [ -f "${cfg}" ]; then
+        if command -v jq >/dev/null 2>&1; then
+            t_name="$(jq -r '.target.prompt_filename // empty' "${cfg}" 2>/dev/null || true)"
+        elif command -v python3 >/dev/null 2>&1; then
+            t_name="$(python3 -c "import json; print(json.load(open('${cfg}')).get('target', {}).get('prompt_filename', ''))" 2>/dev/null || true)"
         fi
-    elif [ -e "${TARGET_FILE}" ]; then
-        echo "Tipo: Archivo regular / directorio preexistente (NO es symlink)"
-        echo "Estado: Requiere ejecución de './build.sh link' para migrar al symlink"
-    else
-        echo "Tipo: Inexistente"
-        echo "Estado: No configurado. Ejecuta './build.sh link'"
     fi
-
-    echo ""
-    status_mcp
+    if [ -z "${t_name}" ]; then
+        t_name="AGENTS.md"
+    fi
+    local t_dir
+    t_dir="$(get_runtime_target_dir "$r")"
+    echo "${t_dir}/${t_name}"
 }
+
+get_runtime_target_mcp_file() {
+    local r="$1"
+    local cfg
+    cfg="$(get_runtime_config_file "$r")"
+    local t_name=""
+    if [ -f "${cfg}" ]; then
+        if command -v jq >/dev/null 2>&1; then
+            t_name="$(jq -r '.target.mcp_filename // empty' "${cfg}" 2>/dev/null || true)"
+        elif command -v python3 >/dev/null 2>&1; then
+            t_name="$(python3 -c "import json; print(json.load(open('${cfg}')).get('target', {}).get('mcp_filename', ''))" 2>/dev/null || true)"
+        fi
+    fi
+    if [ -z "${t_name}" ]; then
+        t_name="mcp_config.json"
+    fi
+    local t_dir
+    t_dir="$(get_runtime_target_dir "$r")"
+    echo "${t_dir}/${t_name}"
+}
+
+get_runtime_target_skills_dir() {
+    local r="$1"
+    local cfg
+    cfg="$(get_runtime_config_file "$r")"
+    local s_dir=""
+    if [ -f "${cfg}" ]; then
+        if command -v jq >/dev/null 2>&1; then
+            s_dir="$(jq -r '.target.skills_dir // empty' "${cfg}" 2>/dev/null || true)"
+        elif command -v python3 >/dev/null 2>&1; then
+            s_dir="$(python3 -c "import json; print(json.load(open('${cfg}')).get('target', {}).get('skills_dir', ''))" 2>/dev/null || true)"
+        fi
+    fi
+    if [ -z "${s_dir}" ]; then
+        if [ "$r" = "antigravity" ]; then
+            s_dir="${HOME}/.gemini/config/skills"
+        fi
+    else
+        s_dir="$(expand_path "${s_dir}")"
+    fi
+    echo "${s_dir}"
+}
+
+# ------------------------------------------------------------------------------
+# Validaciones de Esquema y Configuración
+# ------------------------------------------------------------------------------
 
 validate_config() {
     local config_file="$1"
@@ -245,6 +249,15 @@ if "overrides" in config:
         if not isinstance(k, str) or not isinstance(v, str) or not k.strip() or not v.strip():
             print("Error de validación: Claves y valores de '\''overrides'\'' deben ser cadenas no vacías.", file=sys.stderr)
             sys.exit(1)
+
+if "target" in config:
+    if not isinstance(config["target"], dict):
+        print("Error de validación: '\''target'\'' debe ser un objeto.", file=sys.stderr)
+        sys.exit(1)
+    for k, v in config["target"].items():
+        if not isinstance(v, str) or not v.strip():
+            print(f"Error de validación: La propiedad '\''{k}'\'' de '\''target'\'' debe ser una cadena no vacía.", file=sys.stderr)
+            sys.exit(1)
 ' "${config_file}" "${schema_file}"; then
             return 1
         fi
@@ -267,6 +280,10 @@ if "overrides" in config:
             echo "Error de validación: 'overrides' debe ser un objeto." >&2
             return 1
         fi
+        if jq -e 'has("target") and (.target | type != "object")' "${config_file}" >/dev/null 2>&1; then
+            echo "Error de validación: 'target' debe ser un objeto." >&2
+            return 1
+        fi
     else
         echo "Error: Se requiere 'python3' o 'jq' para validar ${config_file}" >&2
         return 1
@@ -286,7 +303,6 @@ resolve_skill_dir() {
     local skill_name="$1"
     echo "${SKILLS_DIR}/${skill_name}"
 }
-
 
 get_binary_alias() {
     local config_file="$1"
@@ -445,25 +461,38 @@ if "env" in mcp:
     fi
 }
 
-compile_mcp_config() {
-    echo "==> [build] Compilando configuración MCP en ${DIST_MCP_FILE}..."
-    mkdir -p "${DIST_DIR}"
+# ------------------------------------------------------------------------------
+# Compilación de Directivas y MCP por Runtime
+# ------------------------------------------------------------------------------
+
+compile_runtime_mcp() {
+    local r="$1"
+    local dist_dir
+    dist_dir="$(get_runtime_dist_dir "$r")"
+    local dist_mcp_file
+    dist_mcp_file="$(get_runtime_dist_mcp_file "$r")"
+    local config_file
+    config_file="$(get_runtime_config_file "$r")"
+    local mcp_dir
+    mcp_dir="$(get_runtime_mcp_dir "$r")"
+
+    echo "==> [build] Compilando configuración MCP para runtime '${r}' en ${dist_mcp_file}..."
+    mkdir -p "${dist_dir}"
 
     local enabled_mcps=()
-    mapfile -t enabled_mcps < <(get_enabled_mcp_servers "${CONFIG_FILE}")
+    mapfile -t enabled_mcps < <(get_enabled_mcp_servers "${config_file}")
 
     if [ ${#enabled_mcps[@]} -eq 0 ]; then
-        echo '{"mcpServers":{}}' > "${DIST_MCP_FILE}"
-        echo "==> [build] Configuración MCP compilada (0 servidores habilitados): ${DIST_MCP_FILE}"
+        echo '{"mcpServers":{}}' > "${dist_mcp_file}"
+        echo "==> [build] Configuración MCP compilada para '${r}' (0 servidores habilitados): ${dist_mcp_file}"
         return 0
     fi
 
-    # Validar que cada módulo habilitado exista en MCP_DIR y cumpla el esquema
     for s_name in "${enabled_mcps[@]}"; do
         [ -z "${s_name}" ] && continue
-        local s_path="${MCP_DIR}/${s_name}.json"
+        local s_path="${mcp_dir}/${s_name}.json"
         if [ ! -f "${s_path}" ]; then
-            echo "Error: Módulo de servidor MCP '${s_name}' declarado en config.json no existe en ${s_path}" >&2
+            echo "Error: Módulo de servidor MCP '${s_name}' declarado en ${config_file} no existe en ${s_path}" >&2
             return 1
         fi
         validate_mcp_server "${s_path}" "${MCP_SCHEMA_FILE}" "build-mcp" || return 1
@@ -510,147 +539,422 @@ with open(tmp_file, "w", encoding="utf-8") as f:
     f.write("\n")
 
 os.replace(tmp_file, dist_file)
-' "${CONFIG_FILE}" "${MCP_DIR}" "${DIST_MCP_FILE}"
+' "${config_file}" "${mcp_dir}" "${dist_mcp_file}"
     else
         echo "Error: Se requiere python3 para compilar la configuración de MCP." >&2
         return 1
     fi
 
     local server_count
-    server_count=$(get_enabled_mcp_servers "${CONFIG_FILE}" | grep -c . || true)
-    echo "==> [build] Configuración MCP compilada con éxito: ${DIST_MCP_FILE} (${server_count} servidor(es))"
+    server_count=$(get_enabled_mcp_servers "${config_file}" | grep -c . || true)
+    echo "==> [build] Configuración MCP compilada con éxito para '${r}': ${dist_mcp_file} (${server_count} servidor(es))"
 }
 
-link_mcp() {
-    echo "==> [link] Asegurando enlace simbólico para MCP en ${TARGET_DIR}..."
-    mkdir -p "${TARGET_DIR}"
+compile_runtime_build() {
+    local r="$1"
+    local dist_dir
+    dist_dir="$(get_runtime_dist_dir "$r")"
+    local dist_file
+    dist_file="$(get_runtime_dist_prompt_file "$r")"
+    local config_file
+    config_file="$(get_runtime_config_file "$r")"
+    local rules_dir
+    rules_dir="$(get_runtime_rules_dir "$r")"
 
-    if [ ! -f "${DIST_MCP_FILE}" ]; then
-        echo "Error: ${DIST_MCP_FILE} no existe. Ejecuta './build.sh build' primero." >&2
+    echo "==> [build] Compilando directivas para runtime '${r}' en ${dist_file}..."
+    mkdir -p "${dist_dir}"
+
+    local tmp_file
+    tmp_file="$(mktemp "${dist_dir}/.agents.tmp.XXXXXX")"
+
+    cat << EOF > "${tmp_file}"
+<!--
+  =============================================================================
+  AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
+  Source repository: Dotfiles-IA-Agents
+  Runtime: ${r}
+  Components: core/*.md, runtimes/${r}/rules/*.md
+  =============================================================================
+-->
+
+EOF
+
+    local suppressed_rules=()
+    if [ -f "${config_file}" ]; then
+        mapfile -t suppressed_rules < <(get_disabled_core_rules "${config_file}")
+        local core_overrides=()
+        mapfile -t core_overrides < <(get_core_overrides "${config_file}")
+        for ovr in "${core_overrides[@]}"; do
+            [ -z "${ovr}" ] && continue
+            suppressed_rules+=("${ovr%%=*}")
+        done
+    fi
+
+    local first=true
+    for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
+        local fname
+        fname="$(basename "$f")"
+        if [ ${#suppressed_rules[@]} -gt 0 ] && is_rule_suppressed "${fname}" "${suppressed_rules[@]}"; then
+            echo "  [-] [${r}] Directiva core omitida por configuración de runtime: ${fname}"
+            continue
+        fi
+        if [ "$first" = false ]; then
+            printf "\n\n" >> "${tmp_file}"
+        fi
+        cat "$f" >> "${tmp_file}"
+        first=false
+    done
+
+    if [ -d "${rules_dir}" ]; then
+        for f in $(find "${rules_dir}" -maxdepth 1 -name "*.md" | sort); do
+            if [ "$first" = false ]; then
+                printf "\n\n" >> "${tmp_file}"
+            fi
+            cat "$f" >> "${tmp_file}"
+            first=false
+        done
+    fi
+
+    printf "\n" >> "${tmp_file}"
+    mv -f "${tmp_file}" "${dist_file}"
+    echo "==> [build] Compilación finalizada para '${r}': ${dist_file}"
+
+    # Telemetría de presupuesto de contexto
+    local lines words bytes approx_tokens size_kb
+    lines="$(wc -l < "${dist_file}" | tr -d ' ')"
+    words="$(wc -w < "${dist_file}" | tr -d ' ')"
+    bytes="$(wc -c < "${dist_file}" | tr -d ' ')"
+    approx_tokens=$(( (words * 4 + 2) / 3 ))
+    size_kb="$(awk "BEGIN {printf \"%.1f\", ${bytes}/1024}")"
+
+    echo "==> [build] Telemetría de contexto [${r}]: ${lines} líneas | ${words} palabras | ~${approx_tokens} tokens estimados (${size_kb} KB)"
+    if [ "${words}" -gt "${MAX_CONTEXT_WORDS}" ]; then
+        echo "  [!] Advertencia [${r}]: El contexto compilado supera el límite recomendado (${words} > ${MAX_CONTEXT_WORDS} palabras)." >&2
+        echo "      Considera modularizar directivas extensas hacia skills bajo demanda." >&2
+    fi
+
+    # Compilación modular de configuración MCP
+    compile_runtime_mcp "${r}"
+}
+
+cmd_build() {
+    local target_arg="${1:-all}"
+    validate_runtime_arg "${target_arg}" || return 1
+    local target_runtimes=()
+    mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
+    for r in "${target_runtimes[@]}"; do
+        [ -z "$r" ] && continue
+        compile_runtime_build "$r"
+    done
+}
+
+# ------------------------------------------------------------------------------
+# Enlace Simbólico hacia el Sistema Anfitrión
+# ------------------------------------------------------------------------------
+
+link_runtime_mcp() {
+    local r="$1"
+    local dist_mcp_file
+    dist_mcp_file="$(get_runtime_dist_mcp_file "$r")"
+    local target_mcp_file
+    target_mcp_file="$(get_runtime_target_mcp_file "$r")"
+    local target_dir
+    target_dir="$(get_runtime_target_dir "$r")"
+
+    echo "==> [link] Asegurando enlace simbólico para MCP [${r}] en ${target_dir}..."
+    mkdir -p "${target_dir}"
+
+    if [ ! -f "${dist_mcp_file}" ]; then
+        echo "Error: ${dist_mcp_file} no existe. Ejecuta './build.sh build ${r}' primero." >&2
         return 1
     fi
 
-    if [ -e "${TARGET_MCP_FILE}" ] || [ -L "${TARGET_MCP_FILE}" ]; then
+    if [ -e "${target_mcp_file}" ] || [ -L "${target_mcp_file}" ]; then
         local current_target=""
-        if [ -L "${TARGET_MCP_FILE}" ]; then
-            current_target="$(readlink "${TARGET_MCP_FILE}" || true)"
+        if [ -L "${target_mcp_file}" ]; then
+            current_target="$(readlink "${target_mcp_file}" || true)"
         fi
 
-        if [ "${current_target}" = "${DIST_MCP_FILE}" ]; then
-            echo "==> [link] El symlink MCP ya apunta correctamente a ${DIST_MCP_FILE}."
+        if [ "${current_target}" = "${dist_mcp_file}" ]; then
+            echo "==> [link] [${r}] El symlink MCP ya apunta correctamente a ${dist_mcp_file}."
             return 0
         fi
 
         local timestamp
         timestamp="$(date +%Y%m%d_%H%M%S)"
-        echo "==> [link] Respaldando archivo/symlink MCP preexistente en ${TARGET_MCP_FILE}.bak.${timestamp}..."
-        mv "${TARGET_MCP_FILE}" "${TARGET_MCP_FILE}.bak.${timestamp}"
+        echo "==> [link] [${r}] Respaldando archivo/symlink MCP preexistente en ${target_mcp_file}.bak.${timestamp}..."
+        mv "${target_mcp_file}" "${target_mcp_file}.bak.${timestamp}"
     fi
 
-    echo "==> [link] Creando symlink atómico: ${TARGET_MCP_FILE} -> ${DIST_MCP_FILE}..."
-    ln -sfn "${DIST_MCP_FILE}" "${TARGET_MCP_FILE}"
-    echo "==> [link] Symlink MCP establecido exitosamente."
+    echo "==> [link] [${r}] Creando symlink atómico: ${target_mcp_file} -> ${dist_mcp_file}..."
+    ln -sfn "${dist_mcp_file}" "${target_mcp_file}"
+    echo "==> [link] [${r}] Symlink MCP establecido exitosamente."
 }
 
-status_mcp() {
-    echo "==> [status] Inspeccionando ${TARGET_MCP_FILE}:"
-    if [ -L "${TARGET_MCP_FILE}" ]; then
-        local target
-        target="$(readlink "${TARGET_MCP_FILE}")"
-        echo "Tipo: Enlace simbólico (symlink)"
-        echo "Apunta a: ${target}"
-        if [ -e "${TARGET_MCP_FILE}" ]; then
-            echo "Estado: VÁLIDO (el destino existe)"
-        else
-            echo "Estado: ROTO (el archivo destino no existe)"
-        fi
-    elif [ -e "${TARGET_MCP_FILE}" ]; then
-        echo "Tipo: Archivo regular / directorio preexistente (NO es symlink)"
-        echo "Estado: Requiere ejecución de './build.sh link' para migrar al symlink"
-    else
-        echo "Tipo: Inexistente"
-        echo "Estado: No configurado. Ejecuta './build.sh link' o './build.sh mcp'"
+link_runtime() {
+    local r="$1"
+    local dist_file
+    dist_file="$(get_runtime_dist_prompt_file "$r")"
+    local target_file
+    target_file="$(get_runtime_target_prompt_file "$r")"
+    local target_dir
+    target_dir="$(get_runtime_target_dir "$r")"
+
+    echo "==> [link] Asegurando directorio destino para '${r}': ${target_dir}..."
+    mkdir -p "${target_dir}"
+
+    if [ ! -f "${dist_file}" ]; then
+        echo "Error: ${dist_file} no existe. Ejecuta './build.sh build ${r}' primero." >&2
+        return 1
     fi
+
+    if [ -e "${target_file}" ] || [ -L "${target_file}" ]; then
+        local current_target=""
+        if [ -L "${target_file}" ]; then
+            current_target="$(readlink "${target_file}" || true)"
+        fi
+
+        if [ "${current_target}" = "${dist_file}" ]; then
+            echo "==> [link] [${r}] El symlink ya apunta correctamente a ${dist_file}."
+        else
+            local timestamp
+            timestamp="$(date +%Y%m%d_%H%M%S)"
+            echo "==> [link] [${r}] Respaldando archivo/symlink preexistente en ${target_file}.bak.${timestamp}..."
+            mv "${target_file}" "${target_file}.bak.${timestamp}"
+            echo "==> [link] [${r}] Creando symlink atómico: ${target_file} -> ${dist_file}..."
+            ln -sfn "${dist_file}" "${target_file}"
+            echo "==> [link] [${r}] Symlink establecido exitosamente."
+        fi
+    else
+        echo "==> [link] [${r}] Creando symlink atómico: ${target_file} -> ${dist_file}..."
+        ln -sfn "${dist_file}" "${target_file}"
+        echo "==> [link] [${r}] Symlink establecido exitosamente."
+    fi
+
+    link_runtime_mcp "${r}"
+}
+
+cmd_link() {
+    local target_arg="${1:-all}"
+    validate_runtime_arg "${target_arg}" || return 1
+    local target_runtimes=()
+    mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
+    for r in "${target_runtimes[@]}"; do
+        [ -z "$r" ] && continue
+        link_runtime "$r"
+    done
+}
+
+# ------------------------------------------------------------------------------
+# Inspección de Estado
+# ------------------------------------------------------------------------------
+
+status_runtime() {
+    local r="$1"
+    local target_file
+    target_file="$(get_runtime_target_prompt_file "$r")"
+    local target_mcp_file
+    target_mcp_file="$(get_runtime_target_mcp_file "$r")"
+
+    echo "==> [status] Runtime: '${r}'"
+    echo "  Directivas (${target_file}):"
+    if [ -L "${target_file}" ]; then
+        local target
+        target="$(readlink "${target_file}")"
+        echo "    Tipo: Enlace simbólico (symlink) -> ${target}"
+        if [ -e "${target_file}" ]; then
+            echo "    Estado: VÁLIDO"
+        else
+            echo "    Estado: ROTO (destino no existe)"
+        fi
+    elif [ -e "${target_file}" ]; then
+        echo "    Tipo: Archivo regular (NO es symlink)"
+        echo "    Estado: Requiere './build.sh link ${r}'"
+    else
+        echo "    Tipo: Inexistente"
+        echo "    Estado: No configurado. Ejecuta './build.sh link ${r}'"
+    fi
+
+    echo "  Servidores MCP (${target_mcp_file}):"
+    if [ -L "${target_mcp_file}" ]; then
+        local target
+        target="$(readlink "${target_mcp_file}")"
+        echo "    Tipo: Enlace simbólico (symlink) -> ${target}"
+        if [ -e "${target_mcp_file}" ]; then
+            echo "    Estado: VÁLIDO"
+        else
+            echo "    Estado: ROTO"
+        fi
+    elif [ -e "${target_mcp_file}" ]; then
+        echo "    Tipo: Archivo regular (NO es symlink)"
+        echo "    Estado: Requiere './build.sh link ${r}'"
+    else
+        echo "    Tipo: Inexistente"
+        echo "    Estado: No configurado"
+    fi
+}
+
+cmd_status() {
+    local target_arg="${1:-all}"
+    validate_runtime_arg "${target_arg}" || return 1
+    local target_runtimes=()
+    mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
+    for r in "${target_runtimes[@]}"; do
+        [ -z "$r" ] && continue
+        status_runtime "$r"
+        echo ""
+    done
 }
 
 cmd_mcp() {
-    echo "==> [mcp] Aprovisionando servidores MCP de Antigravity..."
-    compile_mcp_config
-    link_mcp
-    status_mcp
+    local target_arg="${1:-all}"
+    validate_runtime_arg "${target_arg}" || return 1
+    local target_runtimes=()
+    mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
+    for r in "${target_runtimes[@]}"; do
+        [ -z "$r" ] && continue
+        echo "==> [mcp] Aprovisionando servidores MCP de ${r}..."
+        compile_runtime_mcp "$r"
+        link_runtime_mcp "$r"
+    done
 }
 
-cmd_skills() {
-    echo "==> [skills] Provisionando entorno de skills de Antigravity..."
+# ------------------------------------------------------------------------------
+# Aprovisionamiento de Skills
+# ------------------------------------------------------------------------------
 
-    # Garantizar directorios base
-    mkdir -p "${GEMINI_SKILLS_DIR}"
+skills_runtime() {
+    local r="$1"
+    local config_file
+    config_file="$(get_runtime_config_file "$r")"
+    local skills_dir
+    skills_dir="$(get_runtime_target_skills_dir "$r")"
+
+    echo "==> [skills] Provisionando skills para runtime '${r}'..."
     mkdir -p "${HOME}/.local/bin" 2>/dev/null || true
 
-    # 1. Validar configuración contra esquema
-    validate_config "${CONFIG_FILE}" "${SCHEMA_FILE}" "skills" || exit 1
+    validate_config "${config_file}" "${SCHEMA_FILE}" "skills" || return 1
 
-    # 2. Purgar symlinks previos en el entorno de ejecución (Idempotencia)
-    find "${GEMINI_SKILLS_DIR}" -maxdepth 1 -type l -delete
+    if [ -n "${skills_dir}" ]; then
+        mkdir -p "${skills_dir}"
+        # Purgar symlinks previos en el directorio de skills del runtime
+        find "${skills_dir}" -maxdepth 1 -type l -delete
 
-    # 3. Leer configuración estructurada (skills) y aprovisionar
+        local enabled_skills=()
+        mapfile -t enabled_skills < <(get_enabled_skills "${config_file}")
+
+        for skill_name in "${enabled_skills[@]}"; do
+            [[ -z "${skill_name}" ]] && continue
+            local target_dir
+            target_dir="$(resolve_skill_dir "${skill_name}")"
+            target_dir="$(realpath -m "${target_dir}")"
+
+            if [[ -d "${target_dir}" ]]; then
+                ln -sfn "${target_dir}" "${skills_dir}/${skill_name}"
+                echo "  [+] [${r}] Skill habilitado: ${skill_name} -> ${skills_dir}/${skill_name}"
+            else
+                echo "  [!] Advertencia [${r}]: No se encontró el origen '${skill_name}' en ${SKILLS_DIR}"
+            fi
+        done
+    else
+        echo "  [-] [${r}] No define skills_dir en target; se omite aprovisionamiento de carpeta de skills."
+    fi
+
+    # Exposición de binarios en ~/.local/bin
     local enabled_skills=()
-    mapfile -t enabled_skills < <(get_enabled_skills "${CONFIG_FILE}")
-
+    mapfile -t enabled_skills < <(get_enabled_skills "${config_file}")
     for skill_name in "${enabled_skills[@]}"; do
         [[ -z "${skill_name}" ]] && continue
         local target_dir
         target_dir="$(resolve_skill_dir "${skill_name}")"
         target_dir="$(realpath -m "${target_dir}")"
-        
-        if [[ -d "${target_dir}" ]]; then
-            # Habilitar el skill
-            ln -sfn "${target_dir}" "${GEMINI_SKILLS_DIR}/${skill_name}"
-            echo "  [+] Skill habilitado: ${skill_name}"
-            
-            # (Opcional) Aprovisionamiento dinámico de binarios del skill
-            if [[ -d "${target_dir}/scripts" ]]; then
-                for script in "${target_dir}/scripts/"*.sh; do
-                    if [[ -f "${script}" && -x "${script}" ]]; then
-                        local bin_name
-                        bin_name=$(basename "${script}" .sh)
-                        
-                        # Consultar mapeo declarativo opcional de binarios
-                        local bin_alias
-                        bin_alias="$(get_binary_alias "${CONFIG_FILE}" "${bin_name}")"
-
-                        if [[ -n "${bin_alias}" ]]; then
-                            bin_name="${bin_alias}"
-                        fi
-                        
-                        ln -sfn "${script}" "${HOME}/.local/bin/${bin_name}"
-                        echo "      -> Binario expuesto en PATH: ~/.local/bin/${bin_name}"
+        if [[ -d "${target_dir}/scripts" ]]; then
+            for script in "${target_dir}/scripts/"*.sh; do
+                if [[ -f "${script}" && -x "${script}" ]]; then
+                    local bin_name
+                    bin_name=$(basename "${script}" .sh)
+                    local bin_alias
+                    bin_alias="$(get_binary_alias "${config_file}" "${bin_name}")"
+                    if [[ -n "${bin_alias}" ]]; then
+                        bin_name="${bin_alias}"
                     fi
-                done
-            fi
-        else
-            echo "  [!] Advertencia: No se encontró el origen '${skill_name}' en ${SKILLS_DIR}"
+                    ln -sfn "${script}" "${HOME}/.local/bin/${bin_name}"
+                    echo "      -> [${r}] Binario expuesto en PATH: ~/.local/bin/${bin_name}"
+                fi
+            done
         fi
     done
-    echo "==> [skills] Provisionamiento finalizado."
+    echo "==> [skills] Provisionamiento finalizado para '${r}'."
 }
 
-cmd_check() {
-    echo "==> [check] Ejecutando verificaciones estáticas (read-only)..."
-    local errors=0
-    local warnings=0
+cmd_skills() {
+    local target_arg="${1:-all}"
+    validate_runtime_arg "${target_arg}" || return 1
+    local target_runtimes=()
+    mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
+    for r in "${target_runtimes[@]}"; do
+        [ -z "$r" ] && continue
+        skills_runtime "$r"
+    done
+}
+
+# ------------------------------------------------------------------------------
+# Auditoría Estática de Integridad (cmd_check)
+# ------------------------------------------------------------------------------
+
+CHECK_ERRORS=0
+CHECK_WARNINGS=0
+
+check_core_rules() {
+    local seen_core_prefixes=()
+    for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
+        local fname
+        fname="$(basename "$f")"
+        if [[ "${fname}" =~ ^([0-9]+)- ]]; then
+            local pfx="${BASH_REMATCH[1]}"
+            if printf '%s\n' "${seen_core_prefixes[@]}" | grep -qx "${pfx}"; then
+                echo "  [✗] Colisión de prefijo '${pfx}-' detectada en core/: ${fname}" >&2
+                CHECK_ERRORS=$((CHECK_ERRORS + 1))
+            else
+                seen_core_prefixes+=("${pfx}")
+            fi
+        else
+            echo "  [!] Advertencia: Archivo ${fname} en core/ no sigue el patrón numérico 'NN-*.md'" >&2
+            CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+        fi
+    done
+}
+
+check_runtime() {
+    local r="$1"
+    local config_file
+    config_file="$(get_runtime_config_file "$r")"
+    local rules_dir
+    rules_dir="$(get_runtime_rules_dir "$r")"
+    local mcp_dir
+    mcp_dir="$(get_runtime_mcp_dir "$r")"
+    local dist_file
+    dist_file="$(get_runtime_dist_prompt_file "$r")"
+    local target_file
+    target_file="$(get_runtime_target_prompt_file "$r")"
+    local target_mcp_file
+    target_mcp_file="$(get_runtime_target_mcp_file "$r")"
+    local skills_dir
+    skills_dir="$(get_runtime_target_skills_dir "$r")"
+
+    echo "--- Auditoría de Runtime: '${r}' ---"
 
     # 1. Validación de esquema y sintaxis de configuración
-    if ! validate_config "${CONFIG_FILE}" "${SCHEMA_FILE}" "check"; then
-        echo "  [✗] Fallo en la validación de ${CONFIG_FILE}" >&2
-        errors=$((errors + 1))
+    if ! validate_config "${config_file}" "${SCHEMA_FILE}" "check"; then
+        echo "  [✗] [${r}] Fallo en la validación de ${config_file}" >&2
+        CHECK_ERRORS=$((CHECK_ERRORS + 1))
     else
-        echo "  [✓] Esquema y sintaxis válidos: ${CONFIG_FILE}"
+        echo "  [✓] [${r}] Esquema y sintaxis válidos: ${config_file}"
     fi
 
     # 2. Verificación de existencia de skills en disco
     local enabled_skills=()
-    mapfile -t enabled_skills < <(get_enabled_skills "${CONFIG_FILE}")
+    mapfile -t enabled_skills < <(get_enabled_skills "${config_file}")
 
     local skills_ok=true
     local count_skills=0
@@ -660,18 +964,18 @@ cmd_check() {
         local skill_dir
         skill_dir="$(resolve_skill_dir "${skill_name}")"
         if [ ! -d "${skill_dir}" ]; then
-            echo "  [✗] Skill habilitado '${skill_name}' no existe en ${SKILLS_DIR}" >&2
+            echo "  [✗] [${r}] Skill habilitado '${skill_name}' no existe en ${SKILLS_DIR}" >&2
             skills_ok=false
-            errors=$((errors + 1))
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
         else
             if [ ! -f "${skill_dir}/SKILL.md" ]; then
-                echo "  [!] Advertencia: Skill '${skill_name}' no contiene SKILL.md" >&2
-                warnings=$((warnings + 1))
+                echo "  [!] Advertencia [${r}]: Skill '${skill_name}' no contiene SKILL.md" >&2
+                CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
             fi
         fi
     done
     if [ "${skills_ok}" = true ]; then
-        echo "  [✓] Skills en disco: ${count_skills} habilitados y verificados"
+        echo "  [✓] [${r}] Skills en disco: ${count_skills} habilitados y verificados"
     fi
 
     # 3. Verificación de binarios de skills
@@ -687,20 +991,18 @@ cmd_check() {
                 [ ! -e "${script}" ] && continue
                 count_scripts=$((count_scripts + 1))
                 if [ ! -x "${script}" ]; then
-                    echo "  [✗] Script de skill '${script}' no tiene permisos de ejecución (+x)" >&2
+                    echo "  [✗] [${r}] Script de skill '${script}' no tiene permisos de ejecución (+x)" >&2
                     bin_scripts_ok=false
-                    errors=$((errors + 1))
+                    CHECK_ERRORS=$((CHECK_ERRORS + 1))
                 fi
             done
         fi
     done
 
     local declared_binaries=()
-    mapfile -t declared_binaries < <(get_declared_binaries "${CONFIG_FILE}")
-    local count_bin=0
+    mapfile -t declared_binaries < <(get_declared_binaries "${config_file}")
     for bin_entry in "${declared_binaries[@]}"; do
         [ -z "${bin_entry}" ] && continue
-        count_bin=$((count_bin + 1))
         local src_name="${bin_entry%%=*}"
         local found=false
 
@@ -716,38 +1018,34 @@ cmd_check() {
         done
 
         if [ "${found}" = false ]; then
-            echo "  [!] Advertencia: Alias de binario '${src_name}' en config.json no coincide con ningún script en los skills habilitados" >&2
-            warnings=$((warnings + 1))
+            echo "  [!] Advertencia [${r}]: Alias de binario '${src_name}' en config.json no coincide con ningún script en los skills habilitados" >&2
+            CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
         fi
     done
 
     if [ "${bin_scripts_ok}" = true ]; then
-        if [ "${count_scripts}" -gt 0 ]; then
-            echo "  [✓] Binarios de skills: ${count_scripts} script(s) verificado(s) con permisos de ejecución"
-        else
-            echo "  [✓] Binarios de skills: 0 scripts encontrados en skills habilitados"
-        fi
+        echo "  [✓] [${r}] Binarios de skills: ${count_scripts} script(s) verificado(s)"
     fi
 
     # 4. Verificación de servidores MCP
     local enabled_mcps=()
-    mapfile -t enabled_mcps < <(get_enabled_mcp_servers "${CONFIG_FILE}")
+    mapfile -t enabled_mcps < <(get_enabled_mcp_servers "${config_file}")
     local count_mcps=0
     local mcps_ok=true
 
     for s_name in "${enabled_mcps[@]}"; do
         [ -z "${s_name}" ] && continue
         count_mcps=$((count_mcps + 1))
-        local s_path="${MCP_DIR}/${s_name}.json"
+        local s_path="${mcp_dir}/${s_name}.json"
         if [ ! -f "${s_path}" ]; then
-            echo "  [✗] Servidor MCP habilitado '${s_name}' no existe en ${MCP_DIR}" >&2
+            echo "  [✗] [${r}] Servidor MCP habilitado '${s_name}' no existe en ${mcp_dir}" >&2
             mcps_ok=false
-            errors=$((errors + 1))
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
         else
             if ! validate_mcp_server "${s_path}" "${MCP_SCHEMA_FILE}" "check"; then
-                echo "  [✗] Esquema o sintaxis inválida en módulo MCP '${s_name}'" >&2
+                echo "  [✗] [${r}] Esquema o sintaxis inválida en módulo MCP '${s_name}'" >&2
                 mcps_ok=false
-                errors=$((errors + 1))
+                CHECK_ERRORS=$((CHECK_ERRORS + 1))
             else
                 local cmd=""
                 if command -v jq >/dev/null 2>&1; then
@@ -761,17 +1059,17 @@ cmd_check() {
                     expanded_cmd="$(eval echo "${cmd}")"
                     if [[ "${expanded_cmd}" == *"/"* ]]; then
                         if [ ! -e "${expanded_cmd}" ]; then
-                            echo "  [!] Advertencia: Ejecutable MCP '${expanded_cmd}' del servidor '${s_name}' no existe en disco" >&2
-                            warnings=$((warnings + 1))
+                            echo "  [!] Advertencia [${r}]: Ejecutable MCP '${expanded_cmd}' del servidor '${s_name}' no existe en disco" >&2
+                            CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
                         elif [ ! -x "${expanded_cmd}" ]; then
-                            echo "  [✗] Ejecutable MCP '${expanded_cmd}' del servidor '${s_name}' no tiene permisos de ejecución (+x)" >&2
+                            echo "  [✗] [${r}] Ejecutable MCP '${expanded_cmd}' del servidor '${s_name}' no tiene permisos de ejecución (+x)" >&2
                             mcps_ok=false
-                            errors=$((errors + 1))
+                            CHECK_ERRORS=$((CHECK_ERRORS + 1))
                         fi
                     else
                         if ! command -v "${cmd}" >/dev/null 2>&1; then
-                            echo "  [!] Advertencia: Comando MCP '${cmd}' del servidor '${s_name}' no encontrado en \$PATH" >&2
-                            warnings=$((warnings + 1))
+                            echo "  [!] Advertencia [${r}]: Comando MCP '${cmd}' del servidor '${s_name}' no encontrado en \$PATH" >&2
+                            CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
                         fi
                     fi
                 fi
@@ -780,93 +1078,66 @@ cmd_check() {
     done
 
     if [ "${mcps_ok}" = true ]; then
-        if [ "${count_mcps}" -gt 0 ]; then
-            echo "  [✓] Servidores MCP: ${count_mcps} módulo(s) verificado(s) contra esquema"
-        else
-            echo "  [✓] Servidores MCP: 0 servidores habilitados"
-        fi
+        echo "  [✓] [${r}] Servidores MCP: ${count_mcps} módulo(s) verificado(s)"
     fi
 
     # 5. Verificación de directivas excluidas y sobreescritas (disabled_core_rules y overrides)
     local disabled_rules=()
-    mapfile -t disabled_rules < <(get_disabled_core_rules "${CONFIG_FILE}")
+    mapfile -t disabled_rules < <(get_disabled_core_rules "${config_file}")
     for d_rule in "${disabled_rules[@]}"; do
         [ -z "${d_rule}" ] && continue
         local target_f="${CORE_DIR}/${d_rule}"
         [[ "${target_f}" != *".md" ]] && target_f="${target_f}.md"
         if [ ! -f "${target_f}" ]; then
-            echo "  [✗] Regla en disabled_core_rules '${d_rule}' no existe en ${CORE_DIR}" >&2
-            errors=$((errors + 1))
+            echo "  [✗] [${r}] Regla en disabled_core_rules '${d_rule}' no existe en ${CORE_DIR}" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
         fi
     done
 
     local declared_overrides=()
-    mapfile -t declared_overrides < <(get_core_overrides "${CONFIG_FILE}")
+    mapfile -t declared_overrides < <(get_core_overrides "${config_file}")
     for ovr in "${declared_overrides[@]}"; do
         [ -z "${ovr}" ] && continue
         local src="${ovr%%=*}"
         local dst="${ovr#*=}"
         local src_f="${CORE_DIR}/${src}"
         [[ "${src_f}" != *".md" ]] && src_f="${src_f}.md"
-        local dst_f="${RULES_DIR}/${dst}"
+        local dst_f="${rules_dir}/${dst}"
         [[ "${dst_f}" != *".md" ]] && dst_f="${dst_f}.md"
 
         if [ ! -f "${src_f}" ]; then
-            echo "  [✗] Origen de override '${src}' en config.json no existe en ${CORE_DIR}" >&2
-            errors=$((errors + 1))
+            echo "  [✗] [${r}] Origen de override '${src}' en config.json no existe en ${CORE_DIR}" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
         fi
         if [ ! -f "${dst_f}" ]; then
-            echo "  [✗] Destino de override '${dst}' en config.json no existe en ${RULES_DIR}" >&2
-            errors=$((errors + 1))
+            echo "  [✗] [${r}] Destino de override '${dst}' en config.json no existe en ${rules_dir}" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
         fi
     done
 
-    # 6. Verificación de colisiones de directivas
+    # 6. Colisiones de reglas y títulos H1
     local collision_error=false
-
-    # 6a. Prefijos numéricos intra-directorio en CORE_DIR
-    local seen_core_prefixes=()
-    for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
-        local fname
-        fname="$(basename "$f")"
-        if [[ "${fname}" =~ ^([0-9]+)- ]]; then
-            local pfx="${BASH_REMATCH[1]}"
-            if printf '%s\n' "${seen_core_prefixes[@]}" | grep -qx "${pfx}"; then
-                echo "  [✗] Colisión de prefijo '${pfx}-' detectada en core/: ${fname}" >&2
-                collision_error=true
-                errors=$((errors + 1))
-            else
-                seen_core_prefixes+=("${pfx}")
-            fi
-        else
-            echo "  [!] Advertencia: Archivo ${fname} en core/ no sigue el patrón numérico 'NN-*.md'" >&2
-            warnings=$((warnings + 1))
-        fi
-    done
-
-    # 6b. Prefijos numéricos intra-directorio en RULES_DIR
-    if [ -d "${RULES_DIR}" ]; then
+    if [ -d "${rules_dir}" ]; then
         local seen_rules_prefixes=()
-        for f in $(find "${RULES_DIR}" -maxdepth 1 -name "*.md" | sort); do
+        for f in $(find "${rules_dir}" -maxdepth 1 -name "*.md" | sort); do
             local fname
             fname="$(basename "$f")"
             if [[ "${fname}" =~ ^([0-9]+)- ]]; then
                 local pfx="${BASH_REMATCH[1]}"
                 if printf '%s\n' "${seen_rules_prefixes[@]}" | grep -qx "${pfx}"; then
-                    echo "  [✗] Colisión de prefijo '${pfx}-' detectada en rules/: ${fname}" >&2
+                    echo "  [✗] [${r}] Colisión de prefijo '${pfx}-' detectada en rules/: ${fname}" >&2
                     collision_error=true
-                    errors=$((errors + 1))
+                    CHECK_ERRORS=$((CHECK_ERRORS + 1))
                 else
                     seen_rules_prefixes+=("${pfx}")
                 fi
             else
-                echo "  [!] Advertencia: Archivo ${fname} en rules/ no sigue el patrón numérico 'NN-*.md'" >&2
-                warnings=$((warnings + 1))
+                echo "  [!] Advertencia [${r}]: Archivo ${fname} en rules/ no sigue el patrón numérico 'NN-*.md'" >&2
+                CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
             fi
         done
     fi
 
-    # 6c. Títulos Markdown H1 únicos a través de todo el set compilado
     local suppressed_rules_check=()
     for d in "${disabled_rules[@]}"; do
         [ -n "$d" ] && suppressed_rules_check+=("$d")
@@ -885,8 +1156,8 @@ cmd_check() {
         fi
         all_files+=("$f")
     done
-    if [ -d "${RULES_DIR}" ]; then
-        for f in $(find "${RULES_DIR}" -maxdepth 1 -name "*.md" | sort); do
+    if [ -d "${rules_dir}" ]; then
+        for f in $(find "${rules_dir}" -maxdepth 1 -name "*.md" | sort); do
             all_files+=("$f")
         done
     fi
@@ -895,9 +1166,9 @@ cmd_check() {
         while IFS= read -r line; do
             local title="${line#\# }"
             if printf '%s\n' "${seen_h1[@]}" | grep -Fxq "${title}"; then
-                echo "  [✗] Título H1 duplicado detectado: '# ${title}' en $(basename "$f")" >&2
+                echo "  [✗] [${r}] Título H1 duplicado detectado: '# ${title}' en $(basename "$f")" >&2
                 collision_error=true
-                errors=$((errors + 1))
+                CHECK_ERRORS=$((CHECK_ERRORS + 1))
             else
                 seen_h1+=("${title}")
             fi
@@ -905,135 +1176,156 @@ cmd_check() {
     done
 
     if [ "${collision_error}" = false ]; then
-        echo "  [✓] Ausencia de colisiones: Prefijos numéricos intra-directorio y títulos H1 únicos"
+        echo "  [✓] [${r}] Ausencia de colisiones de prefijos y títulos H1 únicos"
     fi
 
-    # 6. Integridad de enlaces simbólicos (solo lectura)
-    local symlink_error=false
-
-    # 6a. TARGET_FILE (~/.gemini/config/AGENTS.md)
-    if [ -L "${TARGET_FILE}" ]; then
-        if [ ! -e "${TARGET_FILE}" ]; then
-            echo "  [✗] Symlink roto: ${TARGET_FILE} -> $(readlink "${TARGET_FILE}" || true)" >&2
-            symlink_error=true
-            errors=$((errors + 1))
+    # 7. Integridad de enlaces simbólicos en host
+    if [ -L "${target_file}" ]; then
+        if [ ! -e "${target_file}" ]; then
+            echo "  [✗] [${r}] Symlink roto en directivas: ${target_file} -> $(readlink "${target_file}" || true)" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
         fi
-    elif [ ! -e "${TARGET_FILE}" ]; then
-        echo "  [!] Advertencia: ${TARGET_FILE} no existe aún (ejecuta './build.sh link')" >&2
-        warnings=$((warnings + 1))
+    elif [ ! -e "${target_file}" ]; then
+        echo "  [!] Advertencia [${r}]: ${target_file} no existe aún (ejecuta './build.sh link ${r}')" >&2
+        CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
     fi
 
-    # 6b. Symlinks en GEMINI_SKILLS_DIR (~/.gemini/config/skills)
-    if [ -d "${GEMINI_SKILLS_DIR}" ]; then
-        for item in "${GEMINI_SKILLS_DIR}"/*; do
+    if [ -n "${skills_dir}" ] && [ -d "${skills_dir}" ]; then
+        for item in "${skills_dir}"/*; do
             [ ! -e "${item}" ] && [ ! -L "${item}" ] && continue
             if [ -L "${item}" ]; then
                 if [ ! -e "${item}" ]; then
-                    echo "  [✗] Symlink roto en skills: ${item} -> $(readlink "${item}" || true)" >&2
-                    symlink_error=true
-                    errors=$((errors + 1))
+                    echo "  [✗] [${r}] Symlink roto en skills: ${item} -> $(readlink "${item}" || true)" >&2
+                    CHECK_ERRORS=$((CHECK_ERRORS + 1))
                 fi
             fi
         done
     fi
 
-    # 6c. Symlinks en ~/.local/bin gobernados por este repositorio
+    if [ -L "${target_mcp_file}" ]; then
+        if [ ! -e "${target_mcp_file}" ]; then
+            echo "  [✗] [${r}] Symlink roto en MCP: ${target_mcp_file} -> $(readlink "${target_mcp_file}" || true)" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        fi
+    elif [ ! -e "${target_mcp_file}" ]; then
+        if [ "${count_mcps}" -gt 0 ]; then
+            echo "  [!] Advertencia [${r}]: ${target_mcp_file} no existe aún (ejecuta './build.sh link ${r}')" >&2
+            CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+        fi
+    fi
+
+    # 8. Presupuesto de contexto
+    if [ -f "${dist_file}" ]; then
+        local w
+        w="$(wc -w < "${dist_file}" | tr -d ' ')"
+        local max_w="${MAX_CONTEXT_WORDS:-4000}"
+        local pct=$(( w * 100 / max_w ))
+        if [ "${w}" -gt "${max_w}" ]; then
+            echo "  [!] Advertencia [${r}]: Presupuesto de contexto superado: ${w} / ${max_w} palabras (${pct}%)" >&2
+            CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+        else
+            echo "  [✓] [${r}] Presupuesto de contexto: ${w} / ${max_w} palabras (${pct}%)"
+        fi
+    else
+        echo "  [!] Advertencia [${r}]: ${dist_file} no ha sido compilado aún (ejecuta './build.sh build ${r}')" >&2
+        CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+    fi
+}
+
+check_local_bin_symlinks() {
     if [ -d "${HOME}/.local/bin" ]; then
         for item in "${HOME}/.local/bin"/*; do
             [ ! -e "${item}" ] && [ ! -L "${item}" ] && continue
             if [ -L "${item}" ]; then
                 local link_target
                 link_target="$(readlink "${item}" || true)"
-                # Solo verificar si apunta a SCRIPT_DIR
                 if [[ "${link_target}" == "${SCRIPT_DIR}"* ]]; then
                     if [ ! -e "${item}" ]; then
                         echo "  [✗] Symlink roto en ~/.local/bin: ${item} -> ${link_target}" >&2
-                        symlink_error=true
-                        errors=$((errors + 1))
+                        CHECK_ERRORS=$((CHECK_ERRORS + 1))
                     fi
                 fi
             fi
         done
     fi
+}
 
-    # 6d. TARGET_MCP_FILE (~/.gemini/config/mcp_config.json)
-    if [ -L "${TARGET_MCP_FILE}" ]; then
-        if [ ! -e "${TARGET_MCP_FILE}" ]; then
-            echo "  [✗] Symlink roto en MCP: ${TARGET_MCP_FILE} -> $(readlink "${TARGET_MCP_FILE}" || true)" >&2
-            symlink_error=true
-            errors=$((errors + 1))
-        fi
-    elif [ ! -e "${TARGET_MCP_FILE}" ]; then
-        if [ "${count_mcps}" -gt 0 ]; then
-            echo "  [!] Advertencia: ${TARGET_MCP_FILE} no existe aún (ejecuta './build.sh link' o './build.sh mcp')" >&2
-            warnings=$((warnings + 1))
-        fi
-    fi
+cmd_check() {
+    local target_arg="${1:-all}"
+    validate_runtime_arg "${target_arg}" || return 1
+    local target_runtimes=()
+    mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
+    CHECK_ERRORS=0
+    CHECK_WARNINGS=0
 
-    if [ "${symlink_error}" = false ]; then
-        echo "  [✓] Integridad de symlinks: Sin enlaces rotos detectados"
-    fi
+    echo "==> [check] Ejecutando verificaciones estáticas (read-only)..."
 
-    # 7. Presupuesto de contexto
-    if [ -f "${DIST_FILE}" ]; then
-        local w
-        w="$(wc -w < "${DIST_FILE}" | tr -d ' ')"
-        local max_w="${MAX_CONTEXT_WORDS:-4000}"
-        local pct=$(( w * 100 / max_w ))
-        if [ "${w}" -gt "${max_w}" ]; then
-            echo "  [!] Advertencia: Presupuesto de contexto superado: ${w} / ${max_w} palabras (${pct}%)" >&2
-            warnings=$((warnings + 1))
-        else
-            echo "  [✓] Presupuesto de contexto: ${w} / ${max_w} palabras (${pct}%)"
-        fi
-    else
-        echo "  [!] Advertencia: ${DIST_FILE} no ha sido compilado aún (ejecuta './build.sh build')" >&2
-        warnings=$((warnings + 1))
-    fi
+    # Verificaciones comunes de directivas core
+    check_core_rules
 
-    echo "==> [check] Verificación completada: ${errors} error(es), ${warnings} advertencia(s)."
-    if [ "${errors}" -gt 0 ]; then
+    # Verificaciones por runtime
+    for r in "${target_runtimes[@]}"; do
+        [ -z "$r" ] && continue
+        check_runtime "$r"
+    done
+
+    # Verificaciones comunes de ~/.local/bin
+    check_local_bin_symlinks
+
+    echo "==> [check] Verificación completada: ${CHECK_ERRORS} error(es), ${CHECK_WARNINGS} advertencia(s)."
+    if [ "${CHECK_ERRORS}" -gt 0 ]; then
         return 1
     fi
     return 0
 }
 
+# ------------------------------------------------------------------------------
+# Flujo Completo
+# ------------------------------------------------------------------------------
+
 cmd_all() {
-    cmd_build
-    cmd_link
-    cmd_skills
-    cmd_status
+    local target_arg="${1:-all}"
+    validate_runtime_arg "${target_arg}" || return 1
+    cmd_build "${target_arg}"
+    cmd_link "${target_arg}"
+    cmd_skills "${target_arg}"
+    cmd_status "${target_arg}"
     echo ""
-    cmd_check
+    cmd_check "${target_arg}"
 }
+
+# ------------------------------------------------------------------------------
+# Punto de Entrada
+# ------------------------------------------------------------------------------
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     COMMAND="${1:-all}"
+    RUNTIME_ARG="${2:-all}"
 
     case "${COMMAND}" in
         build)
-            cmd_build
+            cmd_build "${RUNTIME_ARG}"
             ;;
         link)
-            cmd_link
+            cmd_link "${RUNTIME_ARG}"
             ;;
         skills)
-            cmd_skills
+            cmd_skills "${RUNTIME_ARG}"
             ;;
         mcp)
-            cmd_mcp
+            cmd_mcp "${RUNTIME_ARG}"
             ;;
         status)
-            cmd_status
+            cmd_status "${RUNTIME_ARG}"
             ;;
         check)
-            cmd_check
+            cmd_check "${RUNTIME_ARG}"
             ;;
         all)
-            cmd_all
+            cmd_all "${RUNTIME_ARG}"
             ;;
         *)
-            echo "Uso: $0 {build|link|skills|mcp|status|check|all}" >&2
+            echo "Uso: $0 {build|link|skills|mcp|status|check|all} [runtime]" >&2
             exit 1
             ;;
     esac

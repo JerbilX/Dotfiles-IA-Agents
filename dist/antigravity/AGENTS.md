@@ -2,6 +2,7 @@
   =============================================================================
   AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
   Source repository: Dotfiles-IA-Agents
+  Runtime: antigravity
   Components: core/*.md, runtimes/antigravity/rules/*.md
   =============================================================================
 -->
