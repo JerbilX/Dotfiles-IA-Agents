@@ -38,11 +38,15 @@ Opción elegida: **"Opción 3"**, porque:
 1. El montaje `ro` de `.git/` en el sandbox estándar de Antigravity hace que la elevación de permisos sea una condición técnica necesaria para cualquier mutación de control de versiones.
 2. `BypassSandbox: true` es el mecanismo oficial provisto por Antigravity para comandos de red y acceso controlado al entorno de desarrollo.
 3. El blindaje adoptado en [ADR 0001](0001-blindaje-de-sandbox-y-gestion-de-permisos.md) y [`01-sandbox.md`](../../runtimes/antigravity/rules/01-sandbox.md) mitiga el riesgo al confinar la autorización exclusivamente a comandos atómicos de `git` y `gh`, ignorando sugerencias automáticas para cualquier otro binario.
+4. **Categorización Determinista Proactiva (Actualización Issue #38):** Se abandona el modelo reactivo ("reintentar tras fallo") por una prescripción determinista desde el primer intento:
+   - **Solo Lectura (`BypassSandbox: false` obligatorio):** Inspección pasiva (`git status`, `git log`, `git diff`, `git branch` de consulta) 100% confinada en el sandbox.
+   - **Mutadores Locales y Comandos de Red (`BypassSandbox: true` obligatorio desde el primer intento):** Mutación local (`git init`, `git checkout`, `git checkout -b`, `git branch -d/-D`, `git branch -m/-M`, `git add`, `git commit`, `git merge`) y operaciones remotas (`git push`, `git fetch`, `git pull`, `gh ...`), eliminando turnos fallidos y latencia innecesaria.
 
 ### Consecuencias
 
 * **Positivas:**
   * Se mantiene la operatividad plena del flujo guiado por issues y Pull Requests sin fricciones ni bloqueos.
+  * Se eliminan los errores fatales predecibles (`fatal: Unable to create '.../.git/index.lock': Read-only file system`) y la latencia recurrente (~5s) en cambios de rama y commits.
   * Compatibilidad completa con GitHub Projects v2 y credenciales heredadas de la sesión de Linux sin requerir tokens adicionales.
   * Cero sobrecarga de tokens en el presupuesto de contexto (no requiere registrar herramientas MCP adicionales para Git).
 * **Negativas / Trade-offs:**

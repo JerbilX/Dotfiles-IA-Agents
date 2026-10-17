@@ -49,7 +49,7 @@ Todo desarrollo debe aislarse en una rama dedicada creada antes de modificar cua
   ```bash
   git checkout -b <nombre-de-rama>
   ```
-  *(Si el entorno restringe escrituras en `.git/`, autorizar `BypassSandbox: true`).*
+  *(Ejecutado con `BypassSandbox: true` desde el primer intento debido al montaje `ro` de `.git/`).*
 
 ---
 
@@ -70,11 +70,13 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
    git checkout main
    git pull origin main
    ```
+   *(Ejecutados con `BypassSandbox: true` desde el primer intento).*
 2. Ejecutar la poda de higiene local para remover ramas ya fusionadas cuyo upstream remoto fue eliminado:
    ```bash
    git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -d
    ```
-3. Crear y cambiar a la rama descriptiva (`git checkout -b feat/issue-<id>-<slug>`).
+   *(Ejecutado con `BypassSandbox: true` debido a que la eliminación de ramas muta `.git/refs/`).*
+3. Crear y cambiar a la rama descriptiva (`git checkout -b feat/issue-<id>-<slug>` o `fix/issue-<id>-<slug>`) con `BypassSandbox: true` desde el primer intento.
 
 ### Paso 3: Planificación y Refinamiento
 - **Blindaje del Planning Mode:** Toda tarea que implique diagnóstico de errores (bug fixing) o modificaciones arquitectónicas requiere obligatoriamente redactar `implementation_plan.md` con pausa bloqueante (`RequestFeedback: true`).
@@ -88,7 +90,7 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
 ### Paso 5: Commit Atómico
 - Debido a que el evaluador de permisos anula el prefijo con comillas, **queda estrictamente prohibido** usar `git commit -m "..."`.
 - Redactar el mensaje convencional en `.commit_msg` con `write_to_file`.
-- Ejecutar el commit leyendo el archivo:
+- Ejecutar el commit leyendo el archivo con `BypassSandbox: true` desde el primer intento:
    ```bash
    git commit -F .commit_msg
    ```
@@ -135,6 +137,6 @@ Al completar la publicación del PR, el agente **DEBE emitir un reporte final es
 
 ## 6. Parámetros de Red, Sandbox y Circuit Breaker
 
-- **Exclusividad de Bypass:** `BypassSandbox: true` está reservado estricta y exclusivamente para comandos de Git y GitHub CLI (`git push`, `git fetch`, `git pull`, `gh issue`, `gh pr`, `gh project`, `gh repo`).
+- **Exclusividad de Bypass y Mutadores:** `BypassSandbox: true` está reservado estricta y exclusivamente para comandos mutadores locales de Git (`git init`, `git checkout`, `git checkout -b`, `git branch -d/-D`, `git branch -m/-M`, `git add`, `git commit`, `git merge`, etc.) y comandos remotos o de red de Git y GitHub CLI (`git push`, `git fetch`, `git pull`, `gh issue`, `gh pr`, `gh project`, `gh repo`). Las operaciones de solo lectura (`git status`, `git log`, `git diff`, `git branch` de consulta) deben ejecutarse obligatoriamente de forma confinada (`BypassSandbox: false`).
 - **Circuit Breaker:** Toda consulta de red iterativa en terminal se limita a un máximo de 3 a 5 iteraciones; si la API carece de endpoint batch o experimenta latencia, el agente debe detenerse y reportar.
 - **Higiene de Temporales:** Archivos auxiliares como `.commit_msg`, `.pr_body`, `.comment_body` o `.issue_body` deben removerse inmediatamente tras su uso y estar contemplados en `.gitignore`.
