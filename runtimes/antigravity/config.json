@@ -3,7 +3,8 @@
   "skills": [
     "eso-addon-development",
     "adr-manager",
-    "issue-driven-workflow"
+    "issue-driven-workflow",
+    "autonomous-learning"
   ],
   "binaries": {
     "build_release": "eso-build"

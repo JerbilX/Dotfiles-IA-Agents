@@ -37,7 +37,8 @@ Dotfiles-IA-Agents/
 │       ├── 0015-composicion-y-especializacion-de-directivas-por-runtime.md
 │       ├── 0016-poda-sustractiva-de-directivas-core-y-consolidacion-de-invariantes.md
 │       ├── 0017-principio-de-minima-intervencion-y-jerarquia-de-resolucion.md
-│       └── 0018-arquitectura-multi-runtime-y-pipeline-desacoplado.md
+│       ├── 0018-arquitectura-multi-runtime-y-pipeline-desacoplado.md
+│       └── 0019-skill-de-aprendizaje-autonomo-basado-en-decisiones-pasadas.md
 ├── runtimes/                            # Configuraciones y adaptadores por entorno
 │   ├── schema/                          # Esquemas JSON canónicos de validación
 │   │   ├── runtime-config.schema.json   # JSON Schema para manifiestos de runtime
@@ -54,6 +55,7 @@ Dotfiles-IA-Agents/
 │       └── config.json                  # Manifiesto de Claude Code (target: ~/.claude/CLAUDE.md)
 ├── skills/                              # Catálogo canónico y autocontenido de skills para agentes
 │   ├── adr-manager/                     # Gestión de Architecture Decision Records (MADR)
+│   ├── autonomous-learning/             # Aprendizaje autónomo y consulta de precedentes arquitectónicos
 │   ├── eso-addon-development/           # Estándares y utilidades para addons de ESO
 │   └── issue-driven-workflow/           # Orquestación de desarrollo guiado por issues y PRs
 ├── dist/                                # Artefactos compilados listos para distribución

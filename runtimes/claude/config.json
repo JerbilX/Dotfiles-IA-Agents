@@ -2,7 +2,8 @@
   "$schema": "../schema/runtime-config.schema.json",
   "skills": [
     "adr-manager",
-    "issue-driven-workflow"
+    "issue-driven-workflow",
+    "autonomous-learning"
   ],
   "binaries": {},
   "mcp_servers": [],
