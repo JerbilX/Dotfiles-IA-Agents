@@ -1,7 +1,7 @@
 ---
 name: issue-driven-workflow
 description: >-
-  Orchestrate end-to-end task execution driven by GitHub Issues and GitHub Projects v2, canonical backlog task registration, repository provisioning, branch lifecycles, and Pull Request workflows. ACTIVATE this skill whenever creating future issues/tasks, provisioning new GitHub repos, dispatched to implement an issue (e.g. 'implementa la issue #X'), picking tasks from Ready for Dev, managing feature/fix branch lifecycles, opening Pull Requests, or synchronizing cards in GitHub Projects. Operates with strict git hygiene, temporary file safety, and deterministic CLI commands.
+  Orchestrate end-to-end task execution driven by GitHub Issues and GitHub Projects v2, canonical backlog task registration, repository provisioning, branch lifecycles, and Pull Request workflows. ACTIVATE this skill whenever creating future issues/tasks, provisioning new GitHub repos, dispatched to implement an issue (e.g. 'implementa la issue #X'), querying the board or coordinating next tasks (e.g. '¿qué hay en el board?'), picking tasks from Ready for Dev, managing feature/fix branch lifecycles, opening Pull Requests, or synchronizing cards in GitHub Projects. Operates with strict git hygiene, temporary file safety, and deterministic CLI commands.
 ---
 
 # Issue-Driven Workflow and Pull Request Management
@@ -142,7 +142,25 @@ El agente opera bajo demanda ante directivas conversacionales del usuario en el 
 > [!IMPORTANT]
 > **Comportamiento Ante Consultas de Coordinación:** Preguntas meta-conversacionales o de coordinación en el chat (ej. *"¿con qué seguimos?"*, *"¿qué hay en el board?"*, *"¿cerramos este hilo e iniciamos uno nuevo?"*) son exclusivamente de consulta o planificación. Queda estrictamente prohibido ejecutar mutaciones, sincronizaciones preparatorias o cambios de rama en Git en la terminal hasta que el usuario emita una directiva explícita de despacho o implementación.
 
-### Vía A: Instrucción Directa (*"implementa la issue #<id>"*)
+### 3.1 Consultas de Tablero y Coordinación (*"¿qué hay en el board?"*, *"¿con qué seguimos?"*)
+
+Ante preguntas de consulta, estado o coordinación sobre las tareas pendientes en el tablero central (Project 1 `Proyectos-IA-V3`):
+
+1. **Comando CLI Simple y Filtrado Contextual por Repositorio:**
+   Para prevenir la sobrecarga cognitiva y la dilución de contexto provocada por el volcado de inventarios masivos multi-proyecto, la consulta estándar ante preguntas sobre el board debe filtrar los ítems activos exclusivamente para el repositorio donde está posicionado el agente:
+   ```bash
+   gh project item-list 1 --owner JerbilX --query "repo:JerbilX/<repo> -status:Done" --format json --jq '.items[] | {number: .content.number, title: .content.title, status: .status}'
+   ```
+   *(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento por requerir acceso de red; sustituir `<repo>` por el nombre del repositorio actual, ej. `Dotfiles-IA-Agents`).*
+
+2. **Priorización Analítica y Recomendación (Top 2 a 3):**
+   - **Evaluación Técnica:** El agente debe procesar el listado acotado del repositorio actual y evaluar la relevancia técnica de las tareas:
+     - Priorizar fixes o bloqueos inmediatos, tareas en estado `🎯 Ready for Dev` o quick wins de alto impacto técnico frente a ítems de backlog general o de largo plazo.
+     - Analizar dependencias lógicas y coherencia secuencial entre tickets para estructurar la progresión del trabajo.
+   - **Respuesta Sintética y Asertiva:** En lugar de volcar listas exhaustivas o cortar ciegamente por índice posicional, emitir una respuesta concisa presentando el **Top 2 o 3** de tareas más convenientes para continuar, con una recomendación explícita y justificada de cuál tomar primero y cuál abordar después.
+   - **Inventario Exhaustivo Solo Bajo Petición Expresa:** El volcado íntegro del inventario de tareas o la inclusión de ítems pertenecientes a otros repositorios del tablero queda restringido exclusivamente a cuando el usuario lo solicite de manera explícita (ej. *"mostrame todas las tareas del board sin filtrar"* o *"¿qué tareas hay en otros repositorios?"*).
+
+### 3.2 Despacho de Tareas: Vía A - Instrucción Directa (*"implementa la issue #<id>"*)
 1. Consultar el contexto técnico completo de la issue:
    ```bash
    gh issue view <id>
@@ -154,21 +172,21 @@ El agente opera bajo demanda ante directivas conversacionales del usuario en el 
    ```
    *(Ejecutado con `BypassSandbox: true`).*
 
-### Vía B: Instrucción de Backlog (*"toma la siguiente tarea lista en Ready for Dev"*)
-1. Consultar exclusivamente las tareas en estado `🎯 Ready for Dev` usando el filtrado nativo server-side de `gh` para evitar desbordes de buffer (`<truncated lines>`):
+### 3.3 Despacho de Tareas: Vía B - Instrucción de Backlog (*"toma la siguiente tarea lista en Ready for Dev"*)
+1. Consultar exclusivamente las tareas en estado `🎯 Ready for Dev` acotadas al repositorio actual usando el filtrado nativo server-side de `gh` para evitar desbordes de buffer (`<truncated lines>`):
    ```bash
-   gh project item-list 1 --owner JerbilX --query 'status:"🎯 Ready for Dev"' --field "Status"
+   gh project item-list 1 --owner JerbilX --query 'repo:JerbilX/<repo> status:"🎯 Ready for Dev"' --field "Status"
    ```
    *(Ejecutado con `BypassSandbox: true`).*
    - Si se requiere salida JSON compacta para lectura estructurada, utilizar el flag nativo `-q / --jq`:
      ```bash
-     gh project item-list 1 --owner JerbilX --query 'status:"🎯 Ready for Dev"' --format json --jq '.items[] | {number: .content.number, title: .content.title, url: .content.url}'
+     gh project item-list 1 --owner JerbilX --query 'repo:JerbilX/<repo> status:"🎯 Ready for Dev"' --format json --jq '.items[] | {number: .content.number, title: .content.title, url: .content.url}'
      ```
    - Si no existen tareas en `🎯 Ready for Dev`, consultar opcionalmente tareas activas excluyendo las finalizadas:
      ```bash
-     gh project item-list 1 --owner JerbilX --query '-status:Done' --field "Status" --limit 20
+     gh project item-list 1 --owner JerbilX --query 'repo:JerbilX/<repo> -status:Done' --field "Status" --limit 20
      ```
-2. Identificar el ticket prioritario a abordar.
+2. Identificar el ticket prioritario a abordar aplicando el criterio de priorización analítica (Top 2-3).
 3. Transicionar dicho ítem a `⚙️ In Progress` mediante el comando determinista directo:
    ```bash
    gh project item-edit 1 --owner JerbilX --url <issue-url> --field "Status" --value "⚙️ In Progress"
