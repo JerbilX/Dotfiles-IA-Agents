@@ -216,11 +216,20 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
    *(Ejecutados con `BypassSandbox: true` desde el primer intento).*
    - **Mecánica de Transporte de Git:** Invocado sin argumentos posicionales de remoto o rama (`origin main`), `git pull --prune --ff-only` procesa el refspec estándar completo (`+refs/heads/*:refs/remotes/origin/*`), poda de forma automática las referencias zombi (`remotes/origin/*`) y avanza `main` exclusivamente en modo fast-forward. Esto erradica la invocación de `git merge`, garantizando una ejecución 100% desatendida y sin modales interactivos de confirmación en Antigravity, cumpliendo estrictamente con la prohibición de merge hacia `main` de `core/09-issue-driven-workflow.md`.
    - **Prohibición Categórica de `git remote prune`:** Queda terminantemente prohibido ejecutar `git remote prune` (ej. `git remote prune origin`). Toda poda de tracking remoto debe canalizarse exclusivamente a través del transporte estándar de sincronización (`git pull --prune --ff-only` o `git fetch --prune origin`).
-2. Ejecutar la poda de higiene local para remover ramas ya fusionadas cuyo upstream remoto fue eliminado:
-   ```bash
-   git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -d
-   ```
-   *(Ejecutado con `BypassSandbox: true` debido a que la eliminación de ramas muta `.git/refs/`).*
+2. Ejecutar la poda de higiene local en dos fases atómicas para remover ramas ya fusionadas cuyo upstream remoto fue eliminado:
+   - **Fase 1: Inspección Pasiva Confinada (`BypassSandbox: false` obligatorio):**
+     Consultar el estado de tracking de las ramas locales mediante una llamada nativa de lectura:
+     ```bash
+     git branch --format "%(refname:short) %(upstream:track)"
+     ```
+     El modelo/agente inspecciona la salida en su propio contexto para identificar qué ramas presentan el estado `[gone]`.
+   - **Fase 2: Poda Atómica Mutadora (`BypassSandbox: true` obligatorio desde el primer intento):**
+     Si existen ramas con upstream marcado como `[gone]`, invocar directamente la poda atómica con el binario de Git sin envoltorios ni tuberías:
+     ```bash
+     git branch -d <rama1> <rama2>
+     ```
+     Si no existen ramas con estado `[gone]`, no se emite ninguna llamada mutadora.
+   - **Prohibición Categórica de Pipelines y Wrappers CLI (`awk` / `xargs`):** Queda terminantemente prohibido utilizar tuberías o utilidades intermediarias (ej. `git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -d`). Encadenar comandos en pipes rompe el *prefix matching* de seguridad en Antigravity, viola los estándares de entorno (`core/10-environment-standards.md`), vulnera el confinamiento de sandbox al delegar privilegios de bypass a binarios no autorizados (`runtimes/antigravity/rules/01-sandbox.md`) y dispara modales interactivos de confirmación de permisos.
 3. Crear y cambiar a la rama descriptiva (`git checkout -b feat/issue-<id>-<slug>` o `fix/issue-<id>-<slug>`) con `BypassSandbox: true` desde el primer intento.
 
 ### Paso 3: Planificación y Refinamiento
@@ -287,6 +296,7 @@ Al completar la publicación del PR, el agente **DEBE emitir un reporte final es
 - **Formato Atómico y Protección de Prefix Matching:** Debido a que el evaluador de permisos de runtimes como Antigravity anula el *prefix matching* ante el uso de comillas multilínea o caracteres complejos en argumentos CLI:
   - **PROHIBIDO** usar `git commit -m "..."`; escribir siempre el mensaje en `.commit_msg` con la API nativa de archivos y usar `git commit -F .commit_msg`.
   - **PROHIBIDO** usar `gh issue create --body "..."` o `gh pr create --body "..."` con cuerpos extensos o multilínea en terminal; escribir siempre el contenido en `.issue_body` o `.pr_body` con las herramientas nativas de archivos y utilizar `--body-file .issue_body` o `--body-file .pr_body`.
+  - **PROHIBIDO** encadenar comandos de Git mediante tuberías (`|`) o utilidades intermediarias/envoltorios (`awk`, `xargs`, `sed`, `grep`, `env`). Toda operación de Git debe invocarse de forma atómica y directa para preservar el *prefix matching* y evitar la delegación indebida de privilegios de `BypassSandbox: true` a utilidades de terminal.
 - **Prohibición de Scripts Intermediarios de Red y CLI:** Queda estrictamente prohibido generar scripts auxiliares (Python, Shell, Node) para ejecutar comandos de `gh` o parsear respuestas de red. Toda operación e inspección debe realizarse de forma directa y atómica utilizando los flags nativos provistos por GitHub CLI (`--query`, `--field`, `-q / --jq`, `--limit`). Si se requiere una consulta agregada compleja no soportada por `item-list`, la degradación elegante consiste en invocar directamente `gh api graphql` de forma nativa o aplicar Stop & Ask, sin violar el confinamiento del sandbox ni crear scripts huérfanos.
 - **Prohibición Categórica de `git remote prune`:** Prohibido invocar `git remote prune <remote>`. La poda de referencias remotas obsoletas debe gestionarse exclusivamente mediante el comando estándar de transporte (ej. `git pull --prune --ff-only` o `git fetch --prune <remote>`). Invocaciones aisladas a `git remote prune` violan la política desatendida y disparan alertas interactivas de confirmación de permisos en Antigravity.
 - **Circuit Breaker:** Toda consulta de red iterativa en terminal se limita a un máximo de 3 a 5 iteraciones; si la API carece de endpoint batch o experimenta latencia, el agente debe detenerse y reportar.
