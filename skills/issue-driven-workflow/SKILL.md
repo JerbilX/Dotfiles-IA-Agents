@@ -35,7 +35,23 @@ El cuerpo del ticket debe ser exhaustivo y autosuficiente para eliminar la neces
 [ ] [Validación de compilación, tests y chequeos de integridad ejecutados con éxito]
 ```
 
-### 1.3 Creación Determinista del Issue y Protección de Prefix Matching
+### 1.3 Principio de Mínima Intervención y Jerarquía de Resolución (Minimal Blast Radius)
+Al diseñar, planificar o registrar cualquier solución, el agente debe aplicar estrictamente la escala canónica de menor a mayor abstracción:
+
+| Nivel | Capa de Abstracción | Mecanismo y Alcance | Ejemplo |
+| :---: | :--- | :--- | :--- |
+| **0** | **Configuración / Parámetro CLI / API** | Argumentos nativos, flags o capacidades existentes de la herramienta. Impacto local al comando invocado. | `--query`, `--format json`, `--field`, flags de `gh` o `git`. |
+| **1** | **Tooling / Automatización Local** | Scripts de verificación, tests locales, linters o targets de `build.sh`. Impacto local al pipeline de compilación. | Target `./build.sh check`, validadores de esquemas, linters. |
+| **2** | **Skills bajo Demanda** | Procedimientos detallados, guías operativas o flujos E2E en `skills/*/SKILL.md`. Impacto acotado a la activación del skill. | Procedimientos de `issue-driven-workflow`, guías de `adr-manager`. |
+| **3** | **Reglas Especializadas de Runtime** | Directivas acotadas al runtime activo en `runtimes/<runtime>/rules/*.md`. Impacto restringido a dicho entorno. | Especialización de sandbox para Antigravity (`rules/01-sandbox.md`). |
+| **4** | **Core Basal / System Prompt Universal** | Invariantes duros de gobernanza, seguridad universal y principios irrenunciables en `core/*.md`. Impacto permanente y universal en cada turno. | Prohibición de push directo a `main`, confinamiento de sandbox, zero complacencia. |
+
+- **Regla Invariante de Resolución:** Queda **terminantemente prohibido** proponer o ejecutar cambios en un nivel $N+1$ si el problema técnico o requerimiento operativo puede resolverse eficazmente en un nivel menor o igual a $N$.
+
+### 1.4 Gate de Justificación de Elevación Basal
+Toda propuesta en la especificación de una issue (`.issue_body`) o plan de implementación que plantee modificar directivas en la capa basal (`core/`) debe incluir obligatoriamente el apartado técnico **"Justificación de Elevación Basal"**. Dicha sección debe demostrar fehacientemente por qué la necesidad técnica es inviable o insuficiente de abordar en los niveles 0 a 3. Propuestas de modificación a `core/` sin esta justificación se consideran técnicamente inválidas por definición.
+
+### 1.5 Creación Determinista del Issue y Protección de Prefix Matching
 Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix matching* cuando se utilizan comillas complejas o cadenas multilínea en la terminal, el cuerpo debe transferirse obligatoriamente mediante archivo temporal:
 
 1. Redactar la especificación técnica en `.issue_body` con `write_to_file`.
@@ -48,22 +64,23 @@ Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix
    rm -f .issue_body
    ```
 
-### 1.4 Inyección Inmediata y Agnóstica al Tablero Central (Projects v2)
+### 1.6 Inyección Inmediata y Agnóstica al Tablero Central (Projects v2)
 Para garantizar la indexación inmediata y agnóstica en el tablero central (sin depender de automatizaciones de auto-add restringidas en planes GitHub Free):
 ```bash
 gh project item-add 1 --owner JerbilX --url <issue-url>
 ```
 *(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento).*
 
-### 1.5 Reporte al Usuario
+### 1.7 Reporte al Usuario
 Al completar la creación e indexación, el agente debe reportar al usuario:
 - El número de issue asignado (`#<id>`).
 - El enlace web directo al issue (`https://github.com/JerbilX/<repo>/issues/<id>`).
 - Confirmación de indexación en el tablero de Projects v2.
 
-### 1.6 Control de Alcance y Desvíos (Scope Creep)
+### 1.8 Control de Alcance y Desvíos (Scope Creep)
 - El agente **no debe inflar** el objetivo del ticket original con refactors, mejoras o arreglos colaterales no contemplados en la especificación de la issue.
 - Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create --body-file .issue_body`), indexarla al tablero central (`gh project item-add 1 --owner JerbilX --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
+
 
 ---
 
@@ -209,6 +226,7 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
 
 ### Paso 3: Planificación y Refinamiento
 - **Blindaje del Planning Mode:** Toda tarea que implique diagnóstico de errores (bug fixing) o modificaciones arquitectónicas requiere obligatoriamente redactar `implementation_plan.md` con pausa bloqueante (`RequestFeedback: true`).
+- **Evaluación Obligatoria de Minimal Blast Radius:** Todo plan de implementación debe evaluar y registrar explícitamente el nivel de intervención más bajo posible (Nivel 0 a 4). Si la propuesta plantea modificar directivas basales (`core/`), debe incorporar obligatoriamente la sección **"Justificación de Elevación Basal"** acreditando la inviabilidad técnica en los niveles 0 a 3.
 - **Excepción de Fast-Path Ejecutivo:** Si la solución técnica o cambio ya fue debatido y consensuado explícitamente en el chat y el usuario emitió una orden ejecutiva directa (*"procedé"*, *"avanza"*, *"aplicalo"*), el agente **NO DEBE** pausar con un plan bloqueante; procede de inmediato a la implementación.
 - **Registro de ADRs:** Si se toman decisiones arquitectónicas o estructurales, registrar un nuevo ADR con `status: proposed` mediante el skill `adr-manager` (`docs/adr/NNNN-titulo.md`).
 
