@@ -37,8 +37,25 @@ cmd_build() {
 
 EOF
 
+    local suppressed_rules=()
+    if [ -f "${CONFIG_FILE}" ]; then
+        mapfile -t suppressed_rules < <(get_disabled_core_rules "${CONFIG_FILE}")
+        local core_overrides=()
+        mapfile -t core_overrides < <(get_core_overrides "${CONFIG_FILE}")
+        for ovr in "${core_overrides[@]}"; do
+            [ -z "${ovr}" ] && continue
+            suppressed_rules+=("${ovr%%=*}")
+        done
+    fi
+
     local first=true
     for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
+        local fname
+        fname="$(basename "$f")"
+        if [ ${#suppressed_rules[@]} -gt 0 ] && is_rule_suppressed "${fname}" "${suppressed_rules[@]}"; then
+            echo "  [-] Directiva core omitida por configuración de runtime: ${fname}"
+            continue
+        fi
         if [ "$first" = false ]; then
             printf "\n\n" >> "${tmp_file}"
         fi
@@ -210,6 +227,24 @@ if "mcp_servers" in config:
         if not isinstance(server, str) or not server.strip():
             print("Error de validación: Cada elemento de '\''mcp_servers'\'' debe ser una cadena no vacía.", file=sys.stderr)
             sys.exit(1)
+
+if "disabled_core_rules" in config:
+    if not isinstance(config["disabled_core_rules"], list):
+        print("Error de validación: '\''disabled_core_rules'\'' debe ser un array.", file=sys.stderr)
+        sys.exit(1)
+    for rule in config["disabled_core_rules"]:
+        if not isinstance(rule, str) or not rule.strip():
+            print("Error de validación: Cada elemento de '\''disabled_core_rules'\'' debe ser una cadena no vacía.", file=sys.stderr)
+            sys.exit(1)
+
+if "overrides" in config:
+    if not isinstance(config["overrides"], dict):
+        print("Error de validación: '\''overrides'\'' debe ser un objeto.", file=sys.stderr)
+        sys.exit(1)
+    for k, v in config["overrides"].items():
+        if not isinstance(k, str) or not isinstance(v, str) or not k.strip() or not v.strip():
+            print("Error de validación: Claves y valores de '\''overrides'\'' deben ser cadenas no vacías.", file=sys.stderr)
+            sys.exit(1)
 ' "${config_file}" "${schema_file}"; then
             return 1
         fi
@@ -222,6 +257,14 @@ if "mcp_servers" in config:
         has_skills=$(jq 'has("skills") and (.skills | type == "array")' "${config_file}")
         if [[ "${has_skills}" != "true" ]]; then
             echo "Error de validación: 'skills' es requerido y debe ser un array." >&2
+            return 1
+        fi
+        if jq -e 'has("disabled_core_rules") and (.disabled_core_rules | type != "array")' "${config_file}" >/dev/null 2>&1; then
+            echo "Error de validación: 'disabled_core_rules' debe ser un array." >&2
+            return 1
+        fi
+        if jq -e 'has("overrides") and (.overrides | type != "object")' "${config_file}" >/dev/null 2>&1; then
+            echo "Error de validación: 'overrides' debe ser un objeto." >&2
             return 1
         fi
     else
@@ -271,6 +314,46 @@ get_enabled_mcp_servers() {
     elif command -v python3 >/dev/null 2>&1; then
         python3 -c "import json; [print(s) for s in json.load(open('${config_file}')).get('mcp_servers', [])]" 2>/dev/null || true
     fi
+}
+
+get_disabled_core_rules() {
+    local config_file="$1"
+    if [ ! -f "${config_file}" ]; then
+        return 0
+    fi
+    if command -v jq >/dev/null 2>&1; then
+        jq -r '.disabled_core_rules[]?' "${config_file}" 2>/dev/null || true
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -c "import json; [print(r) for r in json.load(open('${config_file}')).get('disabled_core_rules', [])]" 2>/dev/null || true
+    fi
+}
+
+get_core_overrides() {
+    local config_file="$1"
+    if [ ! -f "${config_file}" ]; then
+        return 0
+    fi
+    if command -v jq >/dev/null 2>&1; then
+        jq -r '.overrides | to_entries[]? | "\(.key)=\(.value)"' "${config_file}" 2>/dev/null || true
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -c "import json; [print(f'{k}={v}') for k, v in json.load(open('${config_file}')).get('overrides', {}).items()]" 2>/dev/null || true
+    fi
+}
+
+is_rule_suppressed() {
+    local fname="$1"
+    local base_fname="${fname%.md}"
+    shift
+    local suppressed_list=("$@")
+
+    for item in "${suppressed_list[@]}"; do
+        [ -z "${item}" ] && continue
+        local item_clean="${item%.md}"
+        if [ "${fname}" = "${item}" ] || [ "${fname}" = "${item}.md" ] || [ "${base_fname}" = "${item_clean}" ]; then
+            return 0
+        fi
+    done
+    return 1
 }
 
 validate_mcp_server() {
@@ -704,10 +787,44 @@ cmd_check() {
         fi
     fi
 
-    # 5. Verificación de colisiones de directivas
+    # 5. Verificación de directivas excluidas y sobreescritas (disabled_core_rules y overrides)
+    local disabled_rules=()
+    mapfile -t disabled_rules < <(get_disabled_core_rules "${CONFIG_FILE}")
+    for d_rule in "${disabled_rules[@]}"; do
+        [ -z "${d_rule}" ] && continue
+        local target_f="${CORE_DIR}/${d_rule}"
+        [[ "${target_f}" != *".md" ]] && target_f="${target_f}.md"
+        if [ ! -f "${target_f}" ]; then
+            echo "  [✗] Regla en disabled_core_rules '${d_rule}' no existe en ${CORE_DIR}" >&2
+            errors=$((errors + 1))
+        fi
+    done
+
+    local declared_overrides=()
+    mapfile -t declared_overrides < <(get_core_overrides "${CONFIG_FILE}")
+    for ovr in "${declared_overrides[@]}"; do
+        [ -z "${ovr}" ] && continue
+        local src="${ovr%%=*}"
+        local dst="${ovr#*=}"
+        local src_f="${CORE_DIR}/${src}"
+        [[ "${src_f}" != *".md" ]] && src_f="${src_f}.md"
+        local dst_f="${RULES_DIR}/${dst}"
+        [[ "${dst_f}" != *".md" ]] && dst_f="${dst_f}.md"
+
+        if [ ! -f "${src_f}" ]; then
+            echo "  [✗] Origen de override '${src}' en config.json no existe en ${CORE_DIR}" >&2
+            errors=$((errors + 1))
+        fi
+        if [ ! -f "${dst_f}" ]; then
+            echo "  [✗] Destino de override '${dst}' en config.json no existe en ${RULES_DIR}" >&2
+            errors=$((errors + 1))
+        fi
+    done
+
+    # 6. Verificación de colisiones de directivas
     local collision_error=false
 
-    # 4a. Prefijos numéricos intra-directorio en CORE_DIR
+    # 6a. Prefijos numéricos intra-directorio en CORE_DIR
     local seen_core_prefixes=()
     for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
         local fname
@@ -727,7 +844,7 @@ cmd_check() {
         fi
     done
 
-    # 4b. Prefijos numéricos intra-directorio en RULES_DIR
+    # 6b. Prefijos numéricos intra-directorio en RULES_DIR
     if [ -d "${RULES_DIR}" ]; then
         local seen_rules_prefixes=()
         for f in $(find "${RULES_DIR}" -maxdepth 1 -name "*.md" | sort); do
@@ -749,10 +866,23 @@ cmd_check() {
         done
     fi
 
-    # 4c. Títulos Markdown H1 únicos a través de todo el set compilado
+    # 6c. Títulos Markdown H1 únicos a través de todo el set compilado
+    local suppressed_rules_check=()
+    for d in "${disabled_rules[@]}"; do
+        [ -n "$d" ] && suppressed_rules_check+=("$d")
+    done
+    for ovr in "${declared_overrides[@]}"; do
+        [ -n "$ovr" ] && suppressed_rules_check+=("${ovr%%=*}")
+    done
+
     local seen_h1=()
     local all_files=()
     for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
+        local fname
+        fname="$(basename "$f")"
+        if [ ${#suppressed_rules_check[@]} -gt 0 ] && is_rule_suppressed "${fname}" "${suppressed_rules_check[@]}"; then
+            continue
+        fi
         all_files+=("$f")
     done
     if [ -d "${RULES_DIR}" ]; then

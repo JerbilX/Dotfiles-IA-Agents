@@ -1,25 +1,9 @@
-# Estándares de Entorno y Ejecución (Sandbox)
+# Especialización de Sandbox y Ejecución (Runtime: Antigravity)
 
-- **Uso Exclusivo de Herramientas Nativas de Archivos:**
-  - Crear archivos con `write_to_file`.
-  - Modificar archivos existentes de forma atómica con `replace_file_content`.
-  - Inspeccionar y leer código con `view_file`.
-  - Buscar texto o patrones en el código con `grep_search`.
-  - **PROHIBIDO** usar comandos de consola (`run_command`) para operaciones de I/O de archivos (`cat`, `sed`, `awk`, `echo >>`, `tee`, etc.).
-  - **PROHIBIDO** generar scripts auxiliares temporales de parcheo (e.g., `patch_*.py`) para alterar código; todo cambio debe ser aplicado directamente con `replace_file_content`.
-  - **Higiene de Archivos Temporales de Bypass:** Los archivos auxiliares temporales generados para operar con Git o GitHub CLI (e.g. `.commit_msg`, `.pr_body`, `.comment_body`, `.issue_body`) deben ser eliminados inmediatamente tras su consumo o asegurados en `.gitignore` para evitar advertencias de uncommitted changes y turnos de limpieza imprevistos.
-- **Restricción de Comandos de Consola (`run_command`):**
-  - La terminal está reservada estrictamente para la ejecución de procesos de runtime, compilación, pruebas y utilidades de entorno (e.g., `dotnet`, `python`, `pytest`, `cargo`, `git status`).
-  - Mantener las invocaciones en formatos atómicos y deterministas (evitar heredocs multilínea o subshells complejas que rompan las políticas de permisos del entorno).
-- **Límites de Workspace y Aislamiento:**
-  - Todas las operaciones de lectura y escritura deben circunscribirse al workspace activo del proyecto.
-  - **PROHIBIDO** intentar inspeccionar o modificar rutas absolutas externas al workspace (e.g., `/mnt/...`, particiones ajenas, prefijos de Wine, directorios del sistema operativo).
-  - Cualquier integración con recursos externos debe resolverse dentro del workspace mediante configuración explícita o enlaces simbólicos (symlinks) gestionados localmente.
 - **Ejecución de Git y Bypass de Sandbox:**
   - **Categorización de Solo Lectura (`BypassSandbox: false` obligatorio):** Las operaciones de consulta e inspección pasiva que no alteran el árbol de trabajo, referencias ni lockfiles (`git status`, `git log`, `git diff`, `git branch` de consulta) deben ejecutarse de forma 100% confinada en el sandbox estándar.
   - **Mutadores Locales y Comandos de Red (`BypassSandbox: true` obligatorio desde el primer intento):** Debido a que el sandbox de Antigravity en Linux monta deliberadamente `.git/` como solo lectura (`ro`) por diseño de kernel/namespaces, cualquier comando mutador local (`git init`, `git checkout`, `git checkout -b`, `git branch -d/-D`, `git branch -m/-M`, `git add`, `git commit`, `git merge`, `git rebase`, `git rm`, `git restore`, `git reset`) falla inevitablemente con `fatal: Unable to create '.../.git/index.lock': Read-only file system`. Asimismo, los comandos remotos (`git push`, `git fetch`, `git pull`, `gh repo ...`, `gh pr ...`, `gh issue ...`, `gh project ...`) requieren salida a internet y fallan con `403 not allowed by policy`. Por tanto, el agente **DEBE ejecutarlos directamente con `BypassSandbox: true` desde el primer intento**, eliminando la latencia de ~5 segundos y turnos fallidos innecesarios.
   - **Formato Atómico de Commits:** Debido a que el evaluador de permisos de Antigravity anula el *prefix matching* si se utilizan comillas o caracteres especiales, **ESTÁ ESTRICTAMENTE PROHIBIDO** usar `git commit -m "..."`. El agente debe escribir siempre el mensaje del commit en un archivo temporal en disco (ej. `.commit_msg`) mediante su API nativa de archivos (`write_to_file`) y luego ejecutar `git commit -F .commit_msg` con `BypassSandbox: true`.
-  - **Consultas de Lote y Circuit Breaker en Red:** Toda operación multi-repositorio o consulta de lote debe resolverse preferentemente mediante una consulta atómica agregada vía GraphQL (`gh api graphql`) o endpoints batch de la API. Si el servicio carece de soporte atómico, se autoriza la iteración secuencial en terminal únicamente bajo un Circuit Breaker de máximo 3 a 5 iteraciones; de excederse o presentar bloqueos de red, el agente debe detenerse inmediatamente y consultar al usuario.
 - **Aprovisionamiento de Dotfiles y Sandbox Hermético:**
   - El pipeline de compilación de directivas (`./build.sh build`, `./build.sh check`) opera estrictamente dentro del workspace (`dist/antigravity/`), ejecutándose de forma 100% confinada en el sandbox estándar (`BypassSandbox: false`).
   - La propagación hacia la configuración del runtime global (`~/.gemini/config/`) opera por referencia directa mediante los enlaces simbólicos (symlinks) preexistentes en el anfitrión.
