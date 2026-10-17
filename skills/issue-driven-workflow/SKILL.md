@@ -1,16 +1,124 @@
 ---
 name: issue-driven-workflow
 description: >-
-  Orchestrate end-to-end task execution driven by GitHub Issues and GitHub Projects v2. ACTIVATE this skill whenever dispatched to implement an issue (e.g. 'implementa la issue #X'), pick tasks from Ready for Dev, manage feature/fix branch lifecycles, open Pull Requests, or synchronize cards in GitHub Projects. Operates with strict git hygiene and deterministic CLI commands.
+  Orchestrate end-to-end task execution driven by GitHub Issues and GitHub Projects v2, canonical backlog task registration, repository provisioning, branch lifecycles, and Pull Request workflows. ACTIVATE this skill whenever creating future issues/tasks, provisioning new GitHub repos, dispatched to implement an issue (e.g. 'implementa la issue #X'), picking tasks from Ready for Dev, managing feature/fix branch lifecycles, opening Pull Requests, or synchronizing cards in GitHub Projects. Operates with strict git hygiene, temporary file safety, and deterministic CLI commands.
 ---
 
 # Issue-Driven Workflow and Pull Request Management
 
-Guía operativa y protocolo estricto para el ciclo de vida completo de desarrollo orientado por tareas (GitHub Issues), aislamiento en ramas de trabajo, integración con GitHub Projects v2 y apertura estandarizada de Pull Requests.
+Guía operativa y protocolo estricto para el registro canónico de backlog, aprovisionamiento de repositorios, ciclo de vida completo de desarrollo orientado por tareas (GitHub Issues), aislamiento en ramas de trabajo, integración con GitHub Projects v2 y apertura estandarizada de Pull Requests.
 
 ---
 
-## 1. Despacho y Recepción de Tareas (Fase 1: Bajo Demanda)
+## 1. Registro Canónico de Backlog y Tareas Futuras
+
+Cuando el usuario solicite registrar una tarea, mejora, refactor o deuda técnica futura, o cuando durante el desarrollo se identifique un bug o necesidad secundaria fuera del alcance de la tarea activa:
+
+### 1.1 Prohibición Estricta de Backlogs Locales y Archivos Huérfanos
+- **Queda terminantemente prohibido** crear, sincronizar o depender de archivos `TODO.md`, `backlog.md`, `NOTES.md` o bitácoras informales en cualquier nivel del proyecto.
+- **Queda terminantemente prohibido** volcar prompts, especificaciones de tareas o planes de ejecución en carpetas o archivos temporales huérfanos (ej. `tasks/`, `prompts/`).
+- Todo requerimiento pendiente debe formalizarse exclusiva y directamente como una **GitHub Issue**.
+
+### 1.2 Estructura Canónica del Cuerpo del Issue
+El cuerpo del ticket debe ser exhaustivo y autosuficiente para eliminar la necesidad de redactar prompts manuales posteriores. Debe redactarse mediante la API nativa de archivos (`write_to_file`) en el archivo temporal `.issue_body` con la siguiente estructura técnica:
+
+```markdown
+### Diagnóstico del Problema
+[Descripción concisa del problema, limitación actual o contexto técnico detectado]
+
+### Objetivos y Requerimientos Técnicos
+[Especificación técnica detallada de los cambios requeridos y directivas aplicables]
+
+### Criterios de Aceptación
+[ ] [Criterio 1 verificable]
+[ ] [Criterio 2 verificable]
+[ ] [Validación de compilación, tests y chequeos de integridad ejecutados con éxito]
+```
+
+### 1.3 Creación Determinista del Issue y Protección de Prefix Matching
+Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix matching* cuando se utilizan comillas complejas o cadenas multilínea en la terminal, el cuerpo debe transferirse obligatoriamente mediante archivo temporal:
+
+1. Redactar la especificación técnica en `.issue_body` con `write_to_file`.
+2. Crear el issue mediante GitHub CLI (`BypassSandbox: true` obligatorio desde el primer intento por requerir acceso de red):
+   ```bash
+   gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body
+   ```
+3. Limpiar inmediatamente el archivo temporal:
+   ```bash
+   rm -f .issue_body
+   ```
+
+### 1.4 Inyección Inmediata y Agnóstica al Tablero Central (Projects v2)
+Para garantizar la indexación inmediata y agnóstica en el tablero central (sin depender de automatizaciones de auto-add restringidas en planes GitHub Free):
+```bash
+gh project item-add 1 --owner JerbilX --url <issue-url>
+```
+*(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento).*
+
+### 1.5 Reporte al Usuario
+Al completar la creación e indexación, el agente debe reportar al usuario:
+- El número de issue asignado (`#<id>`).
+- El enlace web directo al issue (`https://github.com/JerbilX/<repo>/issues/<id>`).
+- Confirmación de indexación en el tablero de Projects v2.
+
+### 1.6 Control de Alcance y Desvíos (Scope Creep)
+- El agente **no debe inflar** el objetivo del ticket original con refactors, mejoras o arreglos colaterales no contemplados en la especificación de la issue.
+- Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create --body-file .issue_body`), indexarla al tablero central (`gh project item-add 1 --owner JerbilX --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
+
+---
+
+## 2. Aprovisionamiento y Ciclo de Vida de Repositorios Remotos
+
+Protocolo determinista para inicializar repositorios locales y aprovisionar repositorios remotos privados en GitHub.
+
+### 2.1 Detección e Inicialización Local Proactiva
+- Cuando el agente esté operando en un workspace donde existan archivos de desarrollo y no exista el directorio `.git`, debe proceder autónomamente a inicializar el repositorio local:
+  ```bash
+  git init
+  ```
+  *(Ejecutado con `BypassSandbox: true` desde el primer intento por mutación de `.git/`).*
+- Garantizar que la rama principal sea `main`:
+  ```bash
+  git branch -M main
+  ```
+  *(Ejecutado con `BypassSandbox: true`).*
+- Preparar los archivos para el commit inicial (`git add .`).
+- Redactar el mensaje inicial en `.commit_msg` con `write_to_file` y crear el commit inicial:
+  ```bash
+  git commit -F .commit_msg
+  ```
+  *(Ejecutado con `BypassSandbox: true`).*
+- Limpiar inmediatamente el archivo temporal: `rm -f .commit_msg`.
+
+### 2.2 Gate de Confirmación Obligatorio para Remoto (Origin)
+- El agente tiene **estrictamente prohibido** asumir la subida a GitHub sin confirmación previa del usuario.
+- Una vez creado el commit local inicial, el agente debe preguntar de forma directa:
+  > *"He inicializado el repositorio local y creado el primer commit. ¿Deseas que cree el repositorio privado en GitHub y lo suba a origin ahora?"*
+
+### 2.3 Ejecución Determinista de Creación Remota y Enlace (Tras Confirmación)
+Si el usuario **confirma**:
+1. Ejecutar de forma autónoma el aprovisionamiento y push mediante:
+   ```bash
+   gh repo create JerbilX/<nombre-del-directorio> --private --source=. --remote=origin --push
+   ```
+   *(Ejecutado con `BypassSandbox: true`; sin delegar comandos de consola ni pedirle al usuario que los ejecute manualmente).*
+2. Inmediatamente después, configurar la eliminación automática de ramas fusionadas en el repositorio remoto:
+   ```bash
+   gh repo edit JerbilX/<nombre-del-directorio> --delete-branch-on-merge
+   ```
+   *(Ejecutado con `BypassSandbox: true`).*
+3. Si el entorno cuenta con permisos para Projects (`gh project`), proceder a enlazar el repositorio al tablero central:
+   ```bash
+   gh project link 1 --owner JerbilX --repo JerbilX/<nombre-del-directorio>
+   ```
+   *(Ejecutado con `BypassSandbox: true`).*
+
+Si el usuario **rechaza**:
+- El repositorio permanece exclusivamente bajo control de versiones local hasta nueva orden explícita.
+
+---
+
+## 3. Despacho y Recepción de Tareas (Fase 1: Bajo Demanda)
 
 El agente opera bajo demanda ante directivas conversacionales del usuario en el chat:
 
@@ -38,7 +146,7 @@ El agente opera bajo demanda ante directivas conversacionales del usuario en el 
 
 ---
 
-## 2. Convención Canónica de Ramas de Trabajo
+## 4. Convención Canónica de Ramas de Trabajo
 
 Todo desarrollo debe aislarse en una rama dedicada creada antes de modificar cualquier archivo de código del workspace.
 
@@ -53,7 +161,7 @@ Todo desarrollo debe aislarse en una rama dedicada creada antes de modificar cua
 
 ---
 
-## 3. Ciclo de Vida E2E de la Tarea
+## 5. Ciclo de Vida E2E de la Tarea
 
 Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fases:
 
@@ -103,15 +211,15 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
    ```
 
 ### Paso 7: Apertura de Pull Request
-- Redactar el cuerpo del PR y publicarlo mediante GitHub CLI (`BypassSandbox: true`):
+- Redactar el cuerpo del PR en `.pr_body` con `write_to_file` y publicarlo mediante GitHub CLI (`BypassSandbox: true`):
    ```bash
    gh pr create --title "<tipo>(<alcance>): <descripción>" --body-file .pr_body
    ```
-- Limpiar inmediatamente el archivo temporal `.pr_body`.
+- Limpiar inmediatamente el archivo temporal: `rm -f .pr_body`.
 
 ---
 
-## 4. Flujo Mandatorio de Pull Requests y Projects v2
+## 6. Flujo Mandatorio de Pull Requests y Projects v2
 
 - **Prohibición Total de Push/Merge a `main`:** Queda terminantemente prohibido que el agente comitee o pushee cambios productivos directamente a la rama `main`, o que ejecute `git merge` hacia `main` por su cuenta.
 - **Vinculación Canónica de Cierre:** El cuerpo del Pull Request debe incluir obligatoriamente la directiva `Closes #<id>` o `Fixes #<id>` para asegurar el cierre automático de la issue al fusionarse el PR.
@@ -124,7 +232,7 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
 
 ---
 
-## 5. Protocolo Operativo de Salida y Reporte Estandarizado
+## 7. Protocolo Operativo de Salida y Reporte Estandarizado
 
 Al completar la publicación del PR, el agente **DEBE emitir un reporte final estructurado** que incluya obligatoriamente:
 1. Resumen técnico conciso de los cambios realizados.
@@ -135,8 +243,11 @@ Al completar la publicación del PR, el agente **DEBE emitir un reporte final es
 
 ---
 
-## 6. Parámetros de Red, Sandbox y Circuit Breaker
+## 8. Parámetros de Red, Sandbox y Circuit Breaker
 
 - **Exclusividad de Bypass y Mutadores:** `BypassSandbox: true` está reservado estricta y exclusivamente para comandos mutadores locales de Git (`git init`, `git checkout`, `git checkout -b`, `git branch -d/-D`, `git branch -m/-M`, `git add`, `git commit`, `git merge`, etc.) y comandos remotos o de red de Git y GitHub CLI (`git push`, `git fetch`, `git pull`, `gh issue`, `gh pr`, `gh project`, `gh repo`). Las operaciones de solo lectura (`git status`, `git log`, `git diff`, `git branch` de consulta) deben ejecutarse obligatoriamente de forma confinada (`BypassSandbox: false`).
+- **Formato Atómico y Protección de Prefix Matching:** Debido a que el evaluador de permisos de runtimes como Antigravity anula el *prefix matching* ante el uso de comillas multilínea o caracteres complejos en argumentos CLI:
+  - **PROHIBIDO** usar `git commit -m "..."`; escribir siempre el mensaje en `.commit_msg` con la API nativa de archivos y usar `git commit -F .commit_msg`.
+  - **PROHIBIDO** usar `gh issue create --body "..."` o `gh pr create --body "..."` con cuerpos extensos o multilínea en terminal; escribir siempre el contenido en `.issue_body` o `.pr_body` con las herramientas nativas de archivos y utilizar `--body-file .issue_body` o `--body-file .pr_body`.
 - **Circuit Breaker:** Toda consulta de red iterativa en terminal se limita a un máximo de 3 a 5 iteraciones; si la API carece de endpoint batch o experimenta latencia, el agente debe detenerse y reportar.
-- **Higiene de Temporales:** Archivos auxiliares como `.commit_msg`, `.pr_body`, `.comment_body` o `.issue_body` deben removerse inmediatamente tras su uso y estar contemplados en `.gitignore`.
+- **Higiene de Temporales:** Archivos auxiliares como `.commit_msg`, `.pr_body`, `.comment_body` o `.issue_body` deben ser redactados con las herramientas nativas de archivos, removerse inmediatamente tras su uso (`rm -f <archivo>`) y estar contemplados en `.gitignore`.
