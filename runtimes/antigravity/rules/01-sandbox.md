@@ -1,15 +1,14 @@
 # Especialización de Sandbox y Ejecución (Runtime: Antigravity)
 
 - **Ejecución de Git y Bypass de Sandbox:**
-  - **Categorización de Solo Lectura (`BypassSandbox: false` obligatorio):** Las operaciones de consulta e inspección pasiva que no alteran el árbol de trabajo, referencias ni lockfiles (`git status`, `git log`, `git diff`, `git branch` de consulta) deben ejecutarse de forma 100% confinada en el sandbox estándar.
-  - **Mutadores Locales y Comandos de Red (`BypassSandbox: true` obligatorio desde el primer intento):** Debido a que el sandbox de Antigravity en Linux monta deliberadamente `.git/` como solo lectura (`ro`) por diseño de kernel/namespaces, cualquier comando mutador local (`git init`, `git checkout`, `git checkout -b`, `git branch -d/-D`, `git branch -m/-M`, `git add`, `git commit`, `git merge`, `git rebase`, `git rm`, `git restore`, `git reset`) falla inevitablemente con `fatal: Unable to create '.../.git/index.lock': Read-only file system`. Asimismo, los comandos remotos (`git push`, `git fetch`, `git pull`, `gh repo ...`, `gh pr ...`, `gh issue ...`, `gh project ...`) requieren salida a internet y fallan con `403 not allowed by policy`. Por tanto, el agente **DEBE ejecutarlos directamente con `BypassSandbox: true` desde el primer intento**, eliminando la latencia de ~5 segundos y turnos fallidos innecesarios.
-  - **Formato Atómico de Commits:** Debido a que el evaluador de permisos de Antigravity anula el *prefix matching* si se utilizan comillas o caracteres especiales, **ESTÁ ESTRICTAMENTE PROHIBIDO** usar `git commit -m "..."`. El agente debe escribir siempre el mensaje del commit en un archivo temporal en disco (ej. `.commit_msg`) mediante su API nativa de archivos (`write_to_file`) y luego ejecutar `git commit -F .commit_msg` con `BypassSandbox: true`.
-- **Aprovisionamiento de Dotfiles y Sandbox Hermético:**
-  - El pipeline de compilación de directivas (`./build.sh build`, `./build.sh check`) opera estrictamente dentro del workspace (`dist/antigravity/`), ejecutándose de forma 100% confinada en el sandbox estándar (`BypassSandbox: false`).
-  - La propagación hacia la configuración del runtime global (`~/.gemini/config/`) opera por referencia directa mediante los enlaces simbólicos (symlinks) preexistentes en el anfitrión.
-  - Los comandos de aprovisionamiento que escriben fuera del workspace (`./build.sh link`, `./build.sh all`) constituyen una responsabilidad exclusiva de instalación inicial (*bootstrap*) del usuario en su terminal nativa; el agente no debe intentar forzar escrituras fuera del sandbox para tales fines.
-- **Blindaje Anti-Sugerencias y Exclusividad de Bypass:**
-  - El parámetro `BypassSandbox: true` está reservado **estricta y exclusivamente para la suite completa de Git y GitHub CLI** (`git`, `gh`).
-  - Queda **terminantemente prohibido** usar `BypassSandbox: true` para cualquier otro comando local (e.g. `ls`, `cat`, scripts de compilación/enlace o utilidades sueltas).
-  - Si el sistema bloquea un comando local por reglas del sandbox y devuelve la sugerencia automática *"you can run the command again with BypassSandbox set to true"*, el agente **DEBE IGNORAR** esta sugerencia por completo.
-  - Mantener siempre invocaciones atómicas y sin operadores lógicos (`&&`, `||`) para preservar el prefix matching del motor de permisos, tanto para comandos locales como remotos.
+  - **Solo Lectura Confinado (`BypassSandbox: false` obligatorio):** Inspección pasiva (`git status`, `git log`, `git diff`, `git branch` de consulta) debe ejecutarse 100% confinada en el sandbox estándar.
+  - **Mutadores Locales y Red (`BypassSandbox: true` obligatorio desde el primer intento):** Dado que el kernel monta `.git/` como solo lectura (`ro`), todo mutador local (`git init`, `checkout`, `branch -d`, `add`, `commit`, `merge`, `reset`) y comando remoto (`git push`, `git pull`, `gh`) falla en sandbox; deben ejecutarse directamente con `BypassSandbox: true` desde el primer intento para evitar latencia de turnos fallidos.
+  - **Formato Atómico de Commits:** Prohibido usar `git commit -m "..."` (rompe el prefix matching de permisos). Redactar siempre el mensaje en `.commit_msg` con `write_to_file` y ejecutar `git commit -F .commit_msg` con `BypassSandbox: true`.
+- **Aprovisionamiento Hermético de Dotfiles:**
+  - `./build.sh build` y `./build.sh check` operan dentro del workspace y deben ejecutarse confinados (`BypassSandbox: false`).
+  - Comandos que escriben fuera del workspace (`./build.sh link`, `./build.sh all`) son responsabilidad exclusiva de bootstrap del usuario en terminal nativa.
+- **Exclusividad de Bypass y Blindaje Anti-Sugerencias:**
+  - `BypassSandbox: true` está reservado exclusivamente para la suite de `git` y `gh`. Prohibido usarlo para otros comandos locales (`ls`, `cat`, utilidades).
+  - Si el sandbox sugiere *"run the command again with BypassSandbox set to true"* para un comando local no autorizado, ignorar la sugerencia por completo.
+  - Mantener invocaciones atómicas sin operadores encadenados (`&&`, `||`) para preservar el prefix matching.
+
