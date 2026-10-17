@@ -122,6 +122,9 @@ Si el usuario **rechaza**:
 
 El agente opera bajo demanda ante directivas conversacionales del usuario en el chat:
 
+> [!IMPORTANT]
+> **Comportamiento Ante Consultas de Coordinación:** Preguntas meta-conversacionales o de coordinación en el chat (ej. *"¿con qué seguimos?"*, *"¿qué hay en el board?"*, *"¿cerramos este hilo e iniciamos uno nuevo?"*) son exclusivamente de consulta o planificación. Queda estrictamente prohibido ejecutar mutaciones, sincronizaciones preparatorias o cambios de rama en Git en la terminal hasta que el usuario emita una directiva explícita de despacho o implementación.
+
 ### Vía A: Instrucción Directa (*"implementa la issue #<id>"*)
 1. Consultar el contexto técnico completo de la issue:
    ```bash
@@ -188,12 +191,15 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
 - Lectura profunda de los requerimientos, contexto, diagnóstico y criterios de aceptación en `gh issue view <id>`.
 
 ### Paso 2: Aislamiento e Higiene del Workspace
-1. Posicionarse en la rama principal y sincronizar cambios:
+1. Posicionarse en la rama principal y sincronizar cambios podando referencias remotas obsoletas:
    ```bash
    git checkout main
-   git pull origin main
+   git fetch --prune origin
+   git merge --ff-only origin/main
    ```
    *(Ejecutados con `BypassSandbox: true` desde el primer intento).*
+   - **Mecánica de Transporte de Git:** Pasar argumentos de rama explícitos (`git pull origin main`) restringe el refspec a únicamente `refs/heads/main` e ignora `fetch.prune = true` para el resto de las ramas, impidiendo la poda local de referencias eliminadas en GitHub. Invocado sin refspec acotado, `git fetch --prune origin` actualiza el árbol remoto y poda todas las referencias zombi (`remotes/origin/*`) de forma automática y desatendida.
+   - **Prohibición Categórica de `git remote prune`:** Queda terminantemente prohibido ejecutar `git remote prune` (ej. `git remote prune origin`). Toda poda de tracking remoto debe canalizarse exclusivamente a través del transporte estándar de sincronización (`git fetch --prune origin`).
 2. Ejecutar la poda de higiene local para remover ramas ya fusionadas cuyo upstream remoto fue eliminado:
    ```bash
    git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -d
@@ -265,5 +271,6 @@ Al completar la publicación del PR, el agente **DEBE emitir un reporte final es
   - **PROHIBIDO** usar `git commit -m "..."`; escribir siempre el mensaje en `.commit_msg` con la API nativa de archivos y usar `git commit -F .commit_msg`.
   - **PROHIBIDO** usar `gh issue create --body "..."` o `gh pr create --body "..."` con cuerpos extensos o multilínea en terminal; escribir siempre el contenido en `.issue_body` o `.pr_body` con las herramientas nativas de archivos y utilizar `--body-file .issue_body` o `--body-file .pr_body`.
 - **Prohibición de Scripts Intermediarios de Red y CLI:** Queda estrictamente prohibido generar scripts auxiliares (Python, Shell, Node) para ejecutar comandos de `gh` o parsear respuestas de red. Toda operación e inspección debe realizarse de forma directa y atómica utilizando los flags nativos provistos por GitHub CLI (`--query`, `--field`, `-q / --jq`, `--limit`). Si se requiere una consulta agregada compleja no soportada por `item-list`, la degradación elegante consiste en invocar directamente `gh api graphql` de forma nativa o aplicar Stop & Ask, sin violar el confinamiento del sandbox ni crear scripts huérfanos.
+- **Prohibición Categórica de `git remote prune`:** Prohibido invocar `git remote prune <remote>`. La poda de referencias remotas obsoletas debe gestionarse exclusivamente mediante el comando estándar de transporte `git fetch --prune <remote>`. Invocaciones aisladas a `git remote prune` violan la política desatendida y disparan alertas interactivas de confirmación de permisos en Antigravity.
 - **Circuit Breaker:** Toda consulta de red iterativa en terminal se limita a un máximo de 3 a 5 iteraciones; si la API carece de endpoint batch o experimenta latencia, el agente debe detenerse y reportar.
 - **Higiene de Temporales:** Archivos auxiliares como `.commit_msg`, `.pr_body`, `.comment_body` o `.issue_body` deben ser redactados con las herramientas nativas de archivos, removerse inmediatamente tras su uso (`rm -f <archivo>`) y estar contemplados en `.gitignore`.

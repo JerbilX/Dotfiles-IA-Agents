@@ -35,10 +35,18 @@ Opción elegida: **"Opción 2"**, estructurando la política en 3 capas compleme
 
 2. **Capa 2: Git Global del Anfitrión (Sincronización y Poda de Tracking):**
    - Configuración en el entorno del anfitrión de `git config --global fetch.prune true`.
-   - Todo comando `git fetch` o `git pull` en cualquier repositorio del sistema poda automáticamente las referencias remotas `remotes/origin/*` que ya no existan en GitHub.
+   - Todo comando de transporte (`git fetch` o `git pull`) invocado sin restricción de refspec poda automáticamente las referencias remotas `remotes/origin/*` que ya no existan en GitHub.
 
-3. **Capa 3: Protocolo del Agente (Higiene Local Automatizada y Segura):**
-   - Incorporación en `core/09-issue-driven-workflow.md` de un paso de higiene inicial en la fase de aislamiento de tareas: al iniciar cualquier ticket, el agente sincroniza `main` y ejecuta:
+3. **Capa 3: Protocolo del Agente (Higiene Local y Sincronización Determinista):**
+   - Incorporación en `skills/issue-driven-workflow/SKILL.md` del protocolo de sincronización libre de restricciones de refspec al inicio de cualquier tarea:
+     ```bash
+     git checkout main
+     git fetch --prune origin
+     git merge --ff-only origin/main
+     ```
+   - **Mecánica de Refspec:** Se prohíbe el uso de `git pull origin main` durante la sincronización, dado que en Git los argumentos de rama explícitos restringen el refspec a únicamente `refs/heads/main` e ignoran `fetch.prune = true` para las ramas efímeras, impidiendo que `remotes/origin/*` se marque como eliminada. `git fetch --prune origin` actualiza el árbol completo y poda desatendidamente.
+   - **Prohibición de `git remote prune`:** Se prohíbe taxativamente la invocación aislada de `git remote prune origin`, la cual dispara alertas interactivas de confirmación de permisos en Antigravity y rompe la ejecución autónoma.
+   - Poda de ramas locales fusionadas:
      ```bash
      git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -d
      ```
