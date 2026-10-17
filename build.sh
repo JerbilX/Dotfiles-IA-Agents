@@ -746,6 +746,104 @@ cmd_link() {
 }
 
 # ------------------------------------------------------------------------------
+# Restauración de Respaldos (Rollback)
+# ------------------------------------------------------------------------------
+
+rollback_runtime() {
+    local r="$1"
+    local target_file
+    target_file="$(get_runtime_target_prompt_file "$r")"
+    local target_mcp_file
+    target_mcp_file="$(get_runtime_target_mcp_file "$r")"
+    local target_dir
+    target_dir="$(get_runtime_target_dir "$r")"
+
+    echo "==> [rollback] Inspeccionando respaldos para runtime '${r}' en ${target_dir}..."
+
+    if [ ! -d "${target_dir}" ]; then
+        echo "Error: [${r}] Directorio destino no existe: ${target_dir}" >&2
+        return 1
+    fi
+
+    local p_base m_base
+    p_base="$(basename "${target_file}")"
+    m_base="$(basename "${target_mcp_file}")"
+
+    local latest_prompt_bak=""
+    local latest_mcp_bak=""
+
+    local prompt_baks=()
+    mapfile -t prompt_baks < <(find "${target_dir}" -maxdepth 1 -name "${p_base}.bak.*" 2>/dev/null | sort -r || true)
+    for b in "${prompt_baks[@]}"; do
+        if [ -n "$b" ] && [ -e "$b" ]; then
+            latest_prompt_bak="$b"
+            break
+        fi
+    done
+
+    local mcp_baks=()
+    mapfile -t mcp_baks < <(find "${target_dir}" -maxdepth 1 -name "${m_base}.bak.*" 2>/dev/null | sort -r || true)
+    for b in "${mcp_baks[@]}"; do
+        if [ -n "$b" ] && [ -e "$b" ]; then
+            latest_mcp_bak="$b"
+            break
+        fi
+    done
+
+    if [ -z "${latest_prompt_bak}" ] && [ -z "${latest_mcp_bak}" ]; then
+        echo "Error: [${r}] No se encontraron archivos de respaldo (.bak.*) en ${target_dir}" >&2
+        return 1
+    fi
+
+    local restored_count=0
+
+    if [ -n "${latest_prompt_bak}" ]; then
+        echo "==> [rollback] [${r}] Restaurando directivas: ${target_file} <- ${latest_prompt_bak}..."
+        mv -f "${latest_prompt_bak}" "${target_file}"
+        restored_count=$((restored_count + 1))
+    fi
+
+    if [ -n "${latest_mcp_bak}" ]; then
+        echo "==> [rollback] [${r}] Restaurando servidores MCP: ${target_mcp_file} <- ${latest_mcp_bak}..."
+        mv -f "${latest_mcp_bak}" "${target_mcp_file}"
+        restored_count=$((restored_count + 1))
+    fi
+
+    echo "==> [rollback] [${r}] Rollback completado exitosamente (${restored_count} elemento(s) restaurado(s))."
+    return 0
+}
+
+cmd_rollback() {
+    local target_arg="${1:-all}"
+    validate_runtime_arg "${target_arg}" || return 1
+    local target_runtimes=()
+    mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
+    local total_success=0
+    local total_attempts=0
+    local has_error=false
+
+    for r in "${target_runtimes[@]}"; do
+        [ -z "$r" ] && continue
+        total_attempts=$((total_attempts + 1))
+        if rollback_runtime "$r"; then
+            total_success=$((total_success + 1))
+        else
+            has_error=true
+        fi
+    done
+
+    if [ "${total_attempts}" -eq 0 ] || [ "${total_success}" -eq 0 ]; then
+        echo "Error: No se pudo realizar rollback en ningún runtime (sin archivos de respaldo previos)." >&2
+        return 1
+    fi
+
+    if [ "${target_arg}" != "all" ] && [ "${has_error}" = true ]; then
+        return 1
+    fi
+    return 0
+}
+
+# ------------------------------------------------------------------------------
 # Inspección de Estado
 # ------------------------------------------------------------------------------
 
@@ -939,6 +1037,8 @@ check_runtime() {
     target_file="$(get_runtime_target_prompt_file "$r")"
     local target_mcp_file
     target_mcp_file="$(get_runtime_target_mcp_file "$r")"
+    local target_dir
+    target_dir="$(get_runtime_target_dir "$r")"
     local skills_dir
     skills_dir="$(get_runtime_target_skills_dir "$r")"
 
@@ -1230,6 +1330,29 @@ check_runtime() {
         echo "  [!] Advertencia [${r}]: ${dist_file} no ha sido compilado aún (ejecuta './build.sh build ${r}')" >&2
         CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
     fi
+
+    # 9. Verificación de archivos de respaldo (rollback)
+    local prompt_baks=()
+    local mcp_baks=()
+    if [ -d "${target_dir}" ]; then
+        local p_base m_base
+        p_base="$(basename "${target_file}")"
+        m_base="$(basename "${target_mcp_file}")"
+        mapfile -t prompt_baks < <(find "${target_dir}" -maxdepth 1 -name "${p_base}.bak.*" 2>/dev/null | sort -r || true)
+        mapfile -t mcp_baks < <(find "${target_dir}" -maxdepth 1 -name "${m_base}.bak.*" 2>/dev/null | sort -r || true)
+    fi
+    local count_prompt_baks=0
+    for b in "${prompt_baks[@]}"; do [ -n "$b" ] && [ -e "$b" ] && count_prompt_baks=$((count_prompt_baks + 1)); done
+    local count_mcp_baks=0
+    for b in "${mcp_baks[@]}"; do [ -n "$b" ] && [ -e "$b" ] && count_mcp_baks=$((count_mcp_baks + 1)); done
+    local total_baks=$(( count_prompt_baks + count_mcp_baks ))
+
+    if [ "${total_baks}" -gt 0 ]; then
+        echo "  [✓] [${r}] Respaldos para rollback: ${total_baks} archivo(s) .bak detectado(s) (${count_prompt_baks} directivas, ${count_mcp_baks} MCP)"
+    else
+        echo "  [!] Advertencia [${r}]: No existen archivos de respaldo en ${target_dir} (rollback no disponible hasta el próximo link)" >&2
+        CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+    fi
 }
 
 check_local_bin_symlinks() {
@@ -1318,6 +1441,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         status)
             cmd_status "${RUNTIME_ARG}"
             ;;
+        rollback)
+            cmd_rollback "${RUNTIME_ARG}"
+            ;;
         check)
             cmd_check "${RUNTIME_ARG}"
             ;;
@@ -1325,7 +1451,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             cmd_all "${RUNTIME_ARG}"
             ;;
         *)
-            echo "Uso: $0 {build|link|skills|mcp|status|check|all} [runtime]" >&2
+            echo "Uso: $0 {build|link|skills|mcp|status|rollback|check|all} [runtime]" >&2
             exit 1
             ;;
     esac

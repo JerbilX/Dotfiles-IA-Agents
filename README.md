@@ -38,7 +38,8 @@ Dotfiles-IA-Agents/
 │       ├── 0016-poda-sustractiva-de-directivas-core-y-consolidacion-de-invariantes.md
 │       ├── 0017-principio-de-minima-intervencion-y-jerarquia-de-resolucion.md
 │       ├── 0018-arquitectura-multi-runtime-y-pipeline-desacoplado.md
-│       └── 0019-skill-de-aprendizaje-autonomo-basado-en-decisiones-pasadas.md
+│       ├── 0019-skill-de-aprendizaje-autonomo-basado-en-decisiones-pasadas.md
+│       └── 0020-protocolo-de-rollback-y-subcomando-de-restauracion.md
 ├── runtimes/                            # Configuraciones y adaptadores por entorno
 │   ├── schema/                          # Esquemas JSON canónicos de validación
 │   │   ├── runtime-config.schema.json   # JSON Schema para manifiestos de runtime
@@ -151,15 +152,23 @@ Verifica el estado de los enlaces simbólicos en las rutas destino de cada runti
 ./build.sh status antigravity
 ```
 
-### 6. Verificación Estática (`check`)
-Ejecuta una auditoría de integridad estática y de **solo lectura** (read-only), ideal para pre-commit o CI/CD. Valida esquema y sintaxis de `config.json` y de los módulos MCP activos, existencia de skills y `SKILL.md` en disco, presencia y permisos de binarios y comandos MCP, ausencia de colisiones de prefijos numéricos o títulos H1, integridad de symlinks en el sistema y presupuesto de contexto para cada runtime:
+### 6. Restauración de Emergencia (`rollback`)
+Inspecciona de forma determinista el directorio destino (`target.config_dir`) y revierte atómicamente el estado del runtime al último respaldo disponible (`.bak.<timestamp>`) generado durante el despliegue previo (`link` o `mcp`), tanto para directivas (`AGENTS.md`) como para servidores MCP (`mcp_config.json`). Si no existen respaldos previos, retorna código de salida `1`:
+```bash
+./build.sh rollback             # Restaura todos los runtimes que posean respaldos
+./build.sh rollback antigravity # Restaura exclusivamente Antigravity (~/.gemini/config/)
+./build.sh rollback claude      # Restaura exclusivamente Claude Code (~/.claude/)
+```
+
+### 7. Verificación Estática (`check`)
+Ejecuta una auditoría de integridad estática y de **solo lectura** (read-only), ideal para pre-commit o CI/CD. Valida esquema y sintaxis de `config.json` y de los módulos MCP activos, existencia de skills y `SKILL.md` en disco, presencia y permisos de binarios y comandos MCP, ausencia de colisiones de prefijos numéricos o títulos H1, integridad de symlinks en el sistema, presupuesto de contexto y disponibilidad de archivos de respaldo para rollback en cada runtime:
 ```bash
 ./build.sh check            # Audita todos los runtimes configurados
 ./build.sh check antigravity # Audita exclusivamente Antigravity
 ./build.sh check claude      # Audita exclusivamente Claude Code
 ```
 
-### 7. Flujo Completo (`all` / por defecto)
+### 8. Flujo Completo (`all` / por defecto)
 Ejecuta secuencialmente `build`, `link`, `skills`, `status` y la verificación final `check`:
 ```bash
 ./build.sh                  # Flujo completo para todos los runtimes
