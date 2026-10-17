@@ -1,5 +1,6 @@
-# Disciplina de Búsqueda Web (Circuit Breaker Global)
+# Disciplina de Búsqueda Web y Circuit Breaker Canónico
 
-- Antes de iniciar búsquedas web (`search_web`) para documentación técnica, el agente **DEBE** verificar si existe un Skill local o documentación en el workspace.
-- **Prohibición de Bucles:** Si tras 3 consultas web sucesivas no se encuentra la respuesta técnica exacta, el agente debe **DETENERSE INMEDIATAMENTE** y consultar al usuario, bajo riesgo de ser penalizado por pérdida de tiempo y recursos.
-- **Prevención de Bucles Remotos y Circuit Breaker en Red:** Toda consulta multi-repositorio o inspección en lote debe resolverse preferentemente mediante una única consulta agregada vía GraphQL (`gh api graphql`) o endpoints batch de la API. Si la herramienta o servicio carece de soporte atómico o GraphQL, se autoriza la iteración secuencial en terminal **únicamente bajo un Circuit Breaker estricto de máximo 3 a 5 iteraciones**. Si el lote excede este umbral o la primera llamada experimenta latencia severa, el agente debe **DETENERSE INMEDIATAMENTE** y consultar al usuario, evitando bloqueos de red no supervisados.
+- **Local-First Mandatorio:** Antes de invocar búsquedas web (`search_web`), verificar proactivamente si la respuesta existe en skills locales o documentación del workspace.
+- **Circuit Breaker de Búsqueda Web:** Máximo 3 consultas sucesivas sin respuesta técnica concluyente; al alcanzar el límite, detenerse inmediatamente y consultar al usuario (Stop & Ask).
+- **Circuit Breaker de Red y Terminal:** Operaciones multi-repositorio o en lote deben usar preferentemente consultas agregadas (`gh api graphql` o batch). De requerirse iteración secuencial en terminal, rige un disyuntor estricto de máximo 3 a 5 iteraciones; si se supera el límite o se detecta latencia severa, detenerse inmediatamente y consultar al usuario.
+
