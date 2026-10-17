@@ -135,14 +135,29 @@ El agente opera bajo demanda ante directivas conversacionales del usuario en el 
    *(Ejecutado con `BypassSandbox: true`).*
 
 ### Vía B: Instrucción de Backlog (*"toma la siguiente tarea lista en Ready for Dev"*)
-1. Consultar los ítems del tablero central:
+1. Consultar exclusivamente las tareas en estado `🎯 Ready for Dev` usando el filtrado nativo server-side de `gh` para evitar desbordes de buffer (`<truncated lines>`):
    ```bash
-   gh project item-list 1 --owner JerbilX --format json
+   gh project item-list 1 --owner JerbilX --query 'status:"🎯 Ready for Dev"' --field "Status"
    ```
    *(Ejecutado con `BypassSandbox: true`).*
-2. Identificar el primer ticket cuyo estado sea `🎯 Ready for Dev`.
-3. Transicionar dicho ítem a `⚙️ In Progress` mediante el comando determinista directo.
-4. Proceder con la ingesta técnica de la tarea.
+   - Si se requiere salida JSON compacta para lectura estructurada, utilizar el flag nativo `-q / --jq`:
+     ```bash
+     gh project item-list 1 --owner JerbilX --query 'status:"🎯 Ready for Dev"' --format json --jq '.items[] | {number: .content.number, title: .content.title, url: .content.url}'
+     ```
+   - Si no existen tareas en `🎯 Ready for Dev`, consultar opcionalmente tareas activas excluyendo las finalizadas:
+     ```bash
+     gh project item-list 1 --owner JerbilX --query '-status:Done' --field "Status" --limit 20
+     ```
+2. Identificar el ticket prioritario a abordar.
+3. Transicionar dicho ítem a `⚙️ In Progress` mediante el comando determinista directo:
+   ```bash
+   gh project item-edit 1 --owner JerbilX --url <issue-url> --field "Status" --value "⚙️ In Progress"
+   ```
+   *(Ejecutado con `BypassSandbox: true`).*
+4. Proceder con la ingesta técnica de la tarea (`gh issue view <id>`).
+
+> [!CAUTION]
+> **Prohibición de Scripts Envoltorios Ad-hoc:** Queda terminantemente prohibido crear scripts intermediarios o efímeros (Python, Node, Bash, ej. `check_board.py`) para consultar, parsear o envolver llamadas a GitHub Projects. `gh` provee filtrado nativo (`--query`, `--field`, `-q / --jq`, `--limit`). Ejecutar scripts envoltorios con `BypassSandbox: true` viola la política de confinamiento de Antigravity (que reserva el bypass exclusivamente para la suite de `git` y `gh`), rompe el *prefix matching* y dispara solicitudes innecesarias de autorización interactiva.
 
 ---
 
@@ -249,5 +264,6 @@ Al completar la publicación del PR, el agente **DEBE emitir un reporte final es
 - **Formato Atómico y Protección de Prefix Matching:** Debido a que el evaluador de permisos de runtimes como Antigravity anula el *prefix matching* ante el uso de comillas multilínea o caracteres complejos en argumentos CLI:
   - **PROHIBIDO** usar `git commit -m "..."`; escribir siempre el mensaje en `.commit_msg` con la API nativa de archivos y usar `git commit -F .commit_msg`.
   - **PROHIBIDO** usar `gh issue create --body "..."` o `gh pr create --body "..."` con cuerpos extensos o multilínea en terminal; escribir siempre el contenido en `.issue_body` o `.pr_body` con las herramientas nativas de archivos y utilizar `--body-file .issue_body` o `--body-file .pr_body`.
+- **Prohibición de Scripts Intermediarios de Red y CLI:** Queda estrictamente prohibido generar scripts auxiliares (Python, Shell, Node) para ejecutar comandos de `gh` o parsear respuestas de red. Toda operación e inspección debe realizarse de forma directa y atómica utilizando los flags nativos provistos por GitHub CLI (`--query`, `--field`, `-q / --jq`, `--limit`). Si se requiere una consulta agregada compleja no soportada por `item-list`, la degradación elegante consiste en invocar directamente `gh api graphql` de forma nativa o aplicar Stop & Ask, sin violar el confinamiento del sandbox ni crear scripts huérfanos.
 - **Circuit Breaker:** Toda consulta de red iterativa en terminal se limita a un máximo de 3 a 5 iteraciones; si la API carece de endpoint batch o experimenta latencia, el agente debe detenerse y reportar.
 - **Higiene de Temporales:** Archivos auxiliares como `.commit_msg`, `.pr_body`, `.comment_body` o `.issue_body` deben ser redactados con las herramientas nativas de archivos, removerse inmediatamente tras su uso (`rm -f <archivo>`) y estar contemplados en `.gitignore`.
