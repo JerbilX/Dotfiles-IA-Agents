@@ -45,10 +45,18 @@ Opción elegida: **"Opción 2"**, estructurando la política en 3 capas compleme
      ```
    - **Mecánica de Refspec y Erradicación de `git merge`:** Se prohíbe el uso de `git pull origin main` (cuyo refspec acotado omite la poda remota de ramas efímeras) y de `git merge --ff-only origin/main` (cuya invocación como subcomando independiente dispara alertas interactivas de confirmación de permisos en Antigravity y tensiona la prohibición de merge directo a `main`). La invocación de `git pull --prune --ff-only` resuelve ambos problemas de forma atómica: procesa el refspec estándar completo, poda referencias remotas obsoletas (`remotes/origin/*`) y avanza `main` en fast-forward sin modales de confirmación.
    - **Prohibición de `git remote prune`:** Se prohíbe taxativamente la invocación aislada de `git remote prune origin`, la cual dispara alertas interactivas de confirmación de permisos en Antigravity y rompe la ejecución autónoma.
-   - Poda de ramas locales fusionadas:
-     ```bash
-     git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -d
-     ```
+   - **Protocolo de Higiene en Dos Fases Atómicas:** En sustitución de pipelines de terminal, la poda de ramas locales fusionadas cuyo upstream fue eliminado se ejecuta de forma determinista y atómica:
+     - **Fase 1 (Inspección Pasiva Confinada - `BypassSandbox: false`):**
+       ```bash
+       git branch --format "%(refname:short) %(upstream:track)"
+       ```
+       El modelo/agente inspecciona la salida en su propio contexto para identificar qué ramas presentan el estado `[gone]`.
+     - **Fase 2 (Poda Atómica Mutadora - `BypassSandbox: true`):** Si existen ramas con upstream marcado como `[gone]`, invocar directamente la poda atómica con el binario nativo de Git sin envoltorios:
+       ```bash
+       git branch -d <rama1> <rama2>
+       ```
+       Si no existen ramas con estado `[gone]`, no se emite ninguna llamada mutadora.
+   - **Erradicación y Prohibición de Pipelines con `awk` / `xargs`:** Se prohíbe terminantemente la invocación de `git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -d`. Las tuberías rompen el *prefix matching* de seguridad de Antigravity al evaluar comandos intermedios no autorizados, violan la prohibición de utilidades de terminal para I/O (`core/10-environment-standards.md`), vulneran el confinamiento de privilegios de bypass exclusivo para `git`/`gh` (`runtimes/antigravity/rules/01-sandbox.md`) e introducen envoltorios (`xargs`) desaconsejados por la arquitectura del runtime.
    - Uso estricto de `-d` (minúscula) como salvaguarda: Git rechaza el borrado si la rama posee commits pendientes que no hayan sido integrados a la rama principal.
 
 ### Consecuencias
