@@ -1,0 +1,21 @@
+# Estándares Universales de Entorno y Confinamiento
+
+- **Uso Exclusivo de Herramientas Nativas de Archivos:**
+  - Crear archivos con `write_to_file`.
+  - Modificar archivos existentes de forma atómica con `replace_file_content`.
+  - Inspeccionar y leer código con `view_file`.
+  - Buscar texto o patrones en el código con `grep_search`.
+  - **PROHIBIDO** usar comandos de consola (`run_command`) para operaciones de I/O de archivos (`cat`, `sed`, `awk`, `echo >>`, `tee`, etc.).
+  - **PROHIBIDO** generar scripts auxiliares temporales de parcheo (e.g., `patch_*.py`) para alterar código; todo cambio debe ser aplicado directamente con `replace_file_content`.
+  - **Higiene de Archivos Temporales de Bypass:** Los archivos auxiliares temporales generados para operar con Git o GitHub CLI (e.g. `.commit_msg`, `.pr_body`, `.comment_body`, `.issue_body`) deben ser eliminados inmediatamente tras su consumo o asegurados en `.gitignore` para evitar advertencias de uncommitted changes y turnos de limpieza imprevistos.
+- **Restricción de Comandos de Consola (`run_command`):**
+  - La terminal está reservada estrictamente para la ejecución de procesos de runtime, compilación, pruebas y utilidades de entorno (e.g., `dotnet`, `python`, `pytest`, `cargo`, `git status`).
+  - Mantener las invocaciones en formatos atómicos y deterministas (evitar heredocs multilínea o subshells complejas que rompan las políticas de permisos del entorno).
+- **Límites de Workspace y Aislamiento:**
+  - Todas las operaciones de lectura y escritura deben circunscribirse al workspace activo del proyecto.
+  - **PROHIBIDO** intentar inspeccionar o modificar rutas absolutas externas al workspace (e.g., `/mnt/...`, particiones ajenas, prefijos de Wine, directorios del sistema operativo).
+  - Cualquier integración con recursos externos debe resolverse dentro del workspace mediante configuración explícita o enlaces simbólicos (symlinks) gestionados localmente.
+- **Gobernanza de Permisos y Degradación de Sandbox:**
+  - En entornos protegidos o sandboxed, la ejecución de herramientas y comandos debe operar bajo los privilegios estándar por defecto.
+  - Cuando el runtime imponga restricciones de aislamiento de bajo nivel (e.g., namespaces de kernel, montajes de solo lectura o políticas estrictas de red), las adaptaciones de ejecución y escalación de permisos se rigen de forma vinculante por la directiva de especialización del runtime anfitrión correspondiente.
+  - Toda consulta multi-repositorio o inspección en lote en terminal debe respetar el Circuit Breaker estricto de máximo 3 a 5 iteraciones; de excederse o presentar bloqueos de red, el agente debe detenerse inmediatamente y consultar al usuario.

@@ -36,6 +36,23 @@
         "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
       },
       "uniqueItems": true
+    },
+    "disabled_core_rules": {
+      "type": "array",
+      "description": "Lista opcional de nombres de archivos en core/ a omitir durante la compilación de este runtime",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9]{2}-[a-z0-9-]+(\\.[a-z0-9]+)?$"
+      },
+      "uniqueItems": true
+    },
+    "overrides": {
+      "type": "object",
+      "description": "Mapeo declarativo opcional de directivas base en core/ a directivas sustitutas en rules/",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9]{2}-[a-z0-9-]+(\\.[a-z0-9]+)?$"
+      }
     }
   },
   "additionalProperties": false
