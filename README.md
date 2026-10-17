@@ -33,27 +33,38 @@ Dotfiles-IA-Agents/
 │       ├── 0011-ratificacion-de-bypass-en-git-y-gh-por-restricciones-del-sandbox.md
 │       ├── 0012-optimizacion-de-latencia-y-eliminacion-de-friccion-operativa.md
 │       ├── 0013-estrategia-de-modularizacion-de-directivas-extensas-a-skills.md
-│       └── 0014-consolidacion-del-catalogo-de-skills-y-deprecacion-de-agy-skills.md
-├── runtimes/                            # Configuraciones y restricciones por entorno
+│       ├── 0014-consolidacion-del-catalogo-de-skills-y-deprecacion-de-agy-skills.md
+│       ├── 0015-composicion-y-especializacion-de-directivas-por-runtime.md
+│       ├── 0016-poda-sustractiva-de-directivas-core-y-consolidacion-de-invariantes.md
+│       ├── 0017-principio-de-minima-intervencion-y-jerarquia-de-resolucion.md
+│       └── 0018-arquitectura-multi-runtime-y-pipeline-desacoplado.md
+├── runtimes/                            # Configuraciones y adaptadores por entorno
 │   ├── schema/                          # Esquemas JSON canónicos de validación
 │   │   ├── runtime-config.schema.json   # JSON Schema para manifiestos de runtime
 │   │   └── mcp-server.schema.json       # JSON Schema para módulos de servidores MCP
-│   └── antigravity/
-│       ├── rules/                       # Directivas y restricciones para el System Prompt
-│       │   └── 01-sandbox.md            # Restricciones de sandbox, I/O nativo y comandos de red
-│       ├── mcp/                         # Catálogo modular de servidores MCP
-│       │   └── eso-mcp-server.json      # Definición de servidor MCP con transporte Stdio
-│       └── config.json                  # Manifiesto estructurado (skills, binaries, mcp_servers)
+│   ├── antigravity/
+│   │   ├── rules/                       # Especializaciones normativas del runtime
+│   │   │   └── 01-sandbox.md            # Restricciones de sandbox y permisos
+│   │   ├── mcp/                         # Catálogo modular de servidores MCP
+│   │   │   └── eso-mcp-server.json      # Módulo MCP con transporte Stdio
+│   │   └── config.json                  # Manifiesto estructurado (skills, binaries, mcp_servers, target)
+│   └── claude/
+│       ├── rules/                       # Reglas locales específicas de Claude Code
+│       ├── mcp/                         # Catálogo modular de servidores MCP para Claude
+│       └── config.json                  # Manifiesto de Claude Code (target: ~/.claude/CLAUDE.md)
 ├── skills/                              # Catálogo canónico y autocontenido de skills para agentes
 │   ├── adr-manager/                     # Gestión de Architecture Decision Records (MADR)
 │   ├── eso-addon-development/           # Estándares y utilidades para addons de ESO
 │   └── issue-driven-workflow/           # Orquestación de desarrollo guiado por issues y PRs
 ├── dist/                                # Artefactos compilados listos para distribución
-│   └── antigravity/
-│       ├── AGENTS.md                    # Versión consolidada de directivas de prompt
-│       └── mcp_config.json              # Configuración MCP consolidada con macros resueltas
+│   ├── antigravity/
+│   │   ├── AGENTS.md                    # Versión consolidada de directivas de prompt
+│   │   └── mcp_config.json              # Configuración MCP con macros resueltas
+│   └── claude/
+│       ├── AGENTS.md                    # Versión consolidada de directivas para Claude
+│       └── mcp_config.json              # Configuración MCP compilada para Claude
 ├── .gitignore                           # Exclusión de temporales (*.bak, *.tmp, .commit_msg)
-├── build.sh                             # Script de compilación y gestión de enlaces simbólicos
+├── build.sh                             # Script de compilación y orquestación multi-runtime
 └── README.md                            # Documentación y referencia de comandos
 ```
 
@@ -97,55 +108,87 @@ Si en cualquier momento deseas auditar la integridad de la configuración sin al
 
 ## Flujo de Trabajo y Comandos (`build.sh`)
 
-El script `build.sh` permite compilar las directivas modulares, aprovisionar dependencias de runtime, compilar la configuración de servidores MCP y enlazar el resultado compilado con las ubicaciones canónicas del sistema (`~/.gemini/config/AGENTS.md` y `~/.gemini/config/mcp_config.json`):
+El script `build.sh` permite compilar directivas modulares, aprovisionar dependencias de runtime, compilar la configuración de servidores MCP y enlazar los artefactos con las ubicaciones canónicas del sistema anfitrión declaradas en `target` (ej. `~/.gemini/config/` para Antigravity, `~/.claude/` para Claude Code, etc.).
+
+Todos los subcomandos aceptan opcionalmente el parámetro `[runtime]` (`antigravity`, `claude`, etc.). Si se omite o se especifica `all`, la operación se ejecuta de forma unificada sobre todos los runtimes configurados en `runtimes/`:
 
 ### 1. Compilación (`build`)
-Concatena en orden determinista los archivos de `core/*.md` y `runtimes/antigravity/rules/*.md` en `dist/antigravity/AGENTS.md` (emitiendo telemetría de contexto y alertas de presupuesto) y compila las definiciones activas de servidores MCP en `dist/antigravity/mcp_config.json` resolviendo macros de rutas (`$HOME`):
+Concatena en orden determinista los archivos de `core/*.md` y `runtimes/<runtime>/rules/*.md` en `dist/<runtime>/AGENTS.md` (emitiendo telemetría de palabras y tokens) y compila las definiciones activas de servidores MCP en `dist/<runtime>/mcp_config.json`:
 ```bash
-./build.sh build
+./build.sh build            # Compila todos los runtimes
+./build.sh build antigravity # Compila exclusivamente Antigravity
+./build.sh build claude      # Compila exclusivamente Claude Code
 ```
 
 ### 2. Enlace Simbólico (`link`)
-Verifica la existencia del directorio destino `~/.gemini/config/`, respalda de forma segura cualquier archivo o symlink preexistente con timestamp (`.bak.YYYYMMDD_HHMMSS`), y crea de manera atómica los enlaces simbólicos `ln -sfn` tanto para `AGENTS.md` como para `mcp_config.json`:
+Verifica la existencia del directorio destino declarado en `target.config_dir`, respalda de forma segura cualquier archivo o symlink preexistente con timestamp (`.bak.YYYYMMDD_HHMMSS`), y crea de manera atómica los enlaces simbólicos `ln -sfn` hacia las rutas canónicas del host:
 ```bash
-./build.sh link
+./build.sh link             # Enlaza todos los runtimes
+./build.sh link antigravity # Enlaza exclusivamente Antigravity (~/.gemini/config/)
+./build.sh link claude      # Enlaza exclusivamente Claude Code (~/.claude/)
 ```
 
 ### 3. Aprovisionamiento de Skills (`skills`)
-Valida `runtimes/antigravity/config.json` contra `runtimes/schema/runtime-config.schema.json` (fail-fast), purga symlinks obsoletos, aprovisiona los skills habilitados en `~/.gemini/config/skills/`, y expone sus scripts ejecutables en `~/.local/bin/` aplicando alias declarativos si se definen en `binaries`:
+Valida `runtimes/<runtime>/config.json` contra `runtimes/schema/runtime-config.schema.json` (fail-fast), purga symlinks obsoletos, aprovisiona los skills habilitados en la ruta declarada en `target.skills_dir` (si aplica), y expone sus scripts ejecutables en `~/.local/bin/` aplicando alias declarativos si se definen en `binaries`:
 ```bash
 ./build.sh skills
+./build.sh skills antigravity
 ```
 
 ### 4. Servidores MCP (`mcp`)
-Subcomando dedicado para compilar, respaldar, enlazar y auditar exclusivamente la configuración de servidores MCP hacia `~/.gemini/config/mcp_config.json`:
+Subcomando dedicado para compilar, respaldar y enlazar exclusivamente la configuración de servidores MCP de uno o todos los runtimes:
 ```bash
 ./build.sh mcp
+./build.sh mcp antigravity
 ```
 
 ### 5. Inspección (`status`)
-Verifica el estado de los enlaces simbólicos en `~/.gemini/config/AGENTS.md` y `~/.gemini/config/mcp_config.json`, reportando tipo, archivo de destino y validez de cada enlace:
+Verifica el estado de los enlaces simbólicos en las rutas destino de cada runtime, reportando tipo, archivo de destino y validez de cada enlace:
 ```bash
 ./build.sh status
+./build.sh status antigravity
 ```
 
 ### 6. Verificación Estática (`check`)
-Ejecuta una auditoría de integridad estática y de **solo lectura** (read-only), ideal para pre-commit o CI/CD. Valida esquema y sintaxis de `config.json` y de los módulos MCP activos, existencia de skills y `SKILL.md` en disco, presencia y permisos de binarios y comandos MCP, ausencia de colisiones de prefijos numéricos o títulos H1, integridad de symlinks en el sistema y presupuesto de contexto:
+Ejecuta una auditoría de integridad estática y de **solo lectura** (read-only), ideal para pre-commit o CI/CD. Valida esquema y sintaxis de `config.json` y de los módulos MCP activos, existencia de skills y `SKILL.md` en disco, presencia y permisos de binarios y comandos MCP, ausencia de colisiones de prefijos numéricos o títulos H1, integridad de symlinks en el sistema y presupuesto de contexto para cada runtime:
 ```bash
-./build.sh check
+./build.sh check            # Audita todos los runtimes configurados
+./build.sh check antigravity # Audita exclusivamente Antigravity
+./build.sh check claude      # Audita exclusivamente Claude Code
 ```
 
 ### 7. Flujo Completo (`all` / por defecto)
 Ejecuta secuencialmente `build`, `link`, `skills`, `status` y la verificación final `check`:
 ```bash
-./build.sh
-# o
-./build.sh all
+./build.sh                  # Flujo completo para todos los runtimes
+./build.sh all antigravity  # Flujo completo exclusivamente para Antigravity
 ```
+
+## Extensibilidad: Cómo Agregar un Nuevo Runtime
+
+Agregar un nuevo agente de IA al ecosistema es 100% declarativo y no requiere modificar `build.sh`:
+1. Crear el directorio `runtimes/<nuevo-runtime>/`.
+2. Crear `runtimes/<nuevo-runtime>/config.json` cumpliendo `runtimes/schema/runtime-config.schema.json`:
+   ```json
+   {
+     "$schema": "../schema/runtime-config.schema.json",
+     "skills": ["adr-manager", "issue-driven-workflow"],
+     "binaries": {},
+     "mcp_servers": [],
+     "target": {
+       "config_dir": "${HOME}/.mi-agente",
+       "prompt_filename": "AGENTS.md",
+       "mcp_filename": "mcp_config.json",
+       "skills_dir": "${HOME}/.mi-agente/skills"
+     }
+   }
+   ```
+3. Opcionalmente añadir reglas locales en `runtimes/<nuevo-runtime>/rules/` o módulos MCP en `runtimes/<nuevo-runtime>/mcp/`.
+4. Ejecutar `./build.sh check` para validar y `./build.sh build` para compilar.
 
 ## Convenciones Canónicas
 
-- **Fuente Única de Verdad:** Las directivas globales residen exclusivamente en `~/.gemini/config/AGENTS.md`. No se admiten configuraciones divergentes sin versionar.
-- **Prohibición de `GEMINI.md`:** Está estrictamente prohibido utilizar o crear archivos `GEMINI.md`. Cualquier ajuste debe efectuarse sobre los módulos de este repositorio y recompilarse.
+- **Compilación Centralizada y Desacoplada:** Las directivas globales se compilan deterministamente a partir de `core/` y las especializaciones de runtime (`runtimes/<runtime>/rules/`) hacia los destinos declarados en cada manifiesto `config.json`.
+- **Prohibición de Archivos Huérfanos o No-Estándar:** Prohibido crear o depender de directivas dispersas como `GEMINI.md`. Todo ajuste de comportamiento debe canalizarse a través de los módulos de este repositorio y compilarse con `build.sh`.
 - **Gestión de Decisiones Arquitectónicas (MADR):** Toda decisión técnica, cambio de diseño o evaluación de tradeoffs se gestiona exclusivamente a través de Architectural Decision Records en `docs/adr/` mediante el estándar MADR y el skill `adr-manager`. Se prohíben bitácoras informales o archivos `HISTORIAL.md`.
 - **Desarrollo Guiado por Issues y Flujo de Pull Requests:** Los agentes operan bajo demanda a través de GitHub Issues, aíslan cambios en ramas `feat/issue-<id>-<slug>` o `fix/issue-<id>-<slug>`, previenen el scope creep y entregan su trabajo obligatoriamente vía Pull Request (`gh pr create`) con gate de revisión humana por el PM. Queda vetado el push directo a `main`.
