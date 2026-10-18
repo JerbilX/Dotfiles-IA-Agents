@@ -259,6 +259,7 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
 ### Paso 4: Desarrollo y Verificación
 - Aplicar cambios atómicos exclusivamente mediante las APIs nativas de archivos (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`).
 - Ejecutar compilaciones locales, linters y suites de prueba del proyecto para validar que no existan regresiones.
+- **Transición de ADRs a Accepted:** Al finalizar el desarrollo y verificar los cambios (o tras la aprobación humana del plan), transicionar todo nuevo ADR asociado a la tarea a `status: accepted` en la rama de trabajo antes del commit. La posterior revisión y fusión (merge) del PR en `main` por parte del usuario constituye el gate definitivo de ratificación, asegurando que `main` no reciba ADRs en `proposed` ni se generen PRs redundantes.
 
 ### Paso 5: Commit Atómico
 - Debido a que el evaluador de permisos anula el prefijo con comillas, **queda estrictamente prohibido** usar `git commit -m "..."`.
