@@ -19,8 +19,11 @@ try:
     from adapters import get_adapter
     from audit_engine import (
         AuditEngine,
+        format_json_metadata,
         format_json_report,
+        format_markdown_metadata,
         format_markdown_report,
+        format_text_metadata,
         format_text_report,
     )
 except ImportError as e:
@@ -69,6 +72,11 @@ def parse_arguments() -> argparse.Namespace:
         help="Retorna código de salida 2 si se detecta al menos un antipatrón de severidad CRÍTICA o ALTA.",
     )
     parser.add_argument(
+        "--metadata-only",
+        action="store_true",
+        help="Consulta rápida de metadatos de sesión (ID, título, runtime, fechas) sin procesar el árbol completo de pasos.",
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -86,6 +94,41 @@ def main() -> int:
     except Exception as e:
         sys.stderr.write(f"Error resolviendo adaptador de runtime: {e}\n")
         return 1
+
+    if args.metadata_only:
+        try:
+            metadata = adapter.fast_extract_metadata(target_path)
+        except FileNotFoundError as e:
+            sys.stderr.write(f"Error: {e}\n")
+            return 1
+        except Exception as e:
+            sys.stderr.write(f"Error extrayendo metadatos de sesión: {e}\n")
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
+            return 1
+
+        if args.format == "json":
+            output_content = format_json_metadata(metadata)
+        elif args.format == "markdown":
+            output_content = format_markdown_metadata(metadata)
+        else:
+            output_content = format_text_metadata(metadata)
+
+        if args.output:
+            try:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                with open(args.output, "w", encoding="utf-8") as f:
+                    f.write(output_content)
+                    if not output_content.endswith("\n"):
+                        f.write("\n")
+                print(f"Metadatos de sesión guardados exitosamente en: {args.output}")
+            except Exception as e:
+                sys.stderr.write(f"Error al escribir metadatos en '{args.output}': {e}\n")
+                return 1
+        else:
+            print(output_content)
+        return 0
 
     try:
         steps = adapter.parse(target_path)

@@ -14,6 +14,7 @@ from .base import (
     NormalizedStep,
     NormalizedToolCall,
     TranscriptAdapter,
+    clean_title,
 )
 
 
@@ -192,10 +193,76 @@ class ClaudeAdapter(TranscriptAdapter):
         start_time = steps[0].created_at if steps and steps[0].created_at else None
         end_time = steps[-1].created_at if steps and steps[-1].created_at else None
 
+        title: Optional[str] = None
+        for s in steps:
+            if s.source == "USER" or s.step_type == "USER_INPUT":
+                if s.content:
+                    title = clean_title(s.content)
+                    if title:
+                        break
+
         return ConversationMetadata(
             session_id=session_id,
             runtime="claude",
             source_path=str(resolved),
+            title=title,
             start_time=start_time,
             end_time=end_time,
         )
+
+    def fast_extract_metadata(self, path: Path) -> ConversationMetadata:
+        """Extrae metadatos globales de forma rápida sin parsear todos los eventos."""
+        resolved = self.resolve_path(path)
+        if not resolved.is_file():
+            raise FileNotFoundError(f"No se encontró el log de Claude: {path}")
+
+        session_id = resolved.stem
+        title: Optional[str] = None
+        start_time: Optional[datetime] = None
+
+        with open(resolved, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except Exception:
+                    continue
+
+                if isinstance(record, dict):
+                    ts_raw = record.get("timestamp") or record.get("created_at") or record.get("ts")
+                    if ts_raw and start_time is None:
+                        try:
+                            start_time = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+                        except Exception:
+                            pass
+
+                    role = record.get("role")
+                    if title is None and role == "user":
+                        raw_c = record.get("content", "")
+                        if isinstance(raw_c, str):
+                            title = clean_title(raw_c)
+                        elif isinstance(raw_c, list):
+                            for b in raw_c:
+                                if isinstance(b, dict) and b.get("type") == "text":
+                                    title = clean_title(b.get("text", ""))
+                                    if title:
+                                        break
+
+                if title is not None and start_time is not None:
+                    break
+
+        if title is None and start_time is None:
+            steps = self.parse(path)
+            return self.extract_metadata(path, steps)
+
+        return ConversationMetadata(
+            session_id=session_id,
+            runtime="claude",
+            source_path=str(resolved),
+            title=title,
+            start_time=start_time,
+            end_time=None,
+        )
+

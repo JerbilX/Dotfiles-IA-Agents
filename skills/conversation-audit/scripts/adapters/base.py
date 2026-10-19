@@ -46,8 +46,31 @@ class ConversationMetadata:
     session_id: str
     runtime: str
     source_path: str
+    title: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+
+
+def clean_title(text: Optional[str], max_len: int = 120) -> Optional[str]:
+    """Limpia y sanitiza el texto del primer prompt de usuario para usarlo como título u objetivo."""
+    if not text:
+        return None
+    import re
+    # Extraer contenido de <USER_REQUEST> si existe
+    match = re.search(r"<USER_REQUEST>\s*(.*?)\s*(?:</USER_REQUEST>|$)", text, re.DOTALL | re.IGNORECASE)
+    cleaned = match.group(1) if match else text
+
+    # Remover etiquetas XML/HTML remanentes si las hay
+    cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+    # Normalizar secuencias de espacios en blanco
+    cleaned = " ".join(cleaned.split()).strip()
+
+    if not cleaned:
+        return None
+
+    if len(cleaned) > max_len:
+        return cleaned[:max_len - 3].rstrip() + "..."
+    return cleaned
 
 
 class TranscriptAdapter(ABC):
@@ -72,3 +95,9 @@ class TranscriptAdapter(ABC):
     def extract_metadata(self, path: Path, steps: List[NormalizedStep]) -> ConversationMetadata:
         """Extrae metadatos globales de la conversación."""
         pass
+
+    def fast_extract_metadata(self, path: Path) -> ConversationMetadata:
+        """Extrae metadatos globales (sesión, título, tiempos) de forma rápida sin parsear todos los pasos."""
+        steps = self.parse(path)
+        return self.extract_metadata(path, steps)
+

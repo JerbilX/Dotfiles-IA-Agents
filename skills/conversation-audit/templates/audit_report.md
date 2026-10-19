@@ -4,6 +4,7 @@
 
 | Métrica | Valor |
 | :--- | :--- |
+| **Título / Objetivo** | {{SESSION_TITLE}} |
 | **Runtime** | `{{RUNTIME}}` |
 | **Archivo / Origen** | `{{SOURCE_PATH}}` |
 | **Fecha de Inicio** | {{START_TIME}} |
