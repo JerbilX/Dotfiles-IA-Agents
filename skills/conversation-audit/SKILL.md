@@ -69,10 +69,10 @@ Cuando el usuario solicite auditar una conversación previa o cuando se requiera
 
 La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder a las rutas externas al workspace donde residen los logs del runtime).
 
-#### Jerarquía Canónica de Resolución del Comando:
+#### Jerarquía Determinista de Invocación (Degradación Elegante):
 
-1. **Vía Canónica Principal (Estándar y Preferente):**
-   Invocar directamente el comando expuesto en `$PATH`:
+1. **Vía Canónica Principal (Estándar en `$PATH`):**
+   Invocar directamente el comando estándar expuesto en `$PATH`:
    ```bash
    agent-audit <target>
    ```
@@ -94,8 +94,10 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
        ${HOME}/.claude/skills/conversation-audit/bin/agent-audit <target>
        ```
 
-> [!NOTE]
-> **Preservación de Permisos (Prefix Matching):** La alternancia de rutas de ejecución altera la cadena evaluada por el runtime. Para evitar modales recurrentes de autorización, se recomienda asegurar la ejecución de `./build.sh skills` en el anfitrión para operar siempre bajo el prefijo unificado `agent-audit`.
+3. **Detención Segura (*Stop & Ask* - Actionable Fallback):**
+   Solo si el binario no existe físicamente en el sistema en ninguna de las rutas anteriores:
+   - **Diagnóstico:** El CLI `agent-audit` no se encuentra disponible ni en `$PATH` ni en las rutas canónicas del skill.
+   - **Acción Externa:** Solicitar al usuario que posicione su terminal en la raíz de su repositorio de Dotfiles y ejecute `./build.sh all` para aprovisionar las herramientas en el anfitrión.
 
 #### Opciones Disponibles:
 - Salida en texto tabular en consola (predeterminada):
