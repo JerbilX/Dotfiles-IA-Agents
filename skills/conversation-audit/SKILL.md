@@ -28,6 +28,7 @@ Guía metodológica, catálogo de métricas y protocolo operativo para la audito
 
 | Categoría | Métrica | Unidad | Definición Técnica |
 | :--- | :--- | :---: | :--- |
+| **Identificación** | **Título / Objetivo** | Texto | Resumen o requerimiento inicial normalizado del usuario para identificación inequívoca de la sesión. |
 | **Tiempo** | **Wall-Clock Duration** | Segundos / Minutos | Tiempo transcurrido total entre la marca de tiempo del primer paso y el último paso registrado. |
 | **Tiempo** | **Step Latency (Promedio / Máxima)** | Segundos | Delta temporal calculado entre eventos consecutivos. Refleja el tiempo de inferencia del modelo y la ejecución de herramientas. |
 | **Ejecución** | **Turnos por Fuente** | Conteo | Cantidad de pasos desglosados en: Usuario (`USER`), Agente (`MODEL`) y Sistema/Herramientas (`SYSTEM`). |
@@ -75,6 +76,14 @@ agent-audit <conversation-id-o-ruta>
 - Salida en texto tabular en consola (predeterminada):
   ```bash
   agent-audit <target>
+  ```
+- Consulta rápida de metadatos (título, fechas, runtime) sin procesar pasos:
+  ```bash
+  agent-audit <target> --metadata-only
+  ```
+- Salida de metadatos rápidos en JSON:
+  ```bash
+  agent-audit <target> --metadata-only --format json
   ```
 - Salida en formato Markdown:
   ```bash

@@ -322,6 +322,8 @@ def format_text_report(report: AuditReport, verbose: bool = False) -> str:
     lines.append(f" INFORME DE AUDITORÍA TÉCNICA - AGENT-AUDIT")
     lines.append("=" * 72)
     lines.append(f"  Sesión ID        : {report.metadata.session_id}")
+    if report.metadata.title:
+        lines.append(f"  Título / Objetivo: {report.metadata.title}")
     lines.append(f"  Runtime          : {report.metadata.runtime.upper()}")
     lines.append(f"  Origen           : {report.metadata.source_path}")
     lines.append(f"  Duración Total   : {report.wall_clock_seconds:.1f} s ({report.wall_clock_seconds / 60.0:.2f} min)")
@@ -379,6 +381,8 @@ def format_markdown_report(report: AuditReport, template_path: Optional[Path] = 
     lines.append("")
     lines.append("## 1. Resumen Ejecutivo")
     lines.append("")
+    if report.metadata.title:
+        lines.append(f"- **Título / Objetivo:** {report.metadata.title}")
     lines.append(f"- **Runtime:** `{report.metadata.runtime}`")
     lines.append(f"- **Origen:** `{report.metadata.source_path}`")
     lines.append(f"- **Duración Wall-Clock:** {report.wall_clock_seconds:.1f} s ({report.wall_clock_seconds / 60.0:.2f} min)")
@@ -454,3 +458,52 @@ def format_json_report(report: AuditReport) -> str:
         "timeline": report.steps_timeline,
     }
     return json.dumps(data, indent=2, default=custom_serializer)
+
+
+def format_text_metadata(metadata: ConversationMetadata) -> str:
+    """Genera una salida compacta de metadatos de sesión para terminal."""
+    lines: List[str] = []
+    lines.append("=" * 72)
+    lines.append(" METADATOS DE SESIÓN - AGENT-AUDIT")
+    lines.append("=" * 72)
+    lines.append(f"  Sesión ID        : {metadata.session_id}")
+    lines.append(f"  Título / Objetivo: {metadata.title or 'N/A'}")
+    lines.append(f"  Runtime          : {metadata.runtime.upper()}")
+    lines.append(f"  Origen           : {metadata.source_path}")
+    if metadata.start_time:
+        lines.append(f"  Inicio           : {metadata.start_time.isoformat()}")
+    if metadata.end_time:
+        lines.append(f"  Fin              : {metadata.end_time.isoformat()}")
+    lines.append("=" * 72)
+    return "\n".join(lines)
+
+
+def format_markdown_metadata(metadata: ConversationMetadata) -> str:
+    """Genera informe Markdown de metadatos de sesión."""
+    lines: List[str] = []
+    lines.append(f"# Metadatos de Sesión: `{metadata.session_id}`")
+    lines.append("")
+    lines.append(f"- **Título / Objetivo:** {metadata.title or 'N/A'}")
+    lines.append(f"- **Runtime:** `{metadata.runtime}`")
+    lines.append(f"- **Origen:** `{metadata.source_path}`")
+    lines.append(f"- **Inicio:** {metadata.start_time.isoformat() if metadata.start_time else 'N/A'}")
+    lines.append(f"- **Fin:** {metadata.end_time.isoformat() if metadata.end_time else 'N/A'}")
+    lines.append("")
+    lines.append("---")
+    lines.append("*Generado por `agent-audit` (Dotfiles-IA-Agents).*")
+    return "\n".join(lines)
+
+
+def format_json_metadata(metadata: ConversationMetadata) -> str:
+    """Genera JSON de metadatos de sesión."""
+    import json
+
+    def custom_serializer(obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if hasattr(obj, "__dict__"):
+            return asdict(obj)
+        return str(obj)
+
+    return json.dumps({"metadata": asdict(metadata)}, indent=2, default=custom_serializer)
+

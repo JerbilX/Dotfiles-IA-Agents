@@ -15,6 +15,7 @@ from .base import (
     NormalizedStep,
     NormalizedToolCall,
     TranscriptAdapter,
+    clean_title,
 )
 
 
@@ -179,10 +180,73 @@ class AntigravityAdapter(TranscriptAdapter):
         start_time = steps[0].created_at if steps and steps[0].created_at else None
         end_time = steps[-1].created_at if steps and steps[-1].created_at else None
 
+        title: Optional[str] = None
+        for s in steps:
+            if s.source in ("USER", "USER_EXPLICIT") or s.step_type == "USER_INPUT":
+                if s.content:
+                    title = clean_title(s.content)
+                    if title:
+                        break
+
         return ConversationMetadata(
             session_id=session_id,
             runtime="antigravity",
             source_path=str(resolved),
+            title=title,
             start_time=start_time,
             end_time=end_time,
         )
+
+    def fast_extract_metadata(self, path: Path) -> ConversationMetadata:
+        """Extrae metadatos de sesión (ID, título, tiempos) de forma instantánea sin parsear toda la transcripción."""
+        resolved = self.resolve_path(path)
+        if not resolved.is_file():
+            raise FileNotFoundError(f"No se encontró el archivo de transcripción: {path}")
+
+        if ".system_generated" in resolved.parts:
+            idx = resolved.parts.index(".system_generated")
+            session_id = resolved.parts[idx - 1]
+        elif resolved.stem in ("transcript", "transcript_full"):
+            session_id = resolved.parent.name
+        else:
+            session_id = resolved.stem
+
+        title: Optional[str] = None
+        start_time: Optional[datetime] = None
+
+        with open(resolved, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except Exception:
+                    continue
+
+                ts_str = record.get("created_at")
+                if ts_str and start_time is None:
+                    try:
+                        start_time = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                    except Exception:
+                        pass
+
+                source = str(record.get("source", ""))
+                step_type = str(record.get("type", ""))
+                if title is None and (source in ("USER", "USER_EXPLICIT") or step_type == "USER_INPUT"):
+                    content = record.get("content")
+                    if content:
+                        title = clean_title(content)
+
+                if title is not None and start_time is not None:
+                    break
+
+        return ConversationMetadata(
+            session_id=session_id,
+            runtime="antigravity",
+            source_path=str(resolved),
+            title=title,
+            start_time=start_time,
+            end_time=None,
+        )
+
