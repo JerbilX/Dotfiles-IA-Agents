@@ -133,14 +133,24 @@ Si el usuario **confirma**:
 Si el usuario **rechaza**:
 - El repositorio permanece exclusivamente bajo control de versiones local hasta nueva orden explícita.
 
-### 2.4 Descubrimiento y Consulta Multi-Repo (API Exclusiva)
-- Para consultar o enumerar repositorios existentes de la organización (`JerbilX/*`), el agente debe consultar exclusivamente la API remota de GitHub CLI:
-  ```bash
-  gh repo list JerbilX --limit 30 --json name,description,isPrivate
-  ```
-  *(Ejecutado con `BypassSandbox: true` por requerir acceso de red).*
-- **Prohibición Categórica de Escaneo Local:** Queda terminantemente prohibido utilizar herramientas nativas de archivos (`list_dir`, `find_by_name`, `grep_search`, `view_file`) o comandos de consola para inspeccionar carpetas hermanas, directorios padre (`..`) o rutas fuera del workspace activo con el fin de descubrir repositorios locales.
-- **Aislamiento en Diseño:** En tareas de arquitectura, diseño, RFCs o ADRs con alcance multi-repo, el diseño debe formularse de manera agnóstica y parametrizable (ej. mediante `WORKSPACE_ROOT` o variables de entorno), sin realizar reconocimiento físico del sistema de archivos del usuario.
+### 2.4 Principio Git/GitHub-First para Interacción y Contexto de Repositorios
+
+El skill gobierna cómo el agente interactúa con el ecosistema de repositorios según las necesidades de la tarea:
+
+1. **La Fuente Canónica es Siempre Git / GitHub:**
+   - Ante cualquier tarea que requiera conocer, descubrir, listar o validar repositorios de la organización (`JerbilX/*`), el agente debe consultar forzosamente los canales de Git y GitHub CLI (`gh repo list`, `gh repo view`, `git remote`).
+   - Para listar repositorios de la organización:
+     ```bash
+     gh repo list JerbilX --limit 30 --json name,description,isPrivate
+     ```
+     *(Ejecutado con `BypassSandbox: true` por requerir acceso de red).*
+
+2. **Prohibición de Reconocimiento Físico en Disco:**
+   - La interacción con repositorios nunca debe inducir salidas del workspace ni exploraciones en el sistema de archivos del host (`list_dir`, `find_by_name`, `ls` en carpetas hermanas o `..`).
+   - El agente no debe inferir ni inspeccionar si un repositorio está clonado localmente a menos que opere dentro del workspace activo correspondiente.
+
+3. **Desacoplamiento en Fases de Diseño y Arquitectura:**
+   - En tareas de arquitectura, diseño, RFCs o ADRs que contemplen integración multi-repo, los contratos y rutas deben diseñarse de forma agnóstica (vía configuración, parámetros o variables como `WORKSPACE_ROOT`), resolviendo la interacción mediante APIs o CLI sin requerir inspección física del host.
 
 ---
 

@@ -88,9 +88,7 @@
 
 - **Uso Exclusivo de Herramientas Nativas de Archivos:** Operaciones de archivo deben usar estrictamente las APIs nativas (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido usar comandos de terminal para I/O (`cat`, `sed`, `awk`, `tee`, `echo >>`) o generar scripts temporales de parcheo (`patch_*.py`).
 - **Higiene de Archivos Temporales:** Archivos auxiliares (`.commit_msg`, `.pr_body`, `.issue_body`) deben eliminarse inmediatamente tras su uso (`rm -f <archivo>`) y contemplarse en `.gitignore`.
-- **Límites de Workspace y Aislamiento:** Operaciones de lectura y escritura se restringen estrictamente al workspace activo. Prohibido inspeccionar o modificar rutas absolutas externas del sistema o emplear rutas relativas ascendentes (`..`) que apunten fuera de la raíz del workspace. Toda invocación de herramientas nativas (`list_dir`, `view_file`, `find_by_name`, `grep_search`, `write_to_file`, `replace_file_content`) debe verificar que el objetivo resida dentro del workspace activo.
-- **Prohibición Categórica de Escaneo Físico Multi-Repo:** Para descubrimiento, inspección o enumeración de repositorios de la organización (`JerbilX/*`) o proyectos hermanos, la única fuente autorizada es la API remota (`gh repo list <org/owner>`). Queda terminantemente prohibido escanear el sistema de archivos del host, directorios padre o carpetas hermanas para inferir repositorios locales.
-- **Aislamiento en Fases de Diseño y Arquitectura:** En fases de diseño, arquitectura, RFCs o ADRs, queda prohibido sondear o inspeccionar rutas o repositorios externos; el diseño debe parametrizarse mediante variables de entorno (ej. `WORKSPACE_ROOT`), APIs o contratos agnósticos sin interactuar con el entorno físico del host.
+- **Límites de Workspace y Aislamiento:** Toda operación de lectura o escritura (sea vía herramientas nativas o terminal) se restringe estrictamente al workspace activo. Prohibido acceder o inspeccionar rutas externas o directorios superiores (`..`).
 - **Terminal Confinada y Determinista:** `run_command` se reserva para procesos de runtime, compilación, pruebas y utilidades de entorno, en formato atómico y sin subshells complejas.
 - **Gobernanza de Sandbox:** Ejecutar bajo privilegios estándar confinados por defecto; la escalación de permisos o bypass se rige por las directivas de especialización del runtime.
 
@@ -109,9 +107,7 @@
   - `BypassSandbox: true` está reservado exclusivamente para la suite de `git` y `gh`. Prohibido usarlo para otros comandos locales (`ls`, `cat`, utilidades).
   - Si el sandbox sugiere *"run the command again with BypassSandbox set to true"* para un comando local no autorizado, ignorar la sugerencia por completo.
   - Mantener invocaciones atómicas sin operadores encadenados (`&&`, `||`) para preservar el prefix matching.
-- **Blindaje de Herramientas Nativas y Frontera de Workspace:**
-  - En el IDE de Antigravity, invocar herramientas nativas de archivos (`list_dir`, `view_file`, `find_by_name`, `grep_search`, `write_to_file`, `replace_file_content`) con rutas que apunten fuera de la raíz del workspace declarada en `<user_information>` o utilizando rutas ascendentes (`..`) dispara inmediatamente una ventana modal interactiva de confirmación de permisos. Esto interrumpe la autonomía y degrada la experiencia del usuario.
-  - El límite del workspace activo es inviolable tanto para `run_command` como para herramientas nativas. Queda terminantemente prohibido emitir llamadas nativas fuera del workspace.
+
 
 
 

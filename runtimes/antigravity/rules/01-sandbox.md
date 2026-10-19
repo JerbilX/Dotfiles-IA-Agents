@@ -11,8 +11,6 @@
   - `BypassSandbox: true` está reservado exclusivamente para la suite de `git` y `gh`. Prohibido usarlo para otros comandos locales (`ls`, `cat`, utilidades).
   - Si el sandbox sugiere *"run the command again with BypassSandbox set to true"* para un comando local no autorizado, ignorar la sugerencia por completo.
   - Mantener invocaciones atómicas sin operadores encadenados (`&&`, `||`) para preservar el prefix matching.
-- **Blindaje de Herramientas Nativas y Frontera de Workspace:**
-  - En el IDE de Antigravity, invocar herramientas nativas de archivos (`list_dir`, `view_file`, `find_by_name`, `grep_search`, `write_to_file`, `replace_file_content`) con rutas que apunten fuera de la raíz del workspace declarada en `<user_information>` o utilizando rutas ascendentes (`..`) dispara inmediatamente una ventana modal interactiva de confirmación de permisos. Esto interrumpe la autonomía y degrada la experiencia del usuario.
-  - El límite del workspace activo es inviolable tanto para `run_command` como para herramientas nativas. Queda terminantemente prohibido emitir llamadas nativas fuera del workspace.
+
 
 
