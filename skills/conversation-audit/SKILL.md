@@ -65,37 +65,29 @@ Cuando el usuario solicite auditar una conversación previa o cuando se requiera
 - La resolución de rutas físicas (`resolve_path`) está completamente encapsulada dentro del adaptador correspondiente a cada runtime (`TranscriptAdapter`).
 - El agente o usuario no requiere conocer ni inspeccionar las rutas internas del host; basta con proporcionar el identificador de la sesión (`<conversation-id>` / UUID) o una ruta directa en caso de procesar archivos de exportación externa.
 
-### Paso 2: Invocación del CLI Determinista (`agent-audit`)
+### Paso 2: Invocación Canónica del CLI Determinista (`agent-audit`)
 
 La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder a las rutas externas al workspace donde residen los logs del runtime).
 
-#### Jerarquía Canónica de Resolución del Comando:
+#### Invocación Canónica Universal (Estándar en `$PATH`):
+Invocar única y exclusivamente el comando estándar expuesto en `$PATH`:
+```bash
+agent-audit <target>
+```
 
-1. **Vía Canónica Principal (Estándar y Preferente):**
-   Invocar directamente el comando expuesto en `$PATH`:
+#### Prohibición Categórica de Variantes de Ruta y Preservación de Permisos:
+- **Queda terminantemente prohibido** invocar rutas relativas o directas (ej. `./skills/conversation-audit/bin/agent-audit`, `skills/conversation-audit/bin/agent-audit`, `${HOME}/.gemini/...`).
+- **Mecánica de Permisos en Antigravity (Prefix Matching):** Antigravity evalúa las autorizaciones globales (Opción 4: *"Yes, and always allow '<comando>'"*) basándose en el prefijo exacto de la cadena de comando. Invocar rutas relativas o alternar prefijos rompe la correspondencia, invalida las aprobaciones previas y vuelve a disparar modales interactivos de confirmación. Operar de forma estricta y exclusiva bajo el prefijo `agent-audit` asegura que una única concesión de la Opción 4 sea definitiva, universal y permanente para todas las conversaciones y proyectos.
+
+#### Protocolo de Continuidad ante Ausencia en `$PATH` (`command not found` - Actionable Fallback):
+Si al invocar `agent-audit` el sistema retorna `command not found` (debido a que `~/.local/bin/agent-audit` no ha sido aprovisionado o `~/.local/bin` no está en el `$PATH` del host):
+1. **Prohibición de desvío:** El agente tiene prohibido buscar rutas alternativas, inventar scripts auxiliares o explorar el sistema de archivos (`find_by_name`, `ls`).
+2. **Stop & Ask y Actionable Fallback:** El agente debe detenerse inmediatamente y emitir al usuario el diagnóstico conciso con el comando terminal-ready copiable para aprovisionar los enlaces en el sistema anfitrión:
    ```bash
-   agent-audit <target>
+   cd ~/Proyectos-IA-V3/Dotfiles-IA-Agents && ./build.sh skills antigravity
    ```
-   *(Esta es la forma canónica recomendada. Asegura que el motor de permisos de Antigravity reconozca un único prefijo global permanente mediante la Opción 4).*
-
-2. **Vía de Fallback Determinista (Ante ausencia en `$PATH` o `command not found`):**
-   Si la subshell no incluye `~/.local/bin` o no se ha ejecutado `./build.sh skills` en el host, resolver directamente la ruta sin recurrir a búsquedas ciegas (`find_by_name`, `ls`):
-   - **Dentro de este repositorio (`Dotfiles-IA-Agents`):**
-     ```bash
-     ./skills/conversation-audit/bin/agent-audit <target>
-     ```
-   - **En workspaces externos (otros proyectos):**
-     - En **Antigravity**:
-       ```bash
-       ${HOME}/.gemini/config/skills/conversation-audit/bin/agent-audit <target>
-       ```
-     - En **Claude Code**:
-       ```bash
-       ${HOME}/.claude/skills/conversation-audit/bin/agent-audit <target>
-       ```
-
-> [!NOTE]
-> **Preservación de Permisos (Prefix Matching):** La alternancia de rutas de ejecución altera la cadena evaluada por el runtime. Para evitar modales recurrentes de autorización, se recomienda asegurar la ejecución de `./build.sh skills` en el anfitrión para operar siempre bajo el prefijo unificado `agent-audit`.
+   *(O `./build.sh all` para un aprovisionamiento integral).*
+3. Una vez aprovisionado el enlace en el anfitrión, reanudar la ejecución con la invocación canónica `agent-audit <target>`.
 
 #### Opciones Disponibles:
 - Salida en texto tabular en consola (predeterminada):

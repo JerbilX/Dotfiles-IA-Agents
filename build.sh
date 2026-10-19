@@ -1419,8 +1419,14 @@ check_runtime() {
 }
 
 check_local_bin_symlinks() {
-    if [ -d "${HOME}/.local/bin" ]; then
-        for item in "${HOME}/.local/bin"/*; do
+    local local_bin="${HOME}/.local/bin"
+    if [[ ":${PATH}:" != *":${local_bin}:"* ]]; then
+        echo "  [!] Advertencia: '${local_bin}' no está presente en \$PATH (agrega 'export PATH=\"\${HOME}/.local/bin:\${PATH}\"' a tu shell)" >&2
+        CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+    fi
+
+    if [ -d "${local_bin}" ]; then
+        for item in "${local_bin}"/*; do
             [ ! -e "${item}" ] && [ ! -L "${item}" ] && continue
             if [ -L "${item}" ]; then
                 local link_target
