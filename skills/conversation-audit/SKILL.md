@@ -80,15 +80,12 @@ agent-audit <target>
 - **Resolución Universal y Permisos:** El uso exclusivo del binario estándar `agent-audit` en `$PATH` garantiza portabilidad transversal entre proyectos y compatibilidad con los sistemas de control de acceso y allowlists de cualquier runtime, previniendo la fragmentación de autorizaciones y solicitudes redundantes de permisos.
 
 #### Protocolo de Continuidad ante Ausencia en `$PATH` (`command not found` - Actionable Fallback):
-Si al invocar `agent-audit` el sistema retorna `command not found` (debido a que `~/.local/bin/agent-audit` no ha sido enlazado o `~/.local/bin` no está en el `$PATH` del host):
-1. **Prohibición de desvío:** El agente tiene prohibido buscar rutas alternativas, inventar scripts auxiliares o explorar el sistema de archivos (`find_by_name`, `ls`).
-2. **Stop & Ask y Actionable Fallback:** El agente debe detenerse inmediatamente y suministrar al usuario el diagnóstico conciso junto con la instrucción terminal-ready para aprovisionar el entorno en la terminal anfitriona:
-   - Posicionarse en la raíz del repositorio de Dotfiles (`Dotfiles-IA-Agents`) y ejecutar el aprovisionamiento agnóstico completo:
-     ```bash
-     ./build.sh all
-     ```
-     *(O `cd <ruta-a-Dotfiles-IA-Agents> && ./build.sh all`).*
-3. Una vez aprovisionado el enlace en el anfitrión, reanudar la ejecución con la invocación canónica `agent-audit <target>`.
+Si al invocar `agent-audit` el sistema retorna `command not found` (debido a que el binario no está enlazado en `~/.local/bin` o dicho directorio no está exportado en el `$PATH` del host):
+1. **Aislamiento de Workspace y Prohibición de Desvío:** El agente tiene terminantemente prohibido intentar escapar del workspace activo para buscar scripts en directorios externos (`..`), inventar wrappers locales o explorar el sistema de archivos (`find_by_name`, `ls`).
+2. **Stop & Ask (Instrucción de Anfitrión):** El agente debe detenerse inmediatamente y notificar al usuario:
+   - **Diagnóstico:** El CLI `agent-audit` no se encuentra disponible en el `$PATH` del sistema anfitrión.
+   - **Acción Externa Requerida:** Solicitar al usuario que verifique la presencia de `~/.local/bin` en su `$PATH` y aprovisione las herramientas en su anfitrión (ejecutando `./build.sh all` en su repositorio de Dotfiles desde una terminal nativa).
+3. Una vez garantizada la presencia del binario en el anfitrión, reanudar la ejecución mediante la invocación estándar `agent-audit <target>`.
 
 #### Opciones Disponibles:
 - Salida en texto tabular en consola (predeterminada):
