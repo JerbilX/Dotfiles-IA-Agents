@@ -133,6 +133,15 @@ Si el usuario **confirma**:
 Si el usuario **rechaza**:
 - El repositorio permanece exclusivamente bajo control de versiones local hasta nueva orden explícita.
 
+### 2.4 Descubrimiento y Consulta Multi-Repo (API Exclusiva)
+- Para consultar o enumerar repositorios existentes de la organización (`JerbilX/*`), el agente debe consultar exclusivamente la API remota de GitHub CLI:
+  ```bash
+  gh repo list JerbilX --limit 30 --json name,description,isPrivate
+  ```
+  *(Ejecutado con `BypassSandbox: true` por requerir acceso de red).*
+- **Prohibición Categórica de Escaneo Local:** Queda terminantemente prohibido utilizar herramientas nativas de archivos (`list_dir`, `find_by_name`, `grep_search`, `view_file`) o comandos de consola para inspeccionar carpetas hermanas, directorios padre (`..`) o rutas fuera del workspace activo con el fin de descubrir repositorios locales.
+- **Aislamiento en Diseño:** En tareas de arquitectura, diseño, RFCs o ADRs con alcance multi-repo, el diseño debe formularse de manera agnóstica y parametrizable (ej. mediante `WORKSPACE_ROOT` o variables de entorno), sin realizar reconocimiento físico del sistema de archivos del usuario.
+
 ---
 
 ## 3. Despacho y Recepción de Tareas (Fase 1: Bajo Demanda)
