@@ -203,6 +203,31 @@ Ante preguntas de consulta, estado o coordinación sobre las tareas pendientes e
 
 Todo desarrollo debe aislarse en una rama dedicada creada antes de modificar cualquier archivo de código del workspace.
 
+### 4.1 Estrategia Híbrida Contextual (Ref: docs/adr/0021-estrategia-de-ramas-troncales-y-promocion-de-entornos.md)
+La estructura de ramas troncales responde a la naturaleza del proyecto según su archivo de configuración raíz (`.repo-config.json` o `config.json`):
+
+1. **Categoría A (Predeterminada - Repositorios Compactos / Dotfiles / Tooling / Librerías):**
+   - **Troncal única:** `main`.
+   - **Ramas efímeras:** Se originan en `main` (`git checkout -b feat/issue-<id>-<slug>`).
+   - **Pull Requests:** Apuntan directamente a `main`. Cero ramas troncales intermedias.
+2. **Categoría B (Aplicaciones con Ambientes de Despliegue Físicos):**
+   - **Troncal de integración continua:** `dev` (desplegada a entorno de staging/dev).
+   - **Troncal de producción:** `main` (desplegada a producción).
+   - **Ramas efímeras:** Se originan en `dev` (`git checkout -b feat/issue-<id>-<slug> dev`).
+   - **Pull Requests:** Apuntan a `dev` (`gh pr create --base dev ...`).
+   - **Promoción a Producción:** Se formaliza exclusivamente mediante un *Release Pull Request* de `dev` a `main` con tag de versión SemVer (`vX.Y.Z`).
+
+### 4.2 Detección Declarativa de la Estrategia del Repositorio
+Al iniciar el trabajo en un repositorio, el agente inspecciona el archivo de configuración en la raíz (`.repo-config.json` o `config.json`):
+```json
+{
+  "repository_type": "category_a",
+  "base_branch": "main"
+}
+```
+En ausencia de archivo de configuración o si no se explicita `repository_type`, se adopta por defecto **Categoría A** (`base_branch: "main"`).
+
+### 4.3 Nomenclatura Canónica de Ramas Efímeras
 - **Nomenclatura Obligatoria:**
   - Para nuevas funcionalidades o tareas generales: `feat/issue-<id>-<slug>`
   - Para corrección de errores o parches: `fix/issue-<id>-<slug>`
@@ -226,13 +251,13 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
 - Lectura profunda de los requerimientos, contexto, diagnóstico y criterios de aceptación en `gh issue view <id>`.
 
 ### Paso 2: Aislamiento e Higiene del Workspace
-1. Posicionarse en la rama principal y sincronizar cambios podando referencias remotas obsoletas:
+1. Posicionarse en la rama base del repositorio (`main` por defecto, o `dev` en Categoría B) y sincronizar cambios podando referencias remotas obsoletas:
    ```bash
-   git checkout main
+   git checkout <base_branch>
    git pull --prune --ff-only
    ```
    *(Ejecutados con `BypassSandbox: true` desde el primer intento).*
-   - **Mecánica de Transporte de Git:** Invocado sin argumentos posicionales de remoto o rama (`origin main`), `git pull --prune --ff-only` procesa el refspec estándar completo (`+refs/heads/*:refs/remotes/origin/*`), poda de forma automática las referencias zombi (`remotes/origin/*`) y avanza `main` exclusivamente en modo fast-forward. Esto erradica la invocación de `git merge`, garantizando una ejecución 100% desatendida y sin modales interactivos de confirmación en Antigravity, cumpliendo estrictamente con la prohibición de merge hacia `main` de `core/09-issue-driven-workflow.md`.
+   - **Mecánica de Transporte de Git:** Invocado sin argumentos posicionales de remoto o rama (`origin main`), `git pull --prune --ff-only` procesa el refspec estándar completo (`+refs/heads/*:refs/remotes/origin/*`), poda de forma automática las referencias zombi (`remotes/origin/*`) y avanza la rama base exclusivamente en modo fast-forward. Esto erradica la invocación de `git merge`, garantizando una ejecución 100% desatendida y sin modales interactivos de confirmación en Antigravity, cumpliendo estrictamente con la prohibición de merge hacia ramas troncales de `core/09-issue-driven-workflow.md`.
    - **Prohibición Categórica de `git remote prune`:** Queda terminantemente prohibido ejecutar `git remote prune` (ej. `git remote prune origin`). Toda poda de tracking remoto debe canalizarse exclusivamente a través del transporte estándar de sincronización (`git pull --prune --ff-only` o `git fetch --prune origin`).
 2. Ejecutar la poda de higiene local en dos fases atómicas para remover ramas ya fusionadas cuyo upstream remoto fue eliminado:
    - **Fase 1: Inspección Pasiva Confinada (`BypassSandbox: false` obligatorio):**
@@ -279,8 +304,9 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
 ### Paso 7: Apertura de Pull Request
 - Redactar el cuerpo del PR en `.pr_body` con `write_to_file` y publicarlo mediante GitHub CLI (`BypassSandbox: true`):
    ```bash
-   gh pr create --title "<tipo>(<alcance>): <descripción>" --body-file .pr_body
+   gh pr create --base <base_branch> --title "<tipo>(<alcance>): <descripción>" --body-file .pr_body
    ```
+   *(Si `<base_branch>` es la rama por defecto del repositorio en GitHub, ej. `main` en Categoría A, el flag `--base` puede omitirse; en Categoría B debe especificarse explícitamente `--base dev`).*
 - Limpiar inmediatamente el archivo temporal: `rm -f .pr_body`.
 
 ---
@@ -448,4 +474,5 @@ Al completar la publicación del PR, el agente **DEBE emitir un reporte final es
 - **Prohibición de Scripts Intermediarios de Red y CLI:** Queda estrictamente prohibido generar scripts auxiliares (Python, Shell, Node) para ejecutar comandos de `gh` o parsear respuestas de red. Toda operación e inspección debe realizarse de forma directa y atómica utilizando los flags nativos provistos por GitHub CLI (`--query`, `--field`, `-q / --jq`, `--limit`). Si se requiere una consulta agregada compleja no soportada por `item-list`, la degradación elegante consiste en invocar directamente `gh api graphql` de forma nativa o aplicar Stop & Ask, sin violar el confinamiento del sandbox ni crear scripts huérfanos.
 - **Prohibición Categórica de `git remote prune`:** Prohibido invocar `git remote prune <remote>`. La poda de referencias remotas obsoletas debe gestionarse exclusivamente mediante el comando estándar de transporte (ej. `git pull --prune --ff-only` o `git fetch --prune <remote>`). Invocaciones aisladas a `git remote prune` violan la política desatendida y disparan alertas interactivas de confirmación de permisos en Antigravity.
 - **Circuit Breaker:** Toda consulta de red iterativa en terminal se limita a un máximo de 3 a 5 iteraciones; si la API carece de endpoint batch o experimenta latencia, el agente debe detenerse y reportar.
+- **Prohibición de Servidores MCP para Control de Versiones:** La gobernanza de ramas, PRs e issues se rige exclusivamente por este skill y la suite nativa de `git` y `gh`. Queda terminantemente prohibido crear o requerir servidores MCP para tareas de control de versiones o gestión de repositorios (Ref: `docs/adr/0021-estrategia-de-ramas-troncales-y-promocion-de-entornos.md`).
 - **Higiene de Temporales:** Archivos auxiliares como `.commit_msg`, `.pr_body`, `.comment_body` o `.issue_body` deben ser redactados con las herramientas nativas de archivos, removerse inmediatamente tras su uso (`rm -f <archivo>`) y estar contemplados en `.gitignore`.
