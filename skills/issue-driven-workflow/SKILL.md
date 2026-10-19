@@ -1,12 +1,12 @@
 ---
 name: issue-driven-workflow
 description: >-
-  Orchestrate end-to-end task execution driven by GitHub Issues and GitHub Projects v2, canonical backlog task registration, repository provisioning, branch lifecycles, and Pull Request workflows. ACTIVATE this skill whenever creating future issues/tasks, provisioning new GitHub repos, dispatched to implement an issue (e.g. 'implementa la issue #X'), querying the board or coordinating next tasks (e.g. '¿qué hay en el board?'), picking tasks from Ready for Dev, managing feature/fix branch lifecycles, opening Pull Requests, or synchronizing cards in GitHub Projects. Operates with strict git hygiene, temporary file safety, and deterministic CLI commands.
+  Orchestrate end-to-end task execution driven by GitHub Issues and GitHub Projects v2, canonical backlog task registration, repository provisioning, branch lifecycles, and Pull Request workflows. ACTIVATE this skill whenever creating future issues/tasks, provisioning new GitHub repos, dispatched to implement an issue (e.g. 'implementa la issue #X'), querying the board or coordinating next tasks (e.g. '¿qué hay en el board?'), picking tasks from Ready for Dev, managing feature/fix branch lifecycles, opening Pull Requests, attending and resolving Code Review comments on Pull Requests, or synchronizing cards in GitHub Projects. Operates with strict git hygiene, temporary file safety, and deterministic CLI commands.
 ---
 
 # Issue-Driven Workflow and Pull Request Management
 
-Guía operativa y protocolo estricto para el registro canónico de backlog, aprovisionamiento de repositorios, ciclo de vida completo de desarrollo orientado por tareas (GitHub Issues), aislamiento en ramas de trabajo, integración con GitHub Projects v2 y apertura estandarizada de Pull Requests.
+Guía operativa y protocolo estricto para el registro canónico de backlog, aprovisionamiento de repositorios, ciclo de vida completo de desarrollo orientado por tareas (GitHub Issues), aislamiento en ramas de trabajo, integración con GitHub Projects v2, apertura estandarizada de Pull Requests y ciclo de resolución autónoma de Code Review.
 
 ---
 
@@ -324,18 +324,103 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
 
 ---
 
+## 7. Sub-protocolo de Feedback Loop y Resolución Autónoma de Code Review
+
+Protocolo operativo determinista para atender observaciones, revisiones humanas y comentarios inline dejados en el diff de Pull Requests en GitHub.
+
+### 7.1 Criterios de Activación y Ámbito
+- **Trigger Conversacional:** El agente activa este sub-protocolo cuando el usuario solicite atender, corregir o resolver observaciones de Code Review en un Pull Request activo (ej. *"resolvé los comentarios del PR #<id>"*, *"atendé el review del PR #<id>"*, *"revisá el feedback dejado en el diff de #<id>"*).
+- **Aislamiento en Rama Activa:** Todas las correcciones solicitadas en la revisión de código deben realizarse estrictamente sobre la rama activa del Pull Request. Queda **terminantemente prohibido** crear ramas secundarias o abrir nuevos issues para abordar observaciones del code review del PR activo.
+
+### 7.2 Fase 1: Contexto y Sincronización de Rama
+1. **Posicionamiento en la Rama del PR:**
+   - Si el workspace ya se encuentra en la rama asociada al PR, sincronizar con el remoto para incorporar posibles commits o sugerencias aplicadas desde la web:
+     ```bash
+     git pull --ff-only
+     ```
+   - Si el workspace se encuentra en otra rama o se atiende el PR en una nueva sesión, posicionarse deterministamente en la rama del PR:
+     ```bash
+     gh pr checkout <pr_id>
+     ```
+     *(Ejecutados con `BypassSandbox: true` obligatorio desde el primer intento).*
+
+### 7.3 Fase 2: Ingesta Determinista de Feedback de Review
+1. **Inspección de Reseñas Generales y Veredicto:**
+   Consultar los comentarios globales y el estado de aprobación del Pull Request:
+   ```bash
+   gh pr view <pr_id> --comments
+   ```
+   *(Ejecutado con `BypassSandbox: true`).*
+
+2. **Consulta Determinista de Comentarios Inline en el Diff:**
+   Para obtener los comentarios específicos línea por línea dejados en el diff del Pull Request, consultar directamente el endpoint nativo de la API de GitHub mediante GitHub CLI:
+   ```bash
+   gh api repos/:owner/:repo/pulls/<pr_id>/comments --jq '.[] | {id: .id, path: .path, line: (.line // .original_line), diff_hunk: .diff_hunk, body: .body}'
+   ```
+   *(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento por requerir acceso de red; los marcadores `:owner` y `:repo` son autocompletados automáticamente por GitHub CLI según el contexto del repositorio).*
+
+3. **Prohibición Categórica de Scripts Envoltorios o Tuberías:**
+   Queda estrictamente prohibido crear scripts temporales (Python, Bash, Node, ej. `fetch_comments.py`) o encadenar tuberías con utilidades de terminal (`awk`, `sed`, `jq` externo). Todo el parseo y filtrado debe realizarse mediante los flags nativos de GitHub CLI (`--jq`) para preservar el *prefix matching* de seguridad de Antigravity.
+
+### 7.4 Fase 3: Flujo Atómico de Resolución
+1. **Mapeo y Análisis Técnico:**
+   - Inspeccionar el archivo afectado (`path`) y las líneas señaladas (`line` / `diff_hunk`) mediante la herramienta nativa `view_file`.
+   - Contrastar la observación del revisor con el diseño del sistema y los invariantes del proyecto, identificando la solución con el menor radio de impacto posible (*Minimal Blast Radius*).
+2. **Aplicación de Parches:**
+   - Aplicar las correcciones solicitadas exclusivamente a través de las herramientas nativas de edición (`replace_file_content` o `write_to_file`). Prohibido usar comandos CLI de streaming (`sed`, `cat >`, `echo >>`) o scripts efímeros de parcheo.
+3. **Verificación Estática y Local (Shift-Left):**
+   - Ejecutar la suite de pruebas del proyecto y linters locales:
+     ```bash
+     ./build.sh check
+     ```
+     *(Ejecutado con `BypassSandbox: false` confinado).*
+   - Validar que no existan errores (0 errores) y que el presupuesto de contexto se mantenga dentro de los umbrales definidos.
+4. **Commit Atómico de Corrección:**
+   - Redactar el mensaje en el archivo temporal `.commit_msg` mediante `write_to_file` siguiendo el estándar convencional:
+     `fix(<alcance>): atender feedback de code review en PR #<id>`
+   - Ejecutar el commit leyendo el archivo con `BypassSandbox: true`:
+     ```bash
+     git commit -F .commit_msg
+     rm -f .commit_msg
+     ```
+5. **Publicación Remota:**
+   - Subir los commits a la rama del Pull Request:
+     ```bash
+     git push
+     ```
+     *(Ejecutado con `BypassSandbox: true`).*
+
+### 7.5 Fase 4: Trazabilidad y Cierre del Ciclo de Feedback
+1. **Respuesta Opcional a Comentarios Inline Específicos:**
+   Si se requiere dejar constancia explícita sobre un hilo de comentario puntual en el diff:
+   ```bash
+   gh api repos/:owner/:repo/pulls/<pr_id>/comments/<comment_id>/replies -f body="Resuelto en commit <short_sha>: <descripción concisa>"
+   ```
+   *(Ejecutado con `BypassSandbox: true`).*
+2. **Comentario Consolidado en el Pull Request:**
+   Para notificar formalmente al revisor humano que las observaciones fueron atendidas:
+   - Redactar el resumen en `.pr_comment` mediante `write_to_file`.
+   - Publicar el comentario en el PR:
+     ```bash
+     gh pr comment <pr_id> --body-file .pr_comment
+     rm -f .pr_comment
+     ```
+     *(Ejecutado con `BypassSandbox: true`).*
+3. **Preservación del Estado en Projects v2:**
+   - La tarjeta de la tarea permanece en `👀 In Review / PR` en el tablero central (Project 1) a la espera de la re-inspección, aprobación y fusión (merge) definitiva por parte del usuario.
+
 ---
 
-## 7. Protocolo de Rollback y Reversión de Emergencia
+## 8. Protocolo de Rollback y Reversión de Emergencia
 
 Cuando tras la fusión (merge) de un Pull Request en `main` se detecten anomalías críticas, roturas de compilación, fallos de sandbox o regresiones funcionales severas que comprometan la estabilidad del entorno, debe activarse de inmediato el protocolo de reversión estandarizado.
 
-### 7.1 Criterios de Activación
+### 8.1 Criterios de Activación
 - **Rotura de Build o Tests:** El código en `main` no compila o falla catastróficamente en `./build.sh check` o suites de prueba locales.
 - **Bloqueo Crítico de Operación:** Directivas o scripts generan bucles infinitos, fallos de permisos insalvables o vulneraciones de seguridad.
 - **Inconsistencia Arquitectónica:** Fusión accidental de cambios que contradicen decisiones vigentes (`docs/adr/`) sin discusión previa.
 
-### 7.2 Ciclo de Ramas y Git (Reversión Atómica)
+### 8.2 Ciclo de Ramas y Git (Reversión Atómica)
 Para preservar la prohibición estricta de push directo o reescritura de historia (`git reset --hard`) en `main`:
 
 1. **Sincronizar `main`:**
@@ -380,7 +465,7 @@ Para preservar la prohibición estricta de push directo o reescritura de histori
    ```
    *(Ejecutado con `BypassSandbox: true`).*
 
-### 7.3 Gestión de Backlog y Tablero Central (Projects v2)
+### 8.3 Gestión de Backlog y Tablero Central (Projects v2)
 Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes:
 
 1. **Apertura del Pull Request de Reversión:**
@@ -428,7 +513,7 @@ Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes
    ```
    *(Ejecutado con `BypassSandbox: true`).*
 
-### 7.4 Gobierno Arquitectónico (MADR)
+### 8.4 Gobierno Arquitectónico (MADR)
 Si el Pull Request revertido introdujo un Architectural Decision Record en `docs/adr/` que había transicionado a `status: accepted`:
 
 1. **Deprecación Inmediata:**
@@ -442,7 +527,7 @@ Si el Pull Request revertido introdujo un Architectural Decision Record en `docs
 2. **ADR Compensatorio (si aplica):**
    - Si la reversión exige documentar formalmente una alternativa arquitectónica sustituta o formular lecciones aprendidas de la falla, crear un nuevo registro correlativo (ej. `docs/adr/NNNN-reemplazo-de-estrategia.md`) mediante `adr-manager` con `status: proposed`.
 
-### 7.5 Restauración Local en Sistema Anfitrión (`build.sh rollback`)
+### 8.5 Restauración Local en Sistema Anfitrión (`build.sh rollback`)
 Si la falla o regresión afectó el entorno local desplegado en el host (directorios `~/.gemini/config/` o `~/.claude/`):
 1. Ejecutar de forma inmediata la restauración atómica del último respaldo funcional:
    ```bash
@@ -453,7 +538,7 @@ Si la falla o regresión afectó el entorno local desplegado en el host (directo
 
 ---
 
-## 8. Protocolo Operativo de Salida y Reporte Estandarizado
+## 9. Protocolo Operativo de Salida y Reporte Estandarizado
 
 Al completar la publicación del PR, el agente **DEBE emitir un reporte final estructurado** que incluya obligatoriamente:
 1. Resumen técnico conciso de los cambios realizados.
@@ -464,7 +549,7 @@ Al completar la publicación del PR, el agente **DEBE emitir un reporte final es
 
 ---
 
-## 9. Parámetros de Red, Sandbox y Circuit Breaker
+## 10. Parámetros de Red, Sandbox y Circuit Breaker
 
 - **Exclusividad de Bypass y Mutadores:** `BypassSandbox: true` está reservado estricta y exclusivamente para comandos mutadores locales de Git (`git init`, `git checkout`, `git checkout -b`, `git branch -d/-D`, `git branch -m/-M`, `git add`, `git commit`, `git merge`, etc.) y comandos remotos o de red de Git y GitHub CLI (`git push`, `git fetch`, `git pull`, `gh issue`, `gh pr`, `gh project`, `gh repo`). Las operaciones de solo lectura (`git status`, `git log`, `git diff`, `git branch` de consulta) deben ejecutarse obligatoriamente de forma confinada (`BypassSandbox: false`).
 - **Formato Atómico y Protección de Prefix Matching:** Debido a que el evaluador de permisos de runtimes como Antigravity anula el *prefix matching* ante el uso de comillas multilínea o caracteres complejos en argumentos CLI:
