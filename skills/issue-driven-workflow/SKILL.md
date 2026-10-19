@@ -59,7 +59,7 @@ Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix
    ```bash
    gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body
    ```
-3. Limpiar inmediatamente el archivo temporal:
+3. Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
    ```bash
    rm -f .issue_body
    ```
@@ -105,7 +105,7 @@ Protocolo determinista para inicializar repositorios locales y aprovisionar repo
   git commit -F .commit_msg
   ```
   *(Ejecutado con `BypassSandbox: true`).*
-- Limpiar inmediatamente el archivo temporal: `rm -f .commit_msg`.
+- Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar): `rm -f .commit_msg`.
 
 ### 2.2 Gate de Confirmación Obligatorio para Remoto (Origin)
 - El agente tiene **estrictamente prohibido** asumir la subida a GitHub sin confirmación previa del usuario.
@@ -312,7 +312,10 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
    ```bash
    git commit -F .commit_msg
    ```
-- Limpiar inmediatamente el archivo temporal: `rm -f .commit_msg`.
+- Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+   ```bash
+   rm -f .commit_msg
+   ```
 
 ### Paso 6: Publicación Remota
 - Subir la rama al repositorio remoto (`BypassSandbox: true`):
@@ -326,7 +329,10 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
    gh pr create --base <base_branch> --title "<tipo>(<alcance>): <descripción>" --body-file .pr_body
    ```
    *(Si `<base_branch>` es la rama por defecto del repositorio en GitHub, ej. `main` en Categoría A, el flag `--base` puede omitirse; en Categoría B debe especificarse explícitamente `--base dev`).*
-- Limpiar inmediatamente el archivo temporal: `rm -f .pr_body`.
+- Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+   ```bash
+   rm -f .pr_body
+   ```
 
 ---
 
@@ -400,6 +406,9 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
    - Ejecutar el commit leyendo el archivo con `BypassSandbox: true`:
      ```bash
      git commit -F .commit_msg
+     ```
+   - Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+     ```bash
      rm -f .commit_msg
      ```
 5. **Publicación Remota:**
@@ -419,12 +428,14 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
 2. **Comentario Consolidado en el Pull Request:**
    Para notificar formalmente al revisor humano que las observaciones fueron atendidas:
    - Redactar el resumen en `.pr_comment` mediante `write_to_file`.
-   - Publicar el comentario en el PR:
+   - Publicar el comentario en el PR (`BypassSandbox: true`):
      ```bash
      gh pr comment <pr_id> --body-file .pr_comment
+     ```
+   - Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+     ```bash
      rm -f .pr_comment
      ```
-     *(Ejecutado con `BypassSandbox: true`).*
 3. **Preservación del Estado en Projects v2:**
    - La tarjeta de la tarea permanece en `👀 In Review / PR` en el tablero central (Project 1) a la espera de la re-inspección, aprobación y fusión (merge) definitiva por parte del usuario.
 
@@ -471,12 +482,14 @@ Para preservar la prohibición estricta de push directo o reescritura de histori
    Reverts PR #<pr_id> (<merge_commit_sha>).
    Razón: <diagnóstico técnico conciso de la regresión o anomalía>.
    ```
-   Ejecutar el commit leyendo el archivo temporal:
+   Ejecutar el commit leyendo el archivo temporal (`BypassSandbox: true`):
    ```bash
    git commit -F .commit_msg
+   ```
+   Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+   ```bash
    rm -f .commit_msg
    ```
-   *(Commit ejecutado con `BypassSandbox: true`).*
 
 5. **Publicación Remota:**
    ```bash
@@ -499,12 +512,14 @@ Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes
 
    Reverts #<pr_id>
    ```
-   Publicar el PR mediante GitHub CLI:
+   Publicar el PR mediante GitHub CLI (`BypassSandbox: true`):
    ```bash
    gh pr create --title "fix(revert): revert PR #<pr_id> - <motivo>" --body-file .pr_body
+   ```
+   Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+   ```bash
    rm -f .pr_body
    ```
-   *(Ejecutado con `BypassSandbox: true`).*
 
 2. **Indexación y Transición del PR de Reversión:**
    Asegurar que la tarjeta del PR de reversión ingrese en el tablero central (Project 1) en estado `👀 In Review / PR`:
@@ -524,6 +539,10 @@ Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes
    Redactar un comentario técnico en `.issue_comment` documentando la causa de la reversión y los requerimientos pendientes para su posterior reintento:
    ```bash
    gh issue comment <id> --body-file .issue_comment
+   ```
+   *(Ejecutado con `BypassSandbox: true`).*
+   Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+   ```bash
    rm -f .issue_comment
    ```
    Transicionar deterministamente la tarjeta de la issue reabierta en Project 1 al estado `🎯 Ready for Dev`:
@@ -578,4 +597,4 @@ Al completar la publicación del PR, el agente **DEBE emitir un reporte final es
 - **Prohibición de Scripts Intermediarios de Red y CLI:** Queda estrictamente prohibido generar scripts auxiliares (Python, Shell, Node) para ejecutar comandos de `gh` o parsear respuestas de red. Toda operación e inspección debe realizarse de forma directa y atómica utilizando los flags nativos provistos por GitHub CLI (`--query`, `--field`, `-q / --jq`, `--limit`). Si se requiere una consulta agregada compleja no soportada por `item-list`, la degradación elegante consiste en invocar directamente `gh api graphql` de forma nativa o aplicar Stop & Ask, sin violar el confinamiento del sandbox ni crear scripts huérfanos.
 - **Prohibición Categórica de `git remote prune`:** Prohibido invocar `git remote prune <remote>`. La poda de referencias remotas obsoletas debe gestionarse exclusivamente mediante el comando estándar de transporte (ej. `git pull --prune --ff-only` o `git fetch --prune <remote>`). Invocaciones aisladas a `git remote prune` violan la política desatendida y disparan alertas interactivas de confirmación de permisos en Antigravity.
 - **Circuit Breaker:** Toda consulta de red iterativa en terminal se limita a un máximo de 3 a 5 iteraciones; si la API carece de endpoint batch o experimenta latencia, el agente debe detenerse y reportar.
-- **Higiene de Temporales:** Archivos auxiliares como `.commit_msg`, `.pr_body`, `.comment_body` o `.issue_body` deben ser redactados con las herramientas nativas de archivos, removerse inmediatamente tras su uso (`rm -f <archivo>`) y estar contemplados en `.gitignore`.
+- **Higiene de Temporales y Confinamiento Obligatorio:** Archivos auxiliares como `.commit_msg`, `.pr_body`, `.comment_body` o `.issue_body` deben ser redactados con las herramientas nativas de archivos, removerse inmediatamente tras su uso (`rm -f <archivo>`) y estar contemplados en `.gitignore`. Las operaciones de remoción (`rm -f`) operan 100% sobre el workspace local y DEBEN ejecutarse obligatoriamente de forma confinada en el sandbox estándar (`BypassSandbox: false`). Queda terminantemente prohibido ejecutar `rm` con `BypassSandbox: true`, ya que elude indebidamente el sandbox y dispara modales interactivos innecesarios.
