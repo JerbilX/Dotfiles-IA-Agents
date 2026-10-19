@@ -76,17 +76,18 @@ agent-audit <target>
 ```
 
 #### Prohibición Categórica de Variantes de Ruta y Preservación de Permisos:
-- **Queda terminantemente prohibido** invocar rutas relativas o directas (ej. `./skills/conversation-audit/bin/agent-audit`, `skills/conversation-audit/bin/agent-audit`, `${HOME}/.gemini/...`).
-- **Mecánica de Permisos en Antigravity (Prefix Matching):** Antigravity evalúa las autorizaciones globales (Opción 4: *"Yes, and always allow '<comando>'"*) basándose en el prefijo exacto de la cadena de comando. Invocar rutas relativas o alternar prefijos rompe la correspondencia, invalida las aprobaciones previas y vuelve a disparar modales interactivos de confirmación. Operar de forma estricta y exclusiva bajo el prefijo `agent-audit` asegura que una única concesión de la Opción 4 sea definitiva, universal y permanente para todas las conversaciones y proyectos.
+- **Queda terminantemente prohibido** invocar rutas relativas, directas o dependientes de un runtime (ej. `./skills/...`, `skills/...`, `~/.gemini/...`, `~/.claude/...`).
+- **Resolución Universal y Permisos:** El uso exclusivo del binario estándar `agent-audit` en `$PATH` garantiza portabilidad transversal entre proyectos y compatibilidad con los sistemas de control de acceso y allowlists de cualquier runtime, previniendo la fragmentación de autorizaciones y solicitudes redundantes de permisos.
 
 #### Protocolo de Continuidad ante Ausencia en `$PATH` (`command not found` - Actionable Fallback):
-Si al invocar `agent-audit` el sistema retorna `command not found` (debido a que `~/.local/bin/agent-audit` no ha sido aprovisionado o `~/.local/bin` no está en el `$PATH` del host):
+Si al invocar `agent-audit` el sistema retorna `command not found` (debido a que `~/.local/bin/agent-audit` no ha sido enlazado o `~/.local/bin` no está en el `$PATH` del host):
 1. **Prohibición de desvío:** El agente tiene prohibido buscar rutas alternativas, inventar scripts auxiliares o explorar el sistema de archivos (`find_by_name`, `ls`).
-2. **Stop & Ask y Actionable Fallback:** El agente debe detenerse inmediatamente y emitir al usuario el diagnóstico conciso con el comando terminal-ready copiable para aprovisionar los enlaces en el sistema anfitrión:
-   ```bash
-   cd ~/Proyectos-IA-V3/Dotfiles-IA-Agents && ./build.sh skills antigravity
-   ```
-   *(O `./build.sh all` para un aprovisionamiento integral).*
+2. **Stop & Ask y Actionable Fallback:** El agente debe detenerse inmediatamente y suministrar al usuario el diagnóstico conciso junto con la instrucción terminal-ready para aprovisionar el entorno en la terminal anfitriona:
+   - Posicionarse en la raíz del repositorio de Dotfiles (`Dotfiles-IA-Agents`) y ejecutar el aprovisionamiento agnóstico completo:
+     ```bash
+     ./build.sh all
+     ```
+     *(O `cd <ruta-a-Dotfiles-IA-Agents> && ./build.sh all`).*
 3. Una vez aprovisionado el enlace en el anfitrión, reanudar la ejecución con la invocación canónica `agent-audit <target>`.
 
 #### Opciones Disponibles:
