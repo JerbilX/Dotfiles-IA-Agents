@@ -54,7 +54,7 @@ Opción elegida: **"Opción 2"**, articulada bajo la siguiente jerarquía:
      > *"Límites de Workspace y Aislamiento: Toda operación de lectura o escritura (sea vía herramientas nativas o terminal) se restringe estrictamente al workspace activo. Prohibido acceder o inspeccionar rutas externas o directorios superiores (`..`)."*
 2. **Definición Procedimental en Skill (`skills/issue-driven-workflow/SKILL.md`):**
    * Se establece la sección `2.4 Principio Git/GitHub-First para Interacción y Contexto de Repositorios`:
-     - **Canal Exclusivo:** Toda consulta de repositorios se ejecuta mediante `gh repo list JerbilX --limit 30 --json name,description,isPrivate` (`BypassSandbox: true`).
+     - **Canal Exclusivo:** Toda consulta de repositorios se ejecuta mediante `gh repo list --limit 30 --json name,description,isPrivate` (`BypassSandbox: true`).
      - **Prohibición de Reconocimiento Físico:** Prohibido usar herramientas de archivos o comandos para sondear carpetas hermanas o `..`.
      - **Desacoplamiento en Diseño:** Proyectos con integración multi-repo deben diseñarse desacoplados mediante variables de entorno (ej. `WORKSPACE_ROOT`) sin requerir inspección del host.
 
