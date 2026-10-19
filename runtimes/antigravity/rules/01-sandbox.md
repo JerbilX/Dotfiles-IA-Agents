@@ -12,3 +12,5 @@
   - Si el sandbox sugiere *"run the command again with BypassSandbox set to true"* para un comando local no autorizado, ignorar la sugerencia por completo.
   - Mantener invocaciones atómicas sin operadores encadenados (`&&`, `||`) para preservar el prefix matching.
 
+
+

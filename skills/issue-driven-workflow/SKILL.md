@@ -67,19 +67,19 @@ Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix
 ### 1.6 Inyección Inmediata y Agnóstica al Tablero Central (Projects v2)
 Para garantizar la indexación inmediata y agnóstica en el tablero central (sin depender de automatizaciones de auto-add restringidas en planes GitHub Free):
 ```bash
-gh project item-add 1 --owner JerbilX --url <issue-url>
+gh project item-add 1 --owner "@me" --url <issue-url>
 ```
-*(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento).*
+*(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento; `--owner "@me"` resuelve dinámicamente al usuario autenticado).*
 
 ### 1.7 Reporte al Usuario
 Al completar la creación e indexación, el agente debe reportar al usuario:
 - El número de issue asignado (`#<id>`).
-- El enlace web directo al issue (`https://github.com/JerbilX/<repo>/issues/<id>`).
+- El enlace web directo al issue (`https://github.com/<owner>/<repo>/issues/<id>`).
 - Confirmación de indexación en el tablero de Projects v2.
 
 ### 1.8 Control de Alcance y Desvíos (Scope Creep)
 - El agente **no debe inflar** el objetivo del ticket original con refactors, mejoras o arreglos colaterales no contemplados en la especificación de la issue.
-- Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create --body-file .issue_body`), indexarla al tablero central (`gh project item-add 1 --owner JerbilX --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
+- Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create --body-file .issue_body`), indexarla al tablero central (`gh project item-add 1 --owner "@me" --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
 
 
 ---
@@ -116,22 +116,41 @@ Protocolo determinista para inicializar repositorios locales y aprovisionar repo
 Si el usuario **confirma**:
 1. Ejecutar de forma autónoma el aprovisionamiento y push mediante:
    ```bash
-   gh repo create JerbilX/<nombre-del-directorio> --private --source=. --remote=origin --push
+   gh repo create <nombre-del-directorio> --private --source=. --remote=origin --push
    ```
-   *(Ejecutado con `BypassSandbox: true`; sin delegar comandos de consola ni pedirle al usuario que los ejecute manualmente).*
+   *(Ejecutado con `BypassSandbox: true`; crea el repositorio bajo la cuenta del usuario actual sin delegar comandos ni requerir intervención manual).*
 2. Inmediatamente después, configurar la eliminación automática de ramas fusionadas en el repositorio remoto:
    ```bash
-   gh repo edit JerbilX/<nombre-del-directorio> --delete-branch-on-merge
+   gh repo edit --delete-branch-on-merge
    ```
-   *(Ejecutado con `BypassSandbox: true`).*
+   *(Ejecutado con `BypassSandbox: true` sobre el repositorio actual).*
 3. Si el entorno cuenta con permisos para Projects (`gh project`), proceder a enlazar el repositorio al tablero central:
    ```bash
-   gh project link 1 --owner JerbilX --repo JerbilX/<nombre-del-directorio>
+   gh project link 1 --owner "@me" --repo <nombre-del-directorio>
    ```
    *(Ejecutado con `BypassSandbox: true`).*
 
 Si el usuario **rechaza**:
 - El repositorio permanece exclusivamente bajo control de versiones local hasta nueva orden explícita.
+
+### 2.4 Principio Git/GitHub-First para Interacción y Contexto de Repositorios
+
+El skill gobierna cómo el agente interactúa con el ecosistema de repositorios según las necesidades de la tarea:
+
+1. **La Fuente Canónica es Siempre Git / GitHub:**
+   - Ante cualquier tarea que requiera conocer, descubrir, listar o validar repositorios del usuario u organización actual, el agente debe consultar forzosamente los canales de Git y GitHub CLI (`gh repo list`, `gh repo view`, `git remote`).
+   - Para listar repositorios del usuario u organización activa:
+     ```bash
+     gh repo list --limit 30 --json name,description,isPrivate
+     ```
+     *(Ejecutado con `BypassSandbox: true` por requerir acceso de red. Si se requiere una organización o propietario específico, utilizar `gh repo list <owner>`).*
+
+2. **Prohibición de Reconocimiento Físico en Disco:**
+   - La interacción con repositorios nunca debe inducir salidas del workspace ni exploraciones en el sistema de archivos del host (`list_dir`, `find_by_name`, `ls` en carpetas hermanas o `..`).
+   - El agente no debe inferir ni inspeccionar si un repositorio está clonado localmente a menos que opere dentro del workspace activo correspondiente.
+
+3. **Desacoplamiento en Fases de Diseño y Arquitectura:**
+   - En tareas de arquitectura, diseño, RFCs o ADRs que contemplen integración multi-repo, los contratos y rutas deben diseñarse de forma agnóstica (vía configuración, parámetros o variables como `WORKSPACE_ROOT`), resolviendo la interacción mediante APIs o CLI sin requerir inspección física del host.
 
 ---
 
@@ -149,9 +168,9 @@ Ante preguntas de consulta, estado o coordinación sobre las tareas pendientes e
 1. **Comando CLI Simple y Filtrado Contextual por Repositorio:**
    Para prevenir la sobrecarga cognitiva y la dilución de contexto provocada por el volcado de inventarios masivos multi-proyecto, la consulta estándar ante preguntas sobre el board debe filtrar los ítems activos exclusivamente para el repositorio donde está posicionado el agente:
    ```bash
-   gh project item-list 1 --owner JerbilX --query "repo:JerbilX/<repo> -status:Done" --format json --jq '.items[] | {number: .content.number, title: .content.title, status: .status}'
+   gh project item-list 1 --owner "@me" --query "repo:<owner>/<repo> -status:Done" --format json --jq '.items[] | {number: .content.number, title: .content.title, status: .status}'
    ```
-   *(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento por requerir acceso de red; sustituir `<repo>` por el nombre del repositorio actual, ej. `Dotfiles-IA-Agents`).*
+   *(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento por requerir acceso de red; sustituir `<owner>/<repo>` por la identificación del repositorio actual).*
 
 2. **Priorización Analítica y Recomendación (Top 2 a 3):**
    - **Evaluación Técnica:** El agente debe procesar el listado acotado del repositorio actual y evaluar la relevancia técnica de las tareas:
@@ -168,28 +187,28 @@ Ante preguntas de consulta, estado o coordinación sobre las tareas pendientes e
    *(Ejecutado con `BypassSandbox: true`).*
 2. Transicionar el estado del ticket en el tablero central (Project 1) a `⚙️ In Progress`:
    ```bash
-   gh project item-edit 1 --owner JerbilX --url <issue-url> --field "Status" --value "⚙️ In Progress"
+   gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "⚙️ In Progress"
    ```
    *(Ejecutado con `BypassSandbox: true`).*
 
 ### 3.3 Despacho de Tareas: Vía B - Instrucción de Backlog (*"toma la siguiente tarea lista en Ready for Dev"*)
 1. Consultar exclusivamente las tareas en estado `🎯 Ready for Dev` acotadas al repositorio actual usando el filtrado nativo server-side de `gh` para evitar desbordes de buffer (`<truncated lines>`):
    ```bash
-   gh project item-list 1 --owner JerbilX --query 'repo:JerbilX/<repo> status:"🎯 Ready for Dev"' --field "Status"
+   gh project item-list 1 --owner "@me" --query 'repo:<owner>/<repo> status:"🎯 Ready for Dev"' --field "Status"
    ```
    *(Ejecutado con `BypassSandbox: true`).*
    - Si se requiere salida JSON compacta para lectura estructurada, utilizar el flag nativo `-q / --jq`:
      ```bash
-     gh project item-list 1 --owner JerbilX --query 'repo:JerbilX/<repo> status:"🎯 Ready for Dev"' --format json --jq '.items[] | {number: .content.number, title: .content.title, url: .content.url}'
+     gh project item-list 1 --owner "@me" --query 'repo:<owner>/<repo> status:"🎯 Ready for Dev"' --format json --jq '.items[] | {number: .content.number, title: .content.title, url: .content.url}'
      ```
    - Si no existen tareas en `🎯 Ready for Dev`, consultar opcionalmente tareas activas excluyendo las finalizadas:
      ```bash
-     gh project item-list 1 --owner JerbilX --query 'repo:JerbilX/<repo> -status:Done' --field "Status" --limit 20
+     gh project item-list 1 --owner "@me" --query 'repo:<owner>/<repo> -status:Done' --field "Status" --limit 20
      ```
 2. Identificar el ticket prioritario a abordar aplicando el criterio de priorización analítica (Top 2-3).
 3. Transicionar dicho ítem a `⚙️ In Progress` mediante el comando determinista directo:
    ```bash
-   gh project item-edit 1 --owner JerbilX --url <issue-url> --field "Status" --value "⚙️ In Progress"
+   gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "⚙️ In Progress"
    ```
    *(Ejecutado con `BypassSandbox: true`).*
 4. Proceder con la ingesta técnica de la tarea (`gh issue view <id>`).
@@ -317,7 +336,7 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
 - **Vinculación Canónica de Cierre:** El cuerpo del Pull Request debe incluir obligatoriamente la directiva `Closes #<id>` o `Fixes #<id>` para asegurar el cierre automático de la issue al fusionarse el PR.
 - **Sincronización Determinista con el Tablero Central:** Asegurar que el estado del ítem en Project 1 pase a `👀 In Review / PR` mediante el comando directo por nombre de campo:
   ```bash
-  gh project item-edit 1 --owner JerbilX --url <issue-url> --field "Status" --value "👀 In Review / PR"
+  gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "👀 In Review / PR"
   ```
   *(Queda prohibido ejecutar consultas exploratorias de `field-list` o `item-list` para resolver IDs cuando el comando directo es determinista).*
 - **Gate de Aprobación Humana:** La revisión del diff, aprobación y fusión del PR es responsabilidad exclusiva del PM / Tech Lead en la interfaz de GitHub.
@@ -490,7 +509,7 @@ Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes
 2. **Indexación y Transición del PR de Reversión:**
    Asegurar que la tarjeta del PR de reversión ingrese en el tablero central (Project 1) en estado `👀 In Review / PR`:
    ```bash
-   gh project item-edit 1 --owner JerbilX --url <revert-pr-url> --field "Status" --value "👀 In Review / PR"
+   gh project item-edit 1 --owner "@me" --url <revert-pr-url> --field "Status" --value "👀 In Review / PR"
    ```
    *(Ejecutado con `BypassSandbox: true`).*
 
@@ -509,7 +528,7 @@ Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes
    ```
    Transicionar deterministamente la tarjeta de la issue reabierta en Project 1 al estado `🎯 Ready for Dev`:
    ```bash
-   gh project item-edit 1 --owner JerbilX --url <issue-url> --field "Status" --value "🎯 Ready for Dev"
+   gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "🎯 Ready for Dev"
    ```
    *(Ejecutado con `BypassSandbox: true`).*
 
