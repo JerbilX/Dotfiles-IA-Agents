@@ -8,8 +8,7 @@
   - `./build.sh build` y `./build.sh check` operan dentro del workspace y deben ejecutarse confinados (`BypassSandbox: false`).
   - Comandos que escriben fuera del workspace (`./build.sh link`, `./build.sh all`) son responsabilidad exclusiva de bootstrap del usuario en terminal nativa.
 - **Exclusividad de Bypass y Blindaje Anti-Sugerencias:**
-  - `BypassSandbox: true` está reservado exclusivamente para la suite de `git` y `gh`, y para la ejecución atómica del comando de auditoría `agent-audit` (incluyendo sus rutas canónicas de resolución ante ausencia en `$PATH`: `./skills/conversation-audit/bin/agent-audit` o `${HOME}/.gemini/config/skills/conversation-audit/bin/agent-audit`). Prohibido usarlo para otros comandos locales (`ls`, `cat`, utilidades).
-  - Para evitar la fragmentación de prefijos en Antigravity y la solicitud interactiva reiterada de permisos (Opción 4), debe priorizarse siempre la invocación uniforme mediante el comando estándar `agent-audit` (habilitado en `~/.local/bin`).
+  - `BypassSandbox: true` está reservado exclusivamente para la suite de `git` y `gh`, y para el CLI `agent-audit` (priorizando la invocación estándar `agent-audit` sobre rutas directas para unificar permisos permanentes). Prohibido usarlo para otros comandos locales (`ls`, `cat`, utilidades).
   - Si el sandbox sugiere *"run the command again with BypassSandbox set to true"* para un comando local no autorizado, ignorar la sugerencia por completo.
   - Mantener invocaciones atómicas sin operadores encadenados (`&&`, `||`) para preservar el prefix matching.
 
