@@ -1154,6 +1154,42 @@ check_runtime() {
         echo "  [✓] [${r}] Binarios de skills: ${count_scripts} script(s)/binario(s) verificado(s)"
     fi
 
+    # Verificación de presencia de binarios en ~/.local/bin
+    for skill_name in "${enabled_skills[@]}"; do
+        [ -z "${skill_name}" ] && continue
+        local skill_dir
+        skill_dir="$(resolve_skill_dir "${skill_name}")"
+        local candidate_bins=()
+        if [ -d "${skill_dir}/bin" ]; then
+            for b in "${skill_dir}/bin/"*; do
+                [ -f "${b}" ] && [ -x "${b}" ] && candidate_bins+=("${b}")
+            done
+        fi
+        if [ -d "${skill_dir}/scripts" ]; then
+            for script in "${skill_dir}/scripts/"*.sh; do
+                [ -f "${script}" ] && [ -x "${script}" ] && candidate_bins+=("${script}")
+            done
+        fi
+
+        for script in "${candidate_bins[@]}"; do
+            [ -z "${script}" ] && continue
+            local bin_name
+            bin_name=$(basename "${script}")
+            [[ "${bin_name}" == *.sh ]] && bin_name="${bin_name%.sh}"
+            local bin_alias
+            bin_alias="$(get_binary_alias "${config_file}" "${bin_name}")"
+            if [ -n "${bin_alias}" ]; then
+                bin_name="${bin_alias}"
+            fi
+
+            local target_bin="${HOME}/.local/bin/${bin_name}"
+            if [ ! -e "${target_bin}" ] && [ ! -L "${target_bin}" ]; then
+                echo "  [!] Advertencia [${r}]: Binario de skill '${bin_name}' no está enlazado en ~/.local/bin/${bin_name} (ejecuta './build.sh skills ${r}')" >&2
+                CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+            fi
+        done
+    done
+
     # 4. Verificación de servidores MCP
     local enabled_mcps=()
     mapfile -t enabled_mcps < <(get_enabled_mcp_servers "${config_file}")

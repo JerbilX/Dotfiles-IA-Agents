@@ -66,11 +66,36 @@ Cuando el usuario solicite auditar una conversación previa o cuando se requiera
 - El agente o usuario no requiere conocer ni inspeccionar las rutas internas del host; basta con proporcionar el identificador de la sesión (`<conversation-id>` / UUID) o una ruta directa en caso de procesar archivos de exportación externa.
 
 ### Paso 2: Invocación del CLI Determinista (`agent-audit`)
-Ejecutar el comando de auditoría con `BypassSandbox: true` (requerido para acceder a las rutas externas al workspace donde residen los logs):
 
-```bash
-agent-audit <conversation-id-o-ruta>
-```
+La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder a las rutas externas al workspace donde residen los logs del runtime).
+
+#### Jerarquía Canónica de Resolución del Comando:
+
+1. **Vía Canónica Principal (Estándar y Preferente):**
+   Invocar directamente el comando expuesto en `$PATH`:
+   ```bash
+   agent-audit <target>
+   ```
+   *(Esta es la forma canónica recomendada. Asegura que el motor de permisos de Antigravity reconozca un único prefijo global permanente mediante la Opción 4).*
+
+2. **Vía de Fallback Determinista (Ante ausencia en `$PATH` o `command not found`):**
+   Si la subshell no incluye `~/.local/bin` o no se ha ejecutado `./build.sh skills` en el host, resolver directamente la ruta sin recurrir a búsquedas ciegas (`find_by_name`, `ls`):
+   - **Dentro de este repositorio (`Dotfiles-IA-Agents`):**
+     ```bash
+     ./skills/conversation-audit/bin/agent-audit <target>
+     ```
+   - **En workspaces externos (otros proyectos):**
+     - En **Antigravity**:
+       ```bash
+       ${HOME}/.gemini/config/skills/conversation-audit/bin/agent-audit <target>
+       ```
+     - En **Claude Code**:
+       ```bash
+       ${HOME}/.claude/skills/conversation-audit/bin/agent-audit <target>
+       ```
+
+> [!NOTE]
+> **Preservación de Permisos (Prefix Matching):** La alternancia de rutas de ejecución altera la cadena evaluada por el runtime. Para evitar modales recurrentes de autorización, se recomienda asegurar la ejecución de `./build.sh skills` en el anfitrión para operar siempre bajo el prefijo unificado `agent-audit`.
 
 #### Opciones Disponibles:
 - Salida en texto tabular en consola (predeterminada):
