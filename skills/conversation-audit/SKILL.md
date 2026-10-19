@@ -65,27 +65,39 @@ Cuando el usuario solicite auditar una conversación previa o cuando se requiera
 - La resolución de rutas físicas (`resolve_path`) está completamente encapsulada dentro del adaptador correspondiente a cada runtime (`TranscriptAdapter`).
 - El agente o usuario no requiere conocer ni inspeccionar las rutas internas del host; basta con proporcionar el identificador de la sesión (`<conversation-id>` / UUID) o una ruta directa en caso de procesar archivos de exportación externa.
 
-### Paso 2: Invocación Canónica del CLI Determinista (`agent-audit`)
+### Paso 2: Invocación del CLI Determinista (`agent-audit`)
 
 La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder a las rutas externas al workspace donde residen los logs del runtime).
 
-#### Invocación Canónica Universal (Estándar en `$PATH`):
-Invocar única y exclusivamente el comando estándar expuesto en `$PATH`:
-```bash
-agent-audit <target>
-```
+#### Jerarquía Determinista de Invocación (Degradación Elegante):
 
-#### Prohibición Categórica de Variantes de Ruta y Preservación de Permisos:
-- **Queda terminantemente prohibido** invocar rutas relativas, directas o dependientes de un runtime (ej. `./skills/...`, `skills/...`, `~/.gemini/...`, `~/.claude/...`).
-- **Resolución Universal y Permisos:** El uso exclusivo del binario estándar `agent-audit` en `$PATH` garantiza portabilidad transversal entre proyectos y compatibilidad con los sistemas de control de acceso y allowlists de cualquier runtime, previniendo la fragmentación de autorizaciones y solicitudes redundantes de permisos.
+1. **Vía Canónica Principal (Estándar en `$PATH`):**
+   Invocar directamente el comando estándar expuesto en `$PATH`:
+   ```bash
+   agent-audit <target>
+   ```
+   *(Esta es la forma canónica recomendada. Asegura que el motor de permisos de Antigravity reconozca un único prefijo global permanente mediante la Opción 4).*
 
-#### Protocolo de Continuidad ante Ausencia en `$PATH` (`command not found` - Actionable Fallback):
-Si al invocar `agent-audit` el sistema retorna `command not found` (debido a que el binario no está enlazado en `~/.local/bin` o dicho directorio no está exportado en el `$PATH` del host):
-1. **Aislamiento de Workspace y Prohibición de Desvío:** El agente tiene terminantemente prohibido intentar escapar del workspace activo para buscar scripts en directorios externos (`..`), inventar wrappers locales o explorar el sistema de archivos (`find_by_name`, `ls`).
-2. **Stop & Ask (Instrucción de Anfitrión):** El agente debe detenerse inmediatamente y notificar al usuario:
-   - **Diagnóstico:** El CLI `agent-audit` no se encuentra disponible en el `$PATH` del sistema anfitrión.
-   - **Acción Externa Requerida:** Solicitar al usuario que verifique la presencia de `~/.local/bin` en su `$PATH` y aprovisione las herramientas en su anfitrión (ejecutando `./build.sh all` en su repositorio de Dotfiles desde una terminal nativa).
-3. Una vez garantizada la presencia del binario en el anfitrión, reanudar la ejecución mediante la invocación estándar `agent-audit <target>`.
+2. **Vía de Fallback Determinista (Ante ausencia en `$PATH` o `command not found`):**
+   Si la subshell no incluye `~/.local/bin` o no se ha ejecutado `./build.sh skills` en el host, resolver directamente la ruta sin recurrir a búsquedas ciegas (`find_by_name`, `ls`):
+   - **Dentro de este repositorio (`Dotfiles-IA-Agents`):**
+     ```bash
+     ./skills/conversation-audit/bin/agent-audit <target>
+     ```
+   - **En workspaces externos (otros proyectos):**
+     - En **Antigravity**:
+       ```bash
+       ${HOME}/.gemini/config/skills/conversation-audit/bin/agent-audit <target>
+       ```
+     - En **Claude Code**:
+       ```bash
+       ${HOME}/.claude/skills/conversation-audit/bin/agent-audit <target>
+       ```
+
+3. **Detención Segura (*Stop & Ask* - Actionable Fallback):**
+   Solo si el binario no existe físicamente en el sistema en ninguna de las rutas anteriores:
+   - **Diagnóstico:** El CLI `agent-audit` no se encuentra disponible ni en `$PATH` ni en las rutas canónicas del skill.
+   - **Acción Externa:** Solicitar al usuario que posicione su terminal en la raíz de su repositorio de Dotfiles y ejecute `./build.sh all` para aprovisionar las herramientas en el anfitrión.
 
 #### Opciones Disponibles:
 - Salida en texto tabular en consola (predeterminada):
