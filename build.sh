@@ -966,21 +966,35 @@ skills_runtime() {
         local target_dir
         target_dir="$(resolve_skill_dir "${skill_name}")"
         target_dir="$(realpath -m "${target_dir}")"
-        if [[ -d "${target_dir}/scripts" ]]; then
-            for script in "${target_dir}/scripts/"*.sh; do
-                if [[ -f "${script}" && -x "${script}" ]]; then
-                    local bin_name
-                    bin_name=$(basename "${script}" .sh)
-                    local bin_alias
-                    bin_alias="$(get_binary_alias "${config_file}" "${bin_name}")"
-                    if [[ -n "${bin_alias}" ]]; then
-                        bin_name="${bin_alias}"
-                    fi
-                    ln -sfn "${script}" "${HOME}/.local/bin/${bin_name}"
-                    echo "      -> [${r}] Binario expuesto en PATH: ~/.local/bin/${bin_name}"
+        local candidate_bins=()
+        if [[ -d "${target_dir}/bin" ]]; then
+            for b in "${target_dir}/bin/"*; do
+                if [[ -f "${b}" && -x "${b}" ]]; then
+                    candidate_bins+=("${b}")
                 fi
             done
         fi
+        if [[ -d "${target_dir}/scripts" ]]; then
+            for script in "${target_dir}/scripts/"*.sh; do
+                if [[ -f "${script}" && -x "${script}" ]]; then
+                    candidate_bins+=("${script}")
+                fi
+            done
+        fi
+
+        for script in "${candidate_bins[@]}"; do
+            [[ -z "${script}" ]] && continue
+            local bin_name
+            bin_name=$(basename "${script}")
+            [[ "${bin_name}" == *.sh ]] && bin_name="${bin_name%.sh}"
+            local bin_alias
+            bin_alias="$(get_binary_alias "${config_file}" "${bin_name}")"
+            if [[ -n "${bin_alias}" ]]; then
+                bin_name="${bin_alias}"
+            fi
+            ln -sfn "${script}" "${HOME}/.local/bin/${bin_name}"
+            echo "      -> [${r}] Binario expuesto en PATH: ~/.local/bin/${bin_name}"
+        done
     done
     echo "==> [skills] Provisionamiento finalizado para '${r}'."
 }
@@ -1085,6 +1099,18 @@ check_runtime() {
         [ -z "${skill_name}" ] && continue
         local skill_dir
         skill_dir="$(resolve_skill_dir "${skill_name}")"
+        local skill_bin_dir="${skill_dir}/bin"
+        if [ -d "${skill_bin_dir}" ]; then
+            for b in "${skill_bin_dir}"/*; do
+                [ ! -e "${b}" ] && continue
+                count_scripts=$((count_scripts + 1))
+                if [ ! -x "${b}" ]; then
+                    echo "  [✗] [${r}] Binario de skill '${b}' no tiene permisos de ejecución (+x)" >&2
+                    bin_scripts_ok=false
+                    CHECK_ERRORS=$((CHECK_ERRORS + 1))
+                fi
+            done
+        fi
         local skill_scripts_dir="${skill_dir}/scripts"
         if [ -d "${skill_scripts_dir}" ]; then
             for script in "${skill_scripts_dir}"/*.sh; do
@@ -1111,20 +1137,21 @@ check_runtime() {
             local skill_dir
             skill_dir="$(resolve_skill_dir "${skill_name}")"
             local script_path="${skill_dir}/scripts/${src_name}.sh"
-            if [ -f "${script_path}" ]; then
+            local bin_path="${skill_dir}/bin/${src_name}"
+            if [ -f "${script_path}" ] || [ -f "${bin_path}" ]; then
                 found=true
                 break
             fi
         done
 
         if [ "${found}" = false ]; then
-            echo "  [!] Advertencia [${r}]: Alias de binario '${src_name}' en config.json no coincide con ningún script en los skills habilitados" >&2
+            echo "  [!] Advertencia [${r}]: Alias de binario '${src_name}' en config.json no coincide con ningún script o binario en los skills habilitados" >&2
             CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
         fi
     done
 
     if [ "${bin_scripts_ok}" = true ]; then
-        echo "  [✓] [${r}] Binarios de skills: ${count_scripts} script(s) verificado(s)"
+        echo "  [✓] [${r}] Binarios de skills: ${count_scripts} script(s)/binario(s) verificado(s)"
     fi
 
     # 4. Verificación de servidores MCP

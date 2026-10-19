@@ -3,9 +3,12 @@
   "skills": [
     "adr-manager",
     "issue-driven-workflow",
-    "autonomous-learning"
+    "autonomous-learning",
+    "conversation-audit"
   ],
-  "binaries": {},
+  "binaries": {
+    "agent-audit": "agent-audit"
+  },
   "mcp_servers": [],
   "target": {
     "config_dir": "${HOME}/.claude",

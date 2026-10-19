@@ -8,3 +8,5 @@
 .issue_body
 *.probe
 .probe_*
+__pycache__/
+*.pyc
