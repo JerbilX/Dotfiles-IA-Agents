@@ -57,15 +57,12 @@ Guía metodológica, catálogo de métricas y protocolo operativo para la audito
 Cuando el usuario solicite auditar una conversación previa o cuando se requiera analizar el desempeño de una sesión reciente:
 
 ```
-[1. Localización] -> [2. Invocación CLI] -> [3. Evaluación] -> [4. Reporte / Feedback]
+[1. Identificación] -> [2. Invocación CLI] -> [3. Evaluación] -> [4. Reporte / Feedback]
 ```
 
-### Paso 1: Localización del Archivo o ID de Sesión
-- En **Antigravity**:
-  - Las sesiones se encuentran en `~/.gemini/antigravity/brain/<conversation-id>/.system_generated/logs/transcript.jsonl`.
-  - El CLI acepta directamente la ruta al archivo o el `<conversation-id>` (UUID).
-- En **Claude Code**:
-  - Las sesiones residen en `~/.claude/` o archivos exportados `.json` / `.jsonl`.
+### Paso 1: Identificación del Objetivo
+- La resolución de rutas físicas (`resolve_path`) está completamente encapsulada dentro del adaptador correspondiente a cada runtime (`TranscriptAdapter`).
+- El agente o usuario no requiere conocer ni inspeccionar las rutas internas del host; basta con proporcionar el identificador de la sesión (`<conversation-id>` / UUID) o una ruta directa en caso de procesar archivos de exportación externa.
 
 ### Paso 2: Invocación del CLI Determinista (`agent-audit`)
 Ejecutar el comando de auditoría con `BypassSandbox: true` (requerido para acceder a las rutas externas al workspace donde residen los logs):

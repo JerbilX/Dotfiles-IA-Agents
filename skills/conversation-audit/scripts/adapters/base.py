@@ -54,6 +54,11 @@ class TranscriptAdapter(ABC):
     """Interfaz abstracta para parsers de transcripciones de diferentes runtimes."""
 
     @abstractmethod
+    def resolve_path(self, target: Path) -> Path:
+        """Resuelve la ruta física del archivo de sesión o transcripción a partir de un ID o ruta."""
+        pass
+
+    @abstractmethod
     def detect(self, path: Path) -> bool:
         """Determina si el archivo o ruta corresponde a este runtime."""
         pass
