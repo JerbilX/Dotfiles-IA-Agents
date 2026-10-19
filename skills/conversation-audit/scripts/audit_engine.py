@@ -54,6 +54,7 @@ class AuditReport:
     total_thinking_chars: int = 0
     avg_thinking_chars: float = 0.0
     antipatterns: List[DetectedAntipattern] = field(default_factory=list)
+    steps_timeline: List[Dict[str, Any]] = field(default_factory=list)
 
     @property
     def overall_tool_error_rate(self) -> float:
@@ -108,16 +109,47 @@ class AuditEngine:
         # Pasos más lentos (Top 5)
         steps_with_dur = [s for s in steps if s.duration_seconds is not None]
         steps_with_dur.sort(key=lambda s: s.duration_seconds or 0.0, reverse=True)
-        report.slowest_steps = [
-            {
+        report.slowest_steps = []
+        for s in steps_with_dur[:5]:
+            item = {
                 "step_index": s.step_index,
                 "duration_seconds": round(s.duration_seconds or 0.0, 2),
                 "type": s.step_type,
                 "source": s.source,
                 "tools": [tc.name for tc in s.tool_calls],
             }
-            for s in steps_with_dur[:5]
-        ]
+            if s.tool_calls:
+                actions = [tc.tool_action or tc.args.get("CommandLine", "")[:60] for tc in s.tool_calls if tc.tool_action or tc.args.get("CommandLine")]
+                if actions:
+                    item["detail"] = " | ".join(actions)
+            elif s.content:
+                clean_c = s.content.strip().replace("\n", " ")
+                item["detail"] = clean_c[:80] + "..." if len(clean_c) > 80 else clean_c
+            report.slowest_steps.append(item)
+
+        # Cronología de pasos
+        for s in steps:
+            tools_summary = []
+            for tc in s.tool_calls:
+                cmd = tc.args.get("CommandLine") or tc.args.get("command") or ""
+                act = tc.tool_action or tc.tool_summary or ""
+                target = tc.args.get("TargetFile") or tc.args.get("AbsolutePath") or ""
+                tools_summary.append({
+                    "name": tc.name,
+                    "action": act,
+                    "command": cmd,
+                    "target": target,
+                })
+
+            report.steps_timeline.append({
+                "step_index": s.step_index,
+                "source": s.source,
+                "type": s.step_type,
+                "duration_seconds": round(s.duration_seconds or 0.0, 2),
+                "tools": tools_summary,
+                "content_snippet": (s.content[:100].replace("\n", " ") + "...") if s.content else "",
+                "truncated": s.truncated_fields,
+            })
 
         # 3. Métricas de Herramientas
         tool_counts: Dict[str, int] = defaultdict(int)
@@ -312,7 +344,18 @@ def format_text_report(report: AuditReport, verbose: bool = False) -> str:
         lines.append(" PASOS DE MAYOR LATENCIA (TOP 5):")
         for s in report.slowest_steps:
             tools_str = ", ".join(s["tools"]) if s["tools"] else "N/A"
-            lines.append(f"  - Paso {s['step_index']:<3} : {s['duration_seconds']:>6.1f} s | {s['type']:<18} | Tools: {tools_str}")
+            detail_str = f" | {s['detail']}" if "detail" in s and s["detail"] else ""
+            lines.append(f"  - Paso {s['step_index']:<3} : {s['duration_seconds']:>6.1f} s | {s['type']:<18} | Tools: {tools_str}{detail_str}")
+        lines.append("-" * 72)
+
+    # Cronología detallada si verbose
+    if verbose and report.steps_timeline:
+        lines.append(f" CRONOLOGÍA DE PASOS ({len(report.steps_timeline)} pasos):")
+        for st in report.steps_timeline:
+            tools_str = ", ".join(f"{t['name']}({t['action'] or t['command'][:40]})" if isinstance(t, dict) else str(t) for t in st["tools"]) if st["tools"] else ""
+            snip = f" | {st['content_snippet']}" if st["source"] == "USER" else (f" | {tools_str}" if tools_str else "")
+            dur = f"{st['duration_seconds']:>6.1f}s"
+            lines.append(f"  [{st['step_index']:>3}] {dur} | {st['source']:<6} | {st['type']:<16}{snip}")
         lines.append("-" * 72)
 
     # Antipatrones
@@ -358,7 +401,8 @@ def format_markdown_report(report: AuditReport, template_path: Optional[Path] = 
     lines.append("| :---: | :---: | :--- | :--- |")
     for s in report.slowest_steps:
         tools_str = ", ".join(f"`{t}`" for t in s["tools"]) if s["tools"] else "N/A"
-        lines.append(f"| {s['step_index']} | {s['duration_seconds']} | `{s['type']}` | {tools_str} |")
+        detail_str = f" ({s['detail']})" if "detail" in s and s["detail"] else ""
+        lines.append(f"| {s['step_index']} | {s['duration_seconds']} | `{s['type']}` | {tools_str}{detail_str} |")
     lines.append("")
     lines.append("## 4. Antipatrones y Anomalías Detectadas")
     lines.append("")
@@ -407,5 +451,6 @@ def format_json_report(report: AuditReport) -> str:
         "slowest_steps": report.slowest_steps,
         "tools": {name: asdict(m) for name, m in report.tool_metrics.items()},
         "antipatterns": [asdict(ap) for ap in report.antipatterns],
+        "timeline": report.steps_timeline,
     }
     return json.dumps(data, indent=2, default=custom_serializer)

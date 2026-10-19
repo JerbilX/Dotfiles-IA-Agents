@@ -169,7 +169,13 @@ class AntigravityAdapter(TranscriptAdapter):
     def extract_metadata(self, path: Path, steps: List[NormalizedStep]) -> ConversationMetadata:
         """Extrae metadatos globales de la sesión Antigravity."""
         resolved = self.resolve_path(path)
-        session_id = resolved.parent.parent.name if ".system_generated" in str(resolved) else resolved.stem
+        if ".system_generated" in resolved.parts:
+            idx = resolved.parts.index(".system_generated")
+            session_id = resolved.parts[idx - 1]
+        elif resolved.stem in ("transcript", "transcript_full"):
+            session_id = resolved.parent.name
+        else:
+            session_id = resolved.stem
         start_time = steps[0].created_at if steps and steps[0].created_at else None
         end_time = steps[-1].created_at if steps and steps[-1].created_at else None
 
