@@ -4,10 +4,12 @@
     "eso-addon-development",
     "adr-manager",
     "issue-driven-workflow",
-    "autonomous-learning"
+    "autonomous-learning",
+    "conversation-audit"
   ],
   "binaries": {
-    "build_release": "eso-build"
+    "build_release": "eso-build",
+    "agent-audit": "agent-audit"
   },
   "mcp_servers": [
     "eso-mcp-server"

@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""
+Adaptador de transcripciones para el runtime Claude Code.
+Parsea archivos JSON y JSONL de sesiones y logs de Claude Code.
+"""
+
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from .base import (
+    ConversationMetadata,
+    NormalizedStep,
+    NormalizedToolCall,
+    TranscriptAdapter,
+)
+
+
+class ClaudeAdapter(TranscriptAdapter):
+    """Adaptador para transcripciones generadas por Claude Code."""
+
+    def resolve_path(self, target: Path) -> Path:
+        """Resuelve la ruta física del log de Claude Code."""
+        p = target.expanduser().resolve()
+        if p.is_file():
+            return p
+        if p.is_dir():
+            # Buscar archivos JSON o JSONL en el directorio
+            for ext in ("*.jsonl", "*.json"):
+                matches = list(p.glob(ext))
+                if matches:
+                    return sorted(matches)[-1]
+        # Búsqueda en directorio ~/.claude
+        claude_home = Path.home() / ".claude"
+        if claude_home.is_dir():
+            cand = claude_home / target.name
+            if cand.is_file():
+                return cand
+        return target
+
+    def detect(self, path: Path) -> bool:
+        """Determina si el archivo corresponde a una sesión de Claude Code."""
+        resolved = self.resolve_path(path)
+        if not resolved.is_file():
+            return False
+
+        try:
+            with open(resolved, "r", encoding="utf-8") as f:
+                first_chunk = f.read(2048)
+                if not first_chunk:
+                    return False
+                # Claude Code suele usar roles "assistant", "user", "tool_use", "tool_result"
+                if '"role":' in first_chunk and ('"assistant"' in first_chunk or '"user"' in first_chunk):
+                    if '"tool_use"' in first_chunk or '"tool_result"' in first_chunk or 'claude' in str(resolved).lower():
+                        return True
+        except Exception:
+            return False
+        return False
+
+    def parse(self, path: Path) -> List[NormalizedStep]:
+        """Parsea logs de Claude Code a NormalizedStep."""
+        resolved = self.resolve_path(path)
+        if not resolved.is_file():
+            raise FileNotFoundError(f"No se encontró el log de Claude: {path}")
+
+        raw_events: List[Dict[str, Any]] = []
+        with open(resolved, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            if not content:
+                return []
+            if content.startswith("[") and content.endswith("]"):
+                try:
+                    raw_events = json.loads(content)
+                except Exception:
+                    raw_events = []
+            elif content.startswith("{") and not content.endswith("}"):
+                # Tratar como JSONL
+                for line in content.splitlines():
+                    line = line.strip()
+                    if line:
+                        try:
+                            raw_events.append(json.loads(line))
+                        except Exception:
+                            pass
+            elif content.startswith("{") and content.endswith("}"):
+                try:
+                    data = json.loads(content)
+                    if isinstance(data, dict) and "messages" in data:
+                        raw_events = data["messages"]
+                    else:
+                        raw_events = [data]
+                except Exception:
+                    pass
+
+        normalized_steps: List[NormalizedStep] = []
+        tool_results_by_id: Dict[str, Dict[str, Any]] = {}
+
+        # Primera pasada: indexar tool_results si están desacoplados
+        for event in raw_events:
+            blocks = event.get("content", [])
+            if isinstance(blocks, list):
+                for b in blocks:
+                    if isinstance(b, dict) and b.get("type") == "tool_result":
+                        t_id = b.get("tool_use_id", "")
+                        if t_id:
+                            tool_results_by_id[t_id] = b
+
+        step_idx = 0
+        for event in raw_events:
+            role = event.get("role", "unknown")
+            source = "USER" if role == "user" else ("MODEL" if role == "assistant" else "SYSTEM")
+            step_type = "USER_INPUT" if role == "user" else "PLANNER_RESPONSE"
+
+            ts_raw = event.get("timestamp") or event.get("created_at") or event.get("ts")
+            created_at: Optional[datetime] = None
+            if ts_raw:
+                try:
+                    created_at = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+                except Exception:
+                    pass
+
+            text_content: List[str] = []
+            thinking_parts: List[str] = []
+            tool_calls: List[NormalizedToolCall] = []
+
+            raw_content = event.get("content", "")
+            if isinstance(raw_content, str):
+                text_content.append(raw_content)
+            elif isinstance(raw_content, list):
+                for block in raw_content:
+                    if not isinstance(block, dict):
+                        continue
+                    b_type = block.get("type")
+                    if b_type == "text":
+                        text_content.append(block.get("text", ""))
+                    elif b_type == "thinking":
+                        thinking_parts.append(block.get("thinking", ""))
+                    elif b_type == "tool_use":
+                        t_id = block.get("id", "")
+                        t_name = block.get("name", "tool")
+                        t_input = block.get("input", {})
+                        res = tool_results_by_id.get(t_id, {})
+                        is_error = res.get("is_error", False)
+                        res_content = str(res.get("content", ""))
+
+                        norm_tc = NormalizedToolCall(
+                            name=t_name,
+                            args=t_input if isinstance(t_input, dict) else {"raw": t_input},
+                            call_id=t_id,
+                            status="ERROR" if is_error else "DONE",
+                            error=res_content if is_error else None,
+                            raw_output=res_content if not is_error else None,
+                        )
+                        tool_calls.append(norm_tc)
+
+            usage = event.get("usage", {})
+            tokens = {
+                "input": usage.get("input_tokens", 0),
+                "output": usage.get("output_tokens", 0),
+                "cache_read": usage.get("cache_read_input_tokens", 0),
+            }
+
+            norm_step = NormalizedStep(
+                step_index=step_idx,
+                source=source,
+                step_type=step_type,
+                created_at=created_at,
+                content="\n".join(text_content) if text_content else None,
+                thinking="\n".join(thinking_parts) if thinking_parts else None,
+                tool_calls=tool_calls,
+                tokens=tokens,
+                raw=event,
+            )
+            normalized_steps.append(norm_step)
+            step_idx += 1
+
+        # Calcular duraciones relativas
+        for i in range(len(normalized_steps) - 1):
+            s_curr = normalized_steps[i]
+            s_next = normalized_steps[i + 1]
+            if s_curr.created_at and s_next.created_at:
+                delta = (s_next.created_at - s_curr.created_at).total_seconds()
+                s_curr.duration_seconds = max(0.0, delta)
+
+        return normalized_steps
+
+    def extract_metadata(self, path: Path, steps: List[NormalizedStep]) -> ConversationMetadata:
+        """Extrae metadatos globales de la sesión Claude."""
+        resolved = self.resolve_path(path)
+        session_id = resolved.stem
+        start_time = steps[0].created_at if steps and steps[0].created_at else None
+        end_time = steps[-1].created_at if steps and steps[-1].created_at else None
+
+        return ConversationMetadata(
+            session_id=session_id,
+            runtime="claude",
+            source_path=str(resolved),
+            start_time=start_time,
+            end_time=end_time,
+        )
