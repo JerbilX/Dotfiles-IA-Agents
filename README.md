@@ -131,12 +131,14 @@ Verifica la existencia del directorio destino declarado en `target.config_dir`, 
 ./build.sh link claude      # Enlaza exclusivamente Claude Code (~/.claude/)
 ```
 
-### 3. Aprovisionamiento de Skills (`skills`)
+### 3. Aprovisionamiento de Skills y Binarios (`skills`)
 Valida `runtimes/<runtime>/config.json` contra `runtimes/schema/runtime-config.schema.json` (fail-fast), purga symlinks obsoletos, aprovisiona los skills habilitados en la ruta declarada en `target.skills_dir` (si aplica), y expone sus scripts ejecutables en `~/.local/bin/` aplicando alias declarativos si se definen en `binaries`:
 ```bash
-./build.sh skills
-./build.sh skills antigravity
+./build.sh skills             # Expone skills y binarios de todos los runtimes
+./build.sh skills antigravity # Expone skills y binarios (~/.local/bin/) para Antigravity
 ```
+> **Nota de Bootstrap y Mantenimiento:** Siempre que se incorpore un nuevo skill que provea herramientas CLI (como `agent-audit` en `conversation-audit` o `eso-build` en `eso-addon-development`), se debe ejecutar `./build.sh skills` en el anfitrión para garantizar que los enlaces simbólicos se creen en `~/.local/bin/` y las herramientas estén inmediatamente disponibles en el `$PATH`.
+
 
 ### 4. Servidores MCP (`mcp`)
 Subcomando dedicado para compilar, respaldar y enlazar exclusivamente la configuración de servidores MCP de uno o todos los runtimes:
