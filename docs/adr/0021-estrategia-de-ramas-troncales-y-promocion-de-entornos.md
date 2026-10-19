@@ -62,9 +62,9 @@ Opción elegida: **"Opción 3"**, estructurando la estrategia bajo las siguiente
      ```
    * En ausencia de archivo de configuración o si no se explicita `repository_type`, el sistema asume por defecto **Categoría A** (`base_branch: "main"`), preservando la compatibilidad hacia atrás con todos los repositorios existentes.
 
-3. **Descarte Categórico de Servidores MCP:**
-   * Se descarta formalmente el desarrollo o integración de un servidor MCP para la gestión de ramas o ciclo de vida de repositorios.
-   * La gestión de Git/GitHub es procedural y debe ejecutarse mediante comandos deterministas atómicos de `gh` y `git` dentro del skill `issue-driven-workflow` (Nivel 2 de abstracción), evitando la sobrecarga de procesos externos.
+3. **Resolución sobre Servidores MCP vs. Skills:**
+   * Se determina que no se requiere el desarrollo de un servidor MCP para la gestión de ramas o ciclo de vida de repositorios.
+   * La gestión de Git/GitHub es una necesidad de flujo procedural que queda cubierta eficazmente mediante la CLI nativa (`gh` y `git`) y las directivas del skill `issue-driven-workflow` (Nivel 2 de abstracción), evitando dependencias innecesarias de procesos externos.
 
 ### Consecuencias
 * **Positivas:**
