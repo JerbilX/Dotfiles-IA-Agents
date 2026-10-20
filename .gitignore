@@ -6,6 +6,7 @@
 .pr_body
 .comment_body
 .issue_body
+.issue_comment
 *.probe
 .probe_*
 __pycache__/
