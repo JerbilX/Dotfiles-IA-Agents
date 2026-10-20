@@ -134,12 +134,31 @@ class AntigravityAdapter(TranscriptAdapter):
                 pending_tool_calls.append(norm_tc)
 
             # Si es un step de resultado de herramienta (ej. GENERIC con output/error)
-            if step_type == "GENERIC" and pending_tool_calls:
+            if step_type in ("GENERIC", "TOOL_OUTPUT") and pending_tool_calls:
                 last_call = pending_tool_calls.pop(0)
                 last_call.raw_output = content
-                if status == "ERROR" or (content and "Encountered error in tool execution" in content):
+
+                is_error = False
+                if status == "ERROR":
+                    is_error = True
+                elif content:
+                    if "Encountered error in tool execution" in content:
+                        is_error = True
+                    elif "There were sandbox errors that may or may not be related to the failure" in content:
+                        is_error = True
+                    elif last_call.name in ("run_command", "bash", "execute_command"):
+                        # Detección de códigos de retorno no cero (ej. The command exited with code 1)
+                        code_match = re.search(r"The command exited with code\s+(-?\d+)", content)
+                        if code_match:
+                            if int(code_match.group(1)) != 0:
+                                is_error = True
+                        elif "HTTP 403: 403 Forbidden" in content or "403 Forbidden" in content:
+                            is_error = True
+
+                if is_error:
                     last_call.status = "ERROR"
                     last_call.error = content
+                    status = "ERROR"
 
             norm_step = NormalizedStep(
                 step_index=step_idx,
