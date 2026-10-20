@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""
+CLI determinista gh-pr-review para interacción eficiente y atómica con hilos
+de revisión de Pull Requests en GitHub vía GraphQL.
+Cumple con los estándares de Nivel 1 (tooling), confinamiento de sandbox y prefix matching.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from typing import Any, Dict, List, Optional
+
+
+def run_gh_graphql(query: str, variables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    cmd = ["gh", "api", "graphql", "-f", f"query={query}"]
+    if variables:
+        for k, v in variables.items():
+            if isinstance(v, int):
+                cmd.extend(["-F", f"{k}={v}"])
+            else:
+                cmd.extend(["-F", f"{k}={v}"])
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        sys.stderr.write("Error: El comando 'gh' (GitHub CLI) no está instalado o no se encuentra en $PATH.\n")
+        sys.exit(1)
+
+    if proc.returncode != 0:
+        err_msg = proc.stderr.strip() or proc.stdout.strip() or f"gh salió con código {proc.returncode}"
+        return {"error": err_msg}
+
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        return {"error": f"Fallo al decodificar respuesta JSON de gh: {e}", "raw": proc.stdout}
+
+    if "errors" in data:
+        err_details = "; ".join(err.get("message", "Error desconocido") for err in data["errors"])
+        return {"error": f"GraphQL Error: {err_details}", "raw_errors": data["errors"]}
+
+    return data
+
+
+def parse_repo_arg(repo_arg: Optional[str]) -> tuple[str, str]:
+    if repo_arg and "/" in repo_arg:
+        owner, repo = repo_arg.split("/", 1)
+        return owner.strip(), repo.strip()
+    return ":owner", ":repo"
+
+
+def cmd_comments(args: argparse.Namespace) -> int:
+    owner, repo = parse_repo_arg(args.repo)
+    query = """
+query($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      id
+      title
+      url
+      reviewThreads(first: 100) {
+        nodes {
+          id
+          isResolved
+          isOutdated
+          path
+          line
+          originalLine
+          diffSide
+          comments(first: 50) {
+            nodes {
+              id
+              databaseId
+              body
+              author {
+                login
+              }
+              createdAt
+              url
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+    variables = {
+        "owner": owner,
+        "repo": repo,
+        "pr": args.pr,
+    }
+
+    result = run_gh_graphql(query, variables)
+    if "error" in result:
+        sys.stderr.write(f"Error consultando hilos de revisión: {result['error']}\n")
+        return 1
+
+    pr_data = result.get("data", {}).get("repository", {}).get("pullRequest")
+    if not pr_data:
+        sys.stderr.write(f"Error: No se encontró el Pull Request #{args.pr}\n")
+        return 1
+
+    threads_nodes = pr_data.get("reviewThreads", {}).get("nodes", [])
+    output_threads: List[Dict[str, Any]] = []
+
+    for node in threads_nodes:
+        is_resolved = node.get("isResolved", False)
+        if not args.all and is_resolved:
+            continue
+
+        raw_comments = node.get("comments", {}).get("nodes", [])
+        formatted_comments = []
+        for c in raw_comments:
+            formatted_comments.append({
+                "id": c.get("id"),
+                "databaseId": c.get("databaseId"),
+                "author": (c.get("author") or {}).get("login", "unknown"),
+                "body": c.get("body", ""),
+                "createdAt": c.get("createdAt"),
+                "url": c.get("url"),
+            })
+
+        root_comment = formatted_comments[0] if formatted_comments else None
+        latest_feedback = formatted_comments[-1] if formatted_comments else None
+
+        thread_entry = {
+            "threadId": node.get("id"),
+            "path": node.get("path"),
+            "line": node.get("line") or node.get("originalLine"),
+            "originalLine": node.get("originalLine"),
+            "diffSide": node.get("diffSide"),
+            "isResolved": is_resolved,
+            "isOutdated": node.get("isOutdated", False),
+            "commentCount": len(formatted_comments),
+            "rootComment": root_comment,
+            "latestFeedback": latest_feedback,
+        }
+
+        if args.detailed:
+            thread_entry["comments"] = formatted_comments
+
+        output_threads.append(thread_entry)
+
+    summary = {
+        "prNumber": args.pr,
+        "prTitle": pr_data.get("title"),
+        "prUrl": pr_data.get("url"),
+        "totalThreads": len(threads_nodes),
+        "unresolvedCount": sum(1 for n in threads_nodes if not n.get("isResolved", False)),
+        "returnedThreads": len(output_threads),
+        "threads": output_threads,
+    }
+
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_resolve(args: argparse.Namespace) -> int:
+    query = """
+mutation($threadId: ID!) {
+  resolveReviewThread(input: {threadId: $threadId}) {
+    thread {
+      id
+      isResolved
+    }
+  }
+}
+"""
+    variables = {"threadId": args.thread_id}
+    result = run_gh_graphql(query, variables)
+
+    if "error" in result:
+        sys.stderr.write(f"Error resolviendo hilo {args.thread_id}: {result['error']}\n")
+        return 1
+
+    payload = result.get("data", {}).get("resolveReviewThread", {}).get("thread", {})
+    output = {
+        "success": True,
+        "threadId": payload.get("id", args.thread_id),
+        "isResolved": payload.get("isResolved", True),
+    }
+    print(json.dumps(output, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_unresolve(args: argparse.Namespace) -> int:
+    query = """
+mutation($threadId: ID!) {
+  unresolveReviewThread(input: {threadId: $threadId}) {
+    thread {
+      id
+      isResolved
+    }
+  }
+}
+"""
+    variables = {"threadId": args.thread_id}
+    result = run_gh_graphql(query, variables)
+
+    if "error" in result:
+        sys.stderr.write(f"Error reabriendo hilo {args.thread_id}: {result['error']}\n")
+        return 1
+
+    payload = result.get("data", {}).get("unresolveReviewThread", {}).get("thread", {})
+    output = {
+        "success": True,
+        "threadId": payload.get("id", args.thread_id),
+        "isResolved": payload.get("isResolved", False),
+    }
+    print(json.dumps(output, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_reply(args: argparse.Namespace) -> int:
+    body_text = args.body
+    if args.body_file:
+        try:
+            with open(args.body_file, "r", encoding="utf-8") as f:
+                body_text = f.read().strip()
+        except OSError as e:
+            sys.stderr.write(f"Error leyendo archivo de cuerpo '{args.body_file}': {e}\n")
+            return 1
+
+    if not body_text:
+        sys.stderr.write("Error: Debe especificar un cuerpo mediante --body o --body-file.\n")
+        return 1
+
+    query = """
+mutation($threadId: ID!, $body: String!) {
+  addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $threadId, body: $body}) {
+    comment {
+      id
+      databaseId
+      body
+      createdAt
+    }
+  }
+}
+"""
+    variables = {
+        "threadId": args.thread_id,
+        "body": body_text,
+    }
+    result = run_gh_graphql(query, variables)
+
+    if "error" in result:
+        sys.stderr.write(f"Error respondiendo al hilo {args.thread_id}: {result['error']}\n")
+        return 1
+
+    comment = result.get("data", {}).get("addPullRequestReviewThreadReply", {}).get("comment", {})
+    output = {
+        "success": True,
+        "threadId": args.thread_id,
+        "commentId": comment.get("id"),
+        "databaseId": comment.get("databaseId"),
+        "createdAt": comment.get("createdAt"),
+    }
+    print(json.dumps(output, indent=2, ensure_ascii=False))
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="gh-pr-review",
+        description="Gestión determinista de hilos de revisión en Pull Requests de GitHub vía GraphQL.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # Subcomando comments (alias: list, threads)
+    p_comments = subparsers.add_parser(
+        "comments",
+        aliases=["list", "threads"],
+        help="Extrae hilos de revisión del diff de un Pull Request en formato JSON.",
+    )
+    p_comments.add_argument("pr", type=int, help="Número del Pull Request (ej. 100).")
+    p_comments.add_argument("--repo", help="Repositorio en formato 'owner/repo' (opcional, por defecto contexto actual).")
+    p_comments.add_argument("--all", action="store_true", help="Incluir hilos ya resueltos (por defecto solo no resueltos).")
+    p_comments.add_argument("--detailed", action="store_true", help="Incluir historial completo de comentarios de cada hilo.")
+    p_comments.set_defaults(func=cmd_comments)
+
+    # Subcomando resolve
+    p_resolve = subparsers.add_parser("resolve", help="Marca un hilo de revisión como resuelto.")
+    p_resolve.add_argument("thread_id", help="GraphQL Node ID del hilo de revisión (ej. PRRT_kwDOU_2SzM4A...).")
+    p_resolve.set_defaults(func=cmd_resolve)
+
+    # Subcomando unresolve
+    p_unresolve = subparsers.add_parser("unresolve", help="Reabre un hilo de revisión previamente resuelto.")
+    p_unresolve.add_argument("thread_id", help="GraphQL Node ID del hilo de revisión.")
+    p_unresolve.set_defaults(func=cmd_unresolve)
+
+    # Subcomando reply
+    p_reply = subparsers.add_parser("reply", help="Agrega una réplica a un hilo de revisión específico.")
+    p_reply.add_argument("thread_id", help="GraphQL Node ID del hilo de revisión.")
+    p_reply.add_argument("--body", "-b", help="Texto de la respuesta.")
+    p_reply.add_argument("--body-file", "-F", help="Archivo con el texto de la respuesta.")
+    p_reply.set_defaults(func=cmd_reply)
+
+    args = parser.parse_args()
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

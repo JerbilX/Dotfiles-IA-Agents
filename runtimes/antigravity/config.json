@@ -9,7 +9,8 @@
   ],
   "binaries": {
     "build_release": "eso-build",
-    "agent-audit": "agent-audit"
+    "agent-audit": "agent-audit",
+    "gh-pr-review": "gh-pr-review"
   },
   "mcp_servers": [
     "eso-mcp-server"
