@@ -412,19 +412,26 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
      *(Ejecutados con `BypassSandbox: true` obligatorio desde el primer intento por mutación de `.git/`).*
 
 ### 7.3 Fase 2: Ingesta Determinista Unificada de Feedback
-1. **Consulta Compacta de Comentarios Inline en el Diff (Comando Principal):**
-   Para obtener en una sola llamada los comentarios específicos y pendientes dejados en el diff del Pull Request, consultar directamente el endpoint nativo de la API de GitHub mediante GitHub CLI con filtrado `--jq` server-side/nativo:
+1. **Consulta GraphQL Agregada de Hilos No Resueltos (Comando Principal):**
+   Para obtener en una sola invocación atómica y sin ruido exclusivamente los hilos de revisión **pendientes (no resueltos)** dejados en el diff del Pull Request, consultar la API GraphQL nativa mediante GitHub CLI con filtrado server-side/`--jq`:
    ```bash
-   gh api repos/:owner/:repo/pulls/<pr_id>/comments --jq '.[] | {id: .id, path: .path, line: (.line // .original_line), body: .body}'
+   gh api graphql -F owner=':owner' -F repo=':repo' -F pr=<pr_id> -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:30){nodes{id,isResolved,path,line,originalLine,comments(last:1){nodes{databaseId,author{login},body}}}}}}}' --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | {thread_id: .id, comment_id: .comments.nodes[0].databaseId, path: .path, line: (.line // .originalLine), author: .comments.nodes[0].author.login, body: .comments.nodes[0].body}'
    ```
    *(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento por requerir acceso de red; los marcadores `:owner` y `:repo` son autocompletados automáticamente por GitHub CLI según el contexto del repositorio).*
-   - **Economía de Contexto:** Esta consulta descarta metadatos voluminosos (como `diff_hunk`, enlaces HTML y referencias de commit), extrayendo exclusivamente `{id, path, line, body}` para un procesamiento atómico y de bajo consumo de contexto.
+   - **Economía de Contexto y Discriminación de Estado:**
+     - `select(.isResolved == false)`: descarta automáticamente todos los hilos que ya fueron resueltos en GitHub.
+     - `comments(last: 1)`: extrae únicamente el comentario más reciente de cada hilo, evitando duplicar comentarios intermedios o respuestas previas del agente.
+     - Extrae limpiamente `{thread_id, comment_id, path, line, author, body}` para un procesamiento atómico y de bajo consumo de contexto.
 2. **Inspección de Reseñas Generales (Fallback / Complemento):**
-   Únicamente si la consulta inline devuelve un arreglo vacío (`[]`) o si la instrucción del usuario/cockpit explicita revisar el veredicto general del PR:
+   Únicamente si la consulta inline devuelve un arreglo vacío (`[]`) o si la instrucción del usuario/cockpit explicita revisar el veredicto general del PR (ej. veredicto *Changes Requested* o conversación global):
    ```bash
    gh pr view <pr_id> --comments
    ```
    *(Ejecutado con `BypassSandbox: true`).*
+   - *Mitigación de contingencia REST:* Si por conectividad estricta GraphQL no estuviera disponible, la alternativa REST atómica debe excluir respuestas históricas mediante:
+     ```bash
+     gh api repos/:owner/:repo/pulls/<pr_id>/comments --jq '.[] | select(.in_reply_to_id == null) | {id: .id, path: .path, line: (.line // .original_line), body: .body}'
+     ```
 3. **Prohibición Categórica de Scripts Envoltorios o Tuberías:**
    Queda estrictamente prohibido crear scripts temporales (Python, Bash, Node, ej. `fetch_comments.py`) o encadenar tuberías con utilidades de terminal (`awk`, `sed`, `jq` externo). Todo el parseo y filtrado debe realizarse mediante los flags nativos de GitHub CLI (`--jq`) para preservar el *prefix matching* de seguridad de Antigravity.
 
@@ -465,7 +472,7 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
    ```bash
    gh api repos/:owner/:repo/pulls/<pr_id>/comments/<comment_id>/replies -f body="Resuelto en commit <short_sha>: <descripción concisa>"
    ```
-   *(Ejecutado con `BypassSandbox: true`).*
+   *(Ejecutado con `BypassSandbox: true`; `<comment_id>` corresponde al campo `comment_id` provisto por la consulta de ingesta).*
 2. **Comentario Consolidado en el Pull Request:**
    Para notificar formalmente al revisor humano o al orquestador que las observaciones fueron atendidas:
    - Redactar el resumen en `.pr_comment` mediante `write_to_file`.

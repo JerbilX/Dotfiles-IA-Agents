@@ -23,16 +23,16 @@ En ADR-0022 se formalizó el sub-protocolo de Feedback Loop y Resolución Autón
 * **Minimal Blast Radius (ADR-0017):** Limitar los cambios a Nivel 0 (flags de CLI) y Nivel 2 (skills bajo demanda), sin alterar la capa basal (`core/`).
 
 ## Opciones Consideradas
-* **Opción 1: Endpoint GraphQL Complejo en un Script Auxiliar.**
-  * Escribir un script en Python/Node que consulte la API GraphQL de GitHub (`reviewThreads`) para parsear hilos resueltos y pendientes.
-  * *Descarte:* Viola la política de no scripts auxiliares para operaciones de red/CLI, rompe el *prefix matching* de seguridad y añade mantenimiento innecesario.
+* **Opción 1: Consulta REST Plana (`pulls/<pr_id>/comments`).**
+  * Extraer comentarios del diff mediante el endpoint REST estándar.
+  * *Descarte:* La API REST no soporta discriminación de hilos resueltos (`isResolved`) e ingiere tanto comentarios iniciales como respuestas históricas en una lista plana no estructurada, reinyectando ruido de contexto en revisiones sucesivas.
 * **Opción 2: Mantener Flujo Exploratorio con Doble Consulta.**
   * Conservar `gh pr view` y consultas sucesivas con `diff_hunk`.
   * *Descarte:* Mantiene una alta latencia de turnos y satura el contexto del modelo con duplicación del diff.
-* **Opción 3: Consulta Atómica Compacta (`gh api --jq`) y Contrato Fast-Path en Nivel 2 (Elegida).**
-  * Estandarizar la consulta de comentarios inline mediante:
+* **Opción 3: Consulta Atómica GraphQL Server-Side (`gh api graphql`) y Contrato Fast-Path en Nivel 2 (Elegida).**
+  * Estandarizar la consulta nativa mediante GitHub CLI aprovechando GraphQL para filtrar hilos no resueltos y extraer el último comentario relevante:
     ```bash
-    gh api repos/:owner/:repo/pulls/<pr_id>/comments --jq '.[] | {id: .id, path: .path, line: (.line // .original_line), body: .body}'
+    gh api graphql -F owner=':owner' -F repo=':repo' -F pr=<pr_id> -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:30){nodes{id,isResolved,path,line,originalLine,comments(last:1){nodes{databaseId,author{login},body}}}}}}}' --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | {thread_id: .id, comment_id: .comments.nodes[0].databaseId, path: .path, line: (.line // .originalLine), author: .comments.nodes[0].author.login, body: .comments.nodes[0].body}'
     ```
   * Establecer un contrato de ejecución *Fast-Path* que exima de planes bloqueantes a correcciones puntuales de review.
   * Formalizar una estructura de respuesta estandarizada para consumo de Agent-Cockpit.
@@ -40,8 +40,10 @@ En ADR-0022 se formalizó el sub-protocolo de Feedback Loop y Resolución Autón
 ## Decisión Adoptada
 Se adopta la **Opción 3**:
 
-1. **Ingesta Compacta Unificada (Nivel 0/1):**
-   * Se elimina la extracción de `diff_hunk` y metadatos de enlaces en la llamada CLI. Se obtiene directamente `{id, path, line, body}` en una sola invocación de `gh api`.
+1. **Ingesta Unificada GraphQL Server-Side (Nivel 0/1):**
+   * Se utiliza `gh api graphql` de forma nativa sin scripts intermediarios ni tuberías complejas.
+   * Se descartan automáticamente los hilos ya resueltos (`isResolved == false`) y se extrae únicamente el comentario más reciente (`comments(last: 1)`), eliminando respuestas duplicadas del agente.
+   * Se obtienen limpiamente `{thread_id, comment_id, path, line, author, body}` en una sola invocación CLI.
 2. **Contrato de Ejecución Fast-Path (Nivel 2):**
    * Al ser despachado para atender un PR (vía chat o Agent-Cockpit), el agente reconoce que las observaciones del revisor ya están aprobadas y delimitadas, ejecutando la secuencia atómica en turno único: sincronizar -> consultar comentarios -> aplicar parches nativos -> `./build.sh check` -> commit atómico -> push -> cierre de feedback.
    * Si la observación exige un rediseño arquitectónico sustantivo, el agente suspende el fast-path y aplica *Stop & Ask* o registra un nuevo ADR.
@@ -51,21 +53,22 @@ Se adopta la **Opción 3**:
 ### Consecuencias
 * **Positivas:**
   * Reducción drástica del consumo de contexto y tiempo de respuesta en revisiones de PRs.
+  * Cero ruido por hilos previamente resueltos o respuestas históricas del agente.
   * Flujo fluido de resolución en un único turno.
   * Total integración desatendida con Agent-Cockpit.
   * Conformidad plena con las políticas de sandbox y prefix matching de Antigravity.
 * **Negativas / Trade-offs:**
-  * Si un revisor deja observaciones puramente conversacionales sin vincular a líneas de código, se requiere el fallback a `gh pr view <pr_id> --comments`.
+  * Si un revisor deja observaciones puramente conversacionales sin vincular a líneas de código en el diff, se requiere el fallback a `gh pr view <pr_id> --comments`.
 
 ### Pros y Contras de las Opciones
-#### Opción 1: Script GraphQL
-* **Pro:** Soporta estado de resolución de hilos nativo.
-* **Contra:** Viola confinamiento de Antigravity, genera scripts efímeros, rompe prefix matching.
+#### Opción 1: Consulta REST Plana
+* **Pro:** Sintaxis de CLI más corta.
+* **Contra:** No soporta `isResolved`, ingiere respuestas históricas como si fuesen nuevos comentarios, satura contexto en rondas múltiples.
 
 #### Opción 2: Doble Consulta Exploratoria
 * **Pro:** Sin cambios requeridos.
 * **Contra:** Alta latencia, sobrecarga de contexto por `diff_hunk`, pausas innecesarias en planning mode.
 
-#### Opción 3: Consulta Atómica Compacta y Contrato Fast-Path (Elegida)
-* **Pro:** Turno único, determinista, respeta Minimal Blast Radius, compatible con Agent-Cockpit y chat.
+#### Opción 3: Consulta Atómica GraphQL y Contrato Fast-Path (Elegida)
+* **Pro:** Turno único, determinista, descarta hilos resueltos, extrae el último comentario sin ruido, respeta Minimal Blast Radius, compatible con Agent-Cockpit y chat.
 * **Contra:** Requiere fallback explícito para comentarios fuera del diff.
