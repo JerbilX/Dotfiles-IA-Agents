@@ -69,19 +69,13 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
    *(Ejecutados con `BypassSandbox: true` desde el primer intento).*
    - **Mecánica de Transporte de Git:** Invocado sin argumentos posicionales de remoto o rama (`origin main`), `git pull --prune --ff-only` procesa el refspec estándar completo (`+refs/heads/*:refs/remotes/origin/*`), poda de forma automática las referencias zombi (`remotes/origin/*`) y avanza la rama base exclusivamente en modo fast-forward sin modales interactivos en Antigravity.
    - **Prohibición Categórica de `git remote prune`:** Queda terminantemente prohibido ejecutar `git remote prune` (ej. `git remote prune origin`). Toda poda de tracking remoto debe canalizarse exclusivamente a través del transporte estándar de sincronización (`git pull --prune --ff-only` o `git fetch --prune origin`).
-2. Ejecutar la poda de higiene local en dos fases atómicas para remover ramas ya fusionadas cuyo upstream remoto fue eliminado:
-   - **Fase 1: Inspección Pasiva Confinada (`BypassSandbox: false` obligatorio):**
-     Consultar el estado de tracking de las ramas locales mediante una llamada nativa de lectura:
-     ```bash
-     git branch --format "%(refname:short) %(upstream:track)"
-     ```
-     El modelo/agente inspecciona la salida en su propio contexto para identificar qué ramas presentan el estado `[gone]`.
-   - **Fase 2: Poda Atómica Mutadora (`BypassSandbox: true` obligatorio desde el primer intento):**
-     Si existen ramas con upstream marcado como `[gone]`, invocar directamente la poda atómica con el binario de Git sin envoltorios ni tuberías:
-     ```bash
-     git branch -d <rama1> <rama2>
-     ```
-     Si no existen ramas con estado `[gone]`, no se emite ninguna llamada mutadora.
+2. Ejecutar la poda de higiene local en un único paso atómico mediante el CLI determinista de Nivel 1 `git-prune-gone`:
+   ```bash
+   git-prune-gone
+   ```
+   *(Ejecutado con `BypassSandbox: true` desde el primer intento debido al montaje `ro` de `.git/`).*
+   - **Fallback Determinista:** Si el binario no está disponible en `$PATH`, invocar directamente `skills/issue-driven-workflow/bin/git-prune-gone`.
+   - **Mecánica Interna:** Inspecciona las ramas locales mediante formato estructurado (`%(HEAD)|%(refname:short)|%(upstream:track)`), detecta aquellas con tracking zombi `[gone]` y ejecuta la poda segura (`git branch -d`) sin requerir turnos intermedios del LLM ni pipes de shell.
    - **Prohibición Categórica de Pipelines y Wrappers CLI (`awk` / `xargs`):** Queda terminantemente prohibido utilizar tuberías o utilidades intermediarias (ej. `git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -d`). Encadenar comandos en pipes rompe el *prefix matching* de seguridad en Antigravity y viola los estándares de entorno.
 3. Crear y cambiar a la rama descriptiva (`git checkout -b feat/issue-<id>-<slug>` o `fix/issue-<id>-<slug>`) con `BypassSandbox: true` desde el primer intento.
 

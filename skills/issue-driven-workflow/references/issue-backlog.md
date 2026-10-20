@@ -38,7 +38,7 @@ Al diseñar, planificar o registrar cualquier solución, el agente debe aplicar 
 | Nivel | Capa de Abstracción | Mecanismo y Alcance | Ejemplo |
 | :---: | :--- | :--- | :--- |
 | **0** | **Configuración / Parámetro CLI / API** | Argumentos nativos, flags o capacidades existentes de la herramienta. Impacto local al comando invocado. | `--query`, `--format json`, `--field`, flags de `gh` o `git`. |
-| **1** | **Tooling / Automatización Local** | Scripts de verificación, tests locales, linters, utilidades o targets de `build.sh`. Impacto local al pipeline de compilación. | Target `./build.sh check`, `gh-pr-review`, linters. |
+| **1** | **Tooling / Automatización Local** | Scripts de verificación, tests locales, linters, utilidades o targets de `build.sh`. Impacto local al pipeline de compilación. | Target `./build.sh check`, `gh-pr-review`, `git-prune-gone`, linters. |
 | **2** | **Skills bajo Demanda** | Procedimientos detallados, guías operativas o flujos E2E en `skills/*/SKILL.md` y `references/*.md`. Impacto acotado a la activación del skill. | Procedimientos de `issue-driven-workflow`, guías de `adr-manager`. |
 | **3** | **Reglas Especializadas de Runtime** | Directivas acotadas al runtime activo en `runtimes/<runtime>/rules/*.md`. Impacto restringido a dicho entorno. | Especialización de sandbox para Antigravity (`rules/01-sandbox.md`). |
 | **4** | **Core Basal / System Prompt Universal** | Invariantes duros de gobernanza, seguridad universal y principios irrenunciables en `core/*.md`. Impacto permanente y universal en cada turno. | Prohibición de push directo a `main`, confinamiento de sandbox, zero complacencia. |

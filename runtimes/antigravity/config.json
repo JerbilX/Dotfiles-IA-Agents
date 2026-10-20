@@ -10,7 +10,8 @@
   "binaries": {
     "build_release": "eso-build",
     "agent-audit": "agent-audit",
-    "gh-pr-review": "gh-pr-review"
+    "gh-pr-review": "gh-pr-review",
+    "git-prune-gone": "git-prune-gone"
   },
   "mcp_servers": [
     "eso-mcp-server"

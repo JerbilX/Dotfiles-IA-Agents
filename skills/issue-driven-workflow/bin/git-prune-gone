@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""
+CLI determinista git-prune-gone para poda segura y atómica de ramas locales huérfanas ([gone]).
+Cumple con los estándares de Nivel 1 (tooling), confinamiento de sandbox y prefix matching.
+"""
+
+import argparse
+import json
+import subprocess
+import sys
+from typing import Any, Dict, List, Optional, Tuple
+
+
+def is_git_repository() -> bool:
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        return proc.returncode == 0
+    except FileNotFoundError:
+        sys.stderr.write("Error: El comando 'git' no está instalado o no se encuentra en $PATH.\n")
+        sys.exit(1)
+
+
+def get_branches_info() -> List[Tuple[str, str, str]]:
+    """
+    Retorna una lista de tuplas (head_indicator, branch_name, upstream_track)
+    para cada rama local.
+    """
+    cmd = ["git", "branch", "--format=%(HEAD)|%(refname:short)|%(upstream:track)"]
+    proc = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        err_msg = proc.stderr.strip() or "Fallo al inspeccionar ramas locales."
+        sys.stderr.write(f"Error: {err_msg}\n")
+        sys.exit(proc.returncode)
+
+    branches = []
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split("|")
+        if len(parts) >= 3:
+            head_ind = parts[0].strip()
+            branch = parts[1].strip()
+            track = parts[2].strip()
+            branches.append((head_ind, branch, track))
+    return branches
+
+
+def prune_branches(branches: List[str], force: bool = False) -> Tuple[List[str], List[Dict[str, str]]]:
+    """
+    Intenta podar las ramas de la lista. Retorna (pruned, failed).
+    """
+    if not branches:
+        return [], []
+
+    flag = "-D" if force else "-d"
+    # Intento en lote primero
+    batch_cmd = ["git", "branch", flag] + branches
+    proc = subprocess.run(
+        batch_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    if proc.returncode == 0:
+        return branches, []
+
+    # Si el lote falló, procesar individualmente para podar las seguras e identificar errores específicos
+    pruned = []
+    failed = []
+    for b in branches:
+        res = subprocess.run(
+            ["git", "branch", flag, b],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        if res.returncode == 0:
+            pruned.append(b)
+        else:
+            err = res.stderr.strip() or res.stdout.strip() or "Error al eliminar rama"
+            failed.append({"branch": b, "error": err})
+
+    return pruned, failed
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="git-prune-gone",
+        description="Poda segura y atómica de ramas locales cuyo tracking remoto fue eliminado ([gone]).",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Inspecciona y lista ramas zombi sin eliminarlas.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Genera salida estructurada en formato JSON.",
+    )
+    parser.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="Fuerza la eliminación con git branch -D en lugar de la poda segura -d.",
+    )
+
+    args = parser.parse_args()
+
+    if not is_git_repository():
+        msg = "Error: El directorio actual no pertenece a un repositorio Git."
+        if args.json:
+            print(json.dumps({"error": msg}))
+        else:
+            sys.stderr.write(f"{msg}\n")
+        return 1
+
+    branches = get_branches_info()
+    candidates: List[str] = []
+    skipped_current: List[str] = []
+
+    for head_ind, branch, track in branches:
+        if track == "[gone]":
+            if head_ind == "*":
+                skipped_current.append(branch)
+            else:
+                candidates.append(branch)
+
+    # Caso: árbol limpio
+    if not candidates and not skipped_current:
+        if args.json:
+            print(json.dumps({
+                "status": "clean",
+                "pruned": [],
+                "failed": [],
+                "skipped_current": [],
+                "message": "Árbol de ramas locales limpio: no hay ramas con upstream zombi ([gone]).",
+            }, indent=2, ensure_ascii=False))
+        else:
+            print("Árbol de ramas locales limpio: no hay ramas con upstream zombi ([gone]).")
+        return 0
+
+    # Caso: dry-run
+    if args.dry_run:
+        if args.json:
+            print(json.dumps({
+                "status": "dry_run",
+                "candidates": candidates,
+                "skipped_current": skipped_current,
+            }, indent=2, ensure_ascii=False))
+        else:
+            if candidates:
+                print("Ramas candidatas a poda ([gone]):")
+                for c in candidates:
+                    print(f"  - {c}")
+            if skipped_current:
+                print("\n[!] Advertencia: La(s) siguiente(s) rama(s) activa(s) tiene(n) upstream [gone] pero no pueden eliminarse mientras estén seleccionadas:")
+                for sc in skipped_current:
+                    print(f"  - {sc} (rama actual - cambie a main/dev antes de podar)")
+        return 0
+
+    # Ejecución de poda
+    pruned, failed = prune_branches(candidates, force=args.force)
+
+    if args.json:
+        result: Dict[str, Any] = {
+            "status": "success" if not failed else "partial_failure" if pruned else "failed",
+            "pruned": pruned,
+            "failed": failed,
+            "skipped_current": skipped_current,
+        }
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        if pruned:
+            print("Ramas podadas exitosamente:")
+            for p in pruned:
+                print(f"  - {p} (eliminada)")
+        if skipped_current:
+            print("\n[!] Advertencia: La rama actual tiene upstream [gone] y no fue eliminada:")
+            for sc in skipped_current:
+                print(f"  - {sc} (activa - cambie a main/dev antes de podar)")
+        if failed:
+            print("\nError al podar las siguientes ramas:")
+            for f in failed:
+                print(f"  - {f['branch']}: {f['error']}")
+
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
