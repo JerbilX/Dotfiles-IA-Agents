@@ -1,7 +1,7 @@
 ---
 name: issue-driven-workflow
 description: >-
-  Orchestrate end-to-end task execution driven by GitHub Issues and GitHub Projects v2, canonical backlog task registration, repository provisioning, branch lifecycles, and Pull Request workflows. ACTIVATE this skill whenever creating future issues/tasks, provisioning new GitHub repos, dispatched to implement an issue (e.g. 'implementa la issue #X'), querying the board or coordinating next tasks (e.g. '¿qué hay en el board?'), picking tasks from Ready for Dev, managing feature/fix branch lifecycles, opening Pull Requests, attending and resolving Code Review comments on Pull Requests, or synchronizing cards in GitHub Projects. Operates with strict git hygiene, temporary file safety, and deterministic CLI commands.
+  Orchestrate end-to-end task execution driven by GitHub Issues and GitHub Projects v2, canonical backlog task registration, repository provisioning, branch lifecycles, and Pull Request workflows. ACTIVATE this skill whenever creating future issues/tasks, provisioning new GitHub repos, dispatched to implement an issue (e.g. 'implementa la issue #X'), querying the board or coordinating next tasks (e.g. '¿qué hay en el board?'), picking tasks from Ready for Dev, managing feature/fix branch lifecycles, opening Pull Requests, closing non-code or audit issues autonomously, attending and resolving Code Review comments on Pull Requests, or synchronizing cards in GitHub Projects. Operates with strict git hygiene, temporary file safety, and deterministic CLI commands.
 ---
 
 # Issue-Driven Workflow and Pull Request Management
@@ -80,6 +80,7 @@ Al completar la creación e indexación, el agente debe reportar al usuario:
 ### 1.8 Control de Alcance y Desvíos (Scope Creep)
 - El agente **no debe inflar** el objetivo del ticket original con refactors, mejoras o arreglos colaterales no contemplados en la especificación de la issue.
 - Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create --body-file .issue_body`), indexarla al tablero central (`gh project item-add 1 --owner "@me" --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
+- **Vinculación Múltiple en Tareas Derivadas:** Si una tarea de investigación, auditoría forense o spike genera una o más issues derivadas de corrección/implementación, cuando se resuelva la causa raíz y se abra el Pull Request respectivo, el cuerpo del PR (`.pr_body`) DEBE declarar explícitamente el cierre de todas las issues vinculadas (ej. `Closes #<issue_derivada>` y `Closes #<issue_madre_investigacion>`). Esto garantiza que el merge en GitHub cierre automáticamente ambos tickets sin dejar tareas residuales en el backlog.
 
 
 ---
@@ -334,12 +335,47 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 7 fas
    rm -f .pr_body
    ```
 
+### 5.8 Protocolo Especial: Tareas de Investigación, Auditoría o Spikes (Cierre Autónomo sin PR)
+
+Cuando una tarea despachada tenga por objeto una auditoría forense (`audit(...)`), investigación técnica, diagnóstico o spike exploratorio, y su conclusión técnica determine que **no se requieren cambios de código** (porque el hallazgo fue descartado, el problema ya estaba resuelto en directivas vigentes, o el entregable es puramente analítico):
+
+1. **Prohibición de Delegación Pasiva de Cierre:**
+   - Queda **terminantemente prohibido** que el agente finalice la tarea emitiendo una recomendación pasiva de cierre (ej. *"Se recomienda proceder al cierre de la issue #X"*), dejando la tarjeta abierta en el backlog para que el usuario la cierre manualmente.
+2. **Publicación Determinista del Informe Técnico:**
+   - Redactar el reporte técnico o justificación de resolución en `.issue_comment` mediante la herramienta nativa `write_to_file`.
+   - Publicar el comentario en el ticket mediante GitHub CLI (`BypassSandbox: true` obligatorio por requerir acceso de red):
+     ```bash
+     gh issue comment <id> --body-file .issue_comment
+     ```
+   - Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+     ```bash
+     rm -f .issue_comment
+     ```
+3. **Cierre Autónomo Inmediato:**
+   - Cerrar formalmente la issue de manera autónoma con GitHub CLI (`BypassSandbox: true`):
+     ```bash
+     gh issue close <id> --comment "Cierre automatizado tras concluir la investigación/auditoría técnica."
+     ```
+4. **Sincronización con Projects v2:**
+   - El comando de cierre en GitHub CLI transiciona automáticamente la tarjeta a `Done` en el tablero central. Si se requiere sincronización manual determinista:
+     ```bash
+     gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "Done"
+     ```
+     *(Ejecutado con `BypassSandbox: true`).*
+5. **Reporte Final al Usuario:**
+   - Reportar al usuario la conclusión del análisis, el enlace al issue cerrado y la confirmación del estado de la tarjeta en `Done`.
+
 ---
 
 ## 6. Flujo Mandatorio de Pull Requests y Projects v2
 
 - **Prohibición Total de Push/Merge a `main`:** Queda terminantemente prohibido que el agente comitee o pushee cambios productivos directamente a la rama `main`, o que ejecute `git merge` hacia `main` por su cuenta.
-- **Vinculación Canónica de Cierre:** El cuerpo del Pull Request debe incluir obligatoriamente la directiva `Closes #<id>` o `Fixes #<id>` para asegurar el cierre automático de la issue al fusionarse el PR.
+- **Vinculación Canónica de Cierre (Simple y Múltiple):** El cuerpo del Pull Request debe incluir obligatoriamente la directiva `Closes #<id>` o `Fixes #<id>` para asegurar el cierre automático de la issue al fusionarse el PR. Si el Pull Request resuelve conjuntamente una issue de implementación y una issue previa de investigación/auditoría o spike que motivó el cambio, debe listar cada una de forma independiente en líneas contiguas:
+  ```markdown
+  Closes #<id_implementacion>
+  Closes #<id_investigacion>
+  ```
+  Queda prohibido omitir el cierre de tickets derivados o resueltos de fondo.
 - **Sincronización Determinista con el Tablero Central:** Asegurar que el estado del ítem en Project 1 pase a `👀 In Review / PR` mediante el comando directo por nombre de campo:
   ```bash
   gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "👀 In Review / PR"
@@ -597,4 +633,4 @@ Al completar la publicación del PR, el agente **DEBE emitir un reporte final es
 - **Prohibición de Scripts Intermediarios de Red y CLI:** Queda estrictamente prohibido generar scripts auxiliares (Python, Shell, Node) para ejecutar comandos de `gh` o parsear respuestas de red. Toda operación e inspección debe realizarse de forma directa y atómica utilizando los flags nativos provistos por GitHub CLI (`--query`, `--field`, `-q / --jq`, `--limit`). Si se requiere una consulta agregada compleja no soportada por `item-list`, la degradación elegante consiste en invocar directamente `gh api graphql` de forma nativa o aplicar Stop & Ask, sin violar el confinamiento del sandbox ni crear scripts huérfanos.
 - **Prohibición Categórica de `git remote prune`:** Prohibido invocar `git remote prune <remote>`. La poda de referencias remotas obsoletas debe gestionarse exclusivamente mediante el comando estándar de transporte (ej. `git pull --prune --ff-only` o `git fetch --prune <remote>`). Invocaciones aisladas a `git remote prune` violan la política desatendida y disparan alertas interactivas de confirmación de permisos en Antigravity.
 - **Circuit Breaker:** Toda consulta de red iterativa en terminal se limita a un máximo de 3 a 5 iteraciones; si la API carece de endpoint batch o experimenta latencia, el agente debe detenerse y reportar.
-- **Higiene de Temporales y Confinamiento Obligatorio:** Archivos auxiliares como `.commit_msg`, `.pr_body`, `.comment_body` o `.issue_body` deben ser redactados con las herramientas nativas de archivos, removerse inmediatamente tras su uso (`rm -f <archivo>`) y estar contemplados en `.gitignore`. Las operaciones de remoción (`rm -f`) operan 100% sobre el workspace local y DEBEN ejecutarse obligatoriamente de forma confinada en el sandbox estándar (`BypassSandbox: false`). Queda terminantemente prohibido ejecutar `rm` con `BypassSandbox: true`, ya que elude indebidamente el sandbox y dispara modales interactivos innecesarios.
+- **Higiene de Temporales y Confinamiento Obligatorio:** Archivos auxiliares como `.commit_msg`, `.pr_body`, `.comment_body`, `.issue_comment` o `.issue_body` deben ser redactados con las herramientas nativas de archivos, removerse inmediatamente tras su uso (`rm -f <archivo>`) y estar contemplados en `.gitignore`. Las operaciones de remoción (`rm -f`) operan 100% sobre el workspace local y DEBEN ejecutarse obligatoriamente de forma confinada en el sandbox estándar (`BypassSandbox: false`). Queda terminantemente prohibido ejecutar `rm` con `BypassSandbox: true`, ya que elude indebidamente el sandbox y dispara modales interactivos innecesarios.
