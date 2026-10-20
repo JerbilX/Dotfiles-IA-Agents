@@ -163,11 +163,27 @@ Inspecciona de forma determinista el directorio destino (`target.config_dir`) y 
 ```
 
 ### 7. Verificación Estática (`check`)
-Ejecuta una auditoría de integridad estática y de **solo lectura** (read-only), ideal para pre-commit o CI/CD. Valida esquema y sintaxis de `config.json` y de los módulos MCP activos, existencia de skills y `SKILL.md` en disco, presencia y permisos de binarios y comandos MCP, ausencia de colisiones de prefijos numéricos o títulos H1, integridad de symlinks en el sistema, presupuesto de contexto y disponibilidad de archivos de respaldo para rollback en cada runtime:
+Ejecuta una auditoría de integridad estática y de **solo lectura** (read-only), ideal para pre-commit o CI/CD. Valida esquema y sintaxis de `config.json` y de los módulos MCP activos, existencia de skills y `SKILL.md` en disco, presencia y permisos de binarios y comandos MCP, ausencia de colisiones de prefijos numéricos o títulos H1, integridad de symlinks en el sistema, presupuesto de contexto (global y modular por archivo) y disponibilidad de archivos de respaldo para rollback en cada runtime:
 ```bash
 ./build.sh check            # Audita todos los runtimes configurados
 ./build.sh check antigravity # Audita exclusivamente Antigravity
 ./build.sh check claude      # Audita exclusivamente Claude Code
+```
+
+#### Auditoría de Presupuesto de Contexto (Global vs. Modular)
+
+`./build.sh check` implementa una doble compuerta de auditoría para proteger la ventana atencional del modelo y prevenir la degradación por saturación del System Prompt ([ADR-0008](docs/adr/0008-telemetria-de-presupuesto-de-contexto-y-subcomando-check.md), [ADR-0013](docs/adr/0013-estrategia-de-modularizacion-de-directivas-extensas-a-skills.md) y [ADR-0017](docs/adr/0017-principio-de-minima-intervencion-y-jerarquia-de-resolucion.md)):
+
+1. **Presupuesto Global (`MAX_CONTEXT_WORDS`, por defecto 4.000 palabras):**
+   - Audita el tamaño total del System Prompt compilado en `dist/<runtime>/AGENTS.md`.
+   - Garantiza que la totalidad de directivas mantenga un margen seguro (<75% de la ventana útil) para reservar contexto disponible al razonamiento del agente.
+2. **Presupuesto Modular (`MAX_MODULE_WORDS`, por defecto 300 palabras):**
+   - Audita individualmente cada módulo en `core/*.md` y reglas de runtime en `runtimes/<runtime>/rules/*.md`.
+   - Si un archivo supera el límite modular, emite una advertencia estática instando a evaluar la extracción del procedimiento a un skill bajo demanda (patrón *Trigger Directive + Dedicated Skill* de ADR-0013), previniendo el crecimiento desapercibido de directivas basales y asegurando la máxima densidad atencional.
+
+Ambos umbrales son configurables mediante variables de entorno:
+```bash
+MAX_CONTEXT_WORDS=3500 MAX_MODULE_WORDS=250 ./build.sh check
 ```
 
 ### 8. Flujo Completo (`all` / por defecto)

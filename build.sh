@@ -8,6 +8,7 @@ SCHEMA_FILE="${RUNTIMES_BASE_DIR}/schema/runtime-config.schema.json"
 MCP_SCHEMA_FILE="${RUNTIMES_BASE_DIR}/schema/mcp-server.schema.json"
 SKILLS_DIR="${SCRIPT_DIR}/skills"
 MAX_CONTEXT_WORDS="${MAX_CONTEXT_WORDS:-4000}"
+MAX_MODULE_WORDS="${MAX_MODULE_WORDS:-300}"
 
 # ------------------------------------------------------------------------------
 # Descubrimiento y Resolución Dinámica de Runtimes
@@ -1034,6 +1035,14 @@ check_core_rules() {
             echo "  [!] Advertencia: Archivo ${fname} en core/ no sigue el patrón numérico 'NN-*.md'" >&2
             CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
         fi
+
+        # Verificación de presupuesto modular (ADR-0013)
+        local w
+        w="$(wc -w < "$f" | tr -d ' ')"
+        if [ "${w}" -gt "${MAX_MODULE_WORDS}" ]; then
+            echo "  [!] Advertencia: core/${fname} supera el umbral modular (${w} > ${MAX_MODULE_WORDS} palabras). Evaluar extracción a skill (ADR-0013)" >&2
+            CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+        fi
     done
 }
 
@@ -1296,6 +1305,14 @@ check_runtime() {
                 fi
             else
                 echo "  [!] Advertencia [${r}]: Archivo ${fname} en rules/ no sigue el patrón numérico 'NN-*.md'" >&2
+                CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+            fi
+
+            # Verificación de presupuesto modular (ADR-0013)
+            local w
+            w="$(wc -w < "$f" | tr -d ' ')"
+            if [ "${w}" -gt "${MAX_MODULE_WORDS}" ]; then
+                echo "  [!] Advertencia [${r}]: rules/${fname} supera el umbral modular (${w} > ${MAX_MODULE_WORDS} palabras). Evaluar extracción a skill (ADR-0013)" >&2
                 CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
             fi
         done
