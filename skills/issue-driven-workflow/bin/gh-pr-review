@@ -164,7 +164,7 @@ query($owner: String!, $repo: String!, $pr: Int!) {
     return 0
 
 
-def cmd_resolve(args: argparse.Namespace) -> int:
+def resolve_single_thread(thread_id: str) -> tuple[bool, Optional[str]]:
     query = """
 mutation($threadId: ID!) {
   resolveReviewThread(input: {threadId: $threadId}) {
@@ -175,21 +175,96 @@ mutation($threadId: ID!) {
   }
 }
 """
-    variables = {"threadId": args.thread_id}
-    result = run_gh_graphql(query, variables)
-
+    result = run_gh_graphql(query, {"threadId": thread_id})
     if "error" in result:
-        sys.stderr.write(f"Error resolviendo hilo {args.thread_id}: {result['error']}\n")
-        return 1
+        return False, result["error"]
 
     payload = result.get("data", {}).get("resolveReviewThread", {}).get("thread", {})
-    output = {
-        "success": True,
-        "threadId": payload.get("id", args.thread_id),
-        "isResolved": payload.get("isResolved", True),
+    if payload.get("isResolved", True):
+        return True, None
+    return False, "La mutación no marcó el hilo como resuelto"
+
+
+def fetch_unresolved_threads(pr_number: int, repo_arg: Optional[str] = None) -> tuple[Optional[List[str]], Optional[str]]:
+    owner, repo = parse_repo_arg(repo_arg)
+    query = """
+query($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100) {
+        nodes {
+          id
+          isResolved
+        }
+      }
     }
+  }
+}
+"""
+    variables = {
+        "owner": owner,
+        "repo": repo,
+        "pr": pr_number,
+    }
+    result = run_gh_graphql(query, variables)
+    if "error" in result:
+        return None, f"Error consultando hilos del PR #{pr_number}: {result['error']}"
+
+    pr_data = result.get("data", {}).get("repository", {}).get("pullRequest")
+    if not pr_data:
+        return None, f"Error: No se encontró el Pull Request #{pr_number}"
+
+    nodes = pr_data.get("reviewThreads", {}).get("nodes", [])
+    unresolved = [n["id"] for n in nodes if not n.get("isResolved", False) and n.get("id")]
+    return unresolved, None
+
+
+def cmd_resolve(args: argparse.Namespace) -> int:
+    if args.all and args.thread_ids:
+        sys.stderr.write("Error: No se pueden especificar thread_id y --all simultáneamente.\n")
+        return 1
+
+    thread_ids: List[str] = []
+    if args.all:
+        tids, err = fetch_unresolved_threads(args.all, args.repo)
+        if err:
+            sys.stderr.write(f"{err}\n")
+            return 1
+        thread_ids = tids or []
+    elif args.thread_ids:
+        seen = set()
+        for tid in args.thread_ids:
+            if tid not in seen:
+                seen.add(tid)
+                thread_ids.append(tid)
+    else:
+        sys.stderr.write("Error: Debe especificar al menos un thread_id o usar --all <pr_id>.\n")
+        return 1
+
+    resolved_threads: List[str] = []
+    errors: List[Dict[str, str]] = []
+
+    for tid in thread_ids:
+        success, err_msg = resolve_single_thread(tid)
+        if success:
+            resolved_threads.append(tid)
+        else:
+            errors.append({"threadId": tid, "error": err_msg or "Error desconocido"})
+
+    is_overall_success = len(errors) == 0
+    output: Dict[str, Any] = {
+        "success": is_overall_success,
+        "resolvedCount": len(resolved_threads),
+        "resolvedThreads": resolved_threads,
+        "errors": errors,
+    }
+
+    if args.all:
+        output["prNumber"] = args.all
+        output["totalFound"] = len(thread_ids)
+
     print(json.dumps(output, indent=2, ensure_ascii=False))
-    return 0
+    return 0 if is_overall_success else 1
 
 
 def cmd_unresolve(args: argparse.Namespace) -> int:
@@ -288,8 +363,23 @@ def main() -> int:
     p_comments.set_defaults(func=cmd_comments)
 
     # Subcomando resolve
-    p_resolve = subparsers.add_parser("resolve", help="Marca un hilo de revisión como resuelto.")
-    p_resolve.add_argument("thread_id", help="GraphQL Node ID del hilo de revisión (ej. PRRT_kwDOU_2SzM4A...).")
+    p_resolve = subparsers.add_parser("resolve", help="Marca uno o más hilos de revisión como resueltos.")
+    p_resolve.add_argument(
+        "thread_ids",
+        nargs="*",
+        metavar="thread_id",
+        help="GraphQL Node ID(s) de los hilos de revisión (ej. PRRT_kwDOU_2SzM4A...).",
+    )
+    p_resolve.add_argument(
+        "--all",
+        type=int,
+        metavar="PR_ID",
+        help="Consultar y resolver todos los hilos pendientes de un Pull Request.",
+    )
+    p_resolve.add_argument(
+        "--repo",
+        help="Repositorio en formato 'owner/repo' (opcional, por defecto contexto actual).",
+    )
     p_resolve.set_defaults(func=cmd_resolve)
 
     # Subcomando unresolve

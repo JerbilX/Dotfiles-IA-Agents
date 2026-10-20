@@ -107,7 +107,7 @@ Ante la orden de atender observaciones en un Pull Request:
    - Validar con `./build.sh check` (`BypassSandbox: false`).
    - Commit `fix(<alcance>): atender feedback de code review en PR #<id>` vía `.commit_msg` y `git push`.
 4. **Mutación y Cierre:**
-   - Resolver hilos subsanados: `gh-pr-review resolve <thread_id>` (`BypassSandbox: true`).
+   - Resolver hilos subsanados: `gh-pr-review resolve <thread_id>` (múltiples: `gh-pr-review resolve <id1> <id2>` o en lote: `gh-pr-review resolve --all <pr_id>`) (`BypassSandbox: true`).
    - Réplica opcional: `gh-pr-review reply <thread_id> --body "..."`.
    - Publicar comentario consolidado: `gh pr comment <pr_id> --body-file .pr_comment` y mantener tarjeta en `👀 In Review / PR`.
 

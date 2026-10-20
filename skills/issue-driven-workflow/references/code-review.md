@@ -119,12 +119,33 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
 
 ## 5. Fase 4: Trazabilidad, Mutación y Cierre del Ciclo de Feedback
 
-1. **Resolución Atómica de Hilos de Revisión Subsanados:**
-   Por cada hilo de revisión cuyos requerimientos hayan sido corregidos y verificados con éxito, marcarlo como resuelto utilizando `gh-pr-review resolve`:
+1. **Resolución Atómica y por Lotes de Hilos de Revisión Subsanados:**
+   Por cada hilo de revisión cuyos requerimientos hayan sido corregidos y verificados con éxito, marcarlo como resuelto utilizando `gh-pr-review resolve`. Admite resolución individual, múltiple por IDs o en lote para todo el PR:
    ```bash
+   # Resolución de un hilo individual
    gh-pr-review resolve <thread_id>
+
+   # Resolución por lotes de múltiples hilos específicos en una sola llamada
+   gh-pr-review resolve <thread_id_1> <thread_id_2> <thread_id_3>
+
+   # Resolución total de todos los hilos pendientes de un Pull Request
+   gh-pr-review resolve --all <pr_id>
    ```
    *(Ejecutado con `BypassSandbox: true`).*
+
+   Retorna una respuesta JSON estructurada y consolidada:
+   ```json
+   {
+     "success": true,
+     "resolvedCount": 2,
+     "resolvedThreads": [
+       "PRRT_kwDOU_2SzM4A...",
+       "PRRT_kwDOU_2SzM4B..."
+     ],
+     "errors": []
+   }
+   ```
+   Al usar `--all <pr_id>`, incluye además `prNumber` y `totalFound`. Si algún hilo falla, se reporta en `errors` con su respectivo `threadId` y mensaje sin interrumpir los demás.
 
 2. **Réplica Opcional a un Hilo de Revisión Específico:**
    Si se requiere dejar constancia explícita sobre un hilo puntual antes o después de resolverlo:
