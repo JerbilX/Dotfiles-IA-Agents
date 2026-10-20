@@ -387,45 +387,50 @@ Cuando una tarea despachada tenga por objeto una auditoría forense (`audit(...)
 
 ## 7. Sub-protocolo de Feedback Loop y Resolución Autónoma de Code Review
 
-Protocolo operativo determinista para atender observaciones, revisiones humanas y comentarios inline dejados en el diff de Pull Requests en GitHub.
+Protocolo operativo determinista para atender observaciones, revisiones humanas y comentarios inline dejados en el diff de Pull Requests en GitHub, optimizado para ejecución atómica en turno único compatible tanto con despacho conversacional en chat como con encolado headless desde Agent-Cockpit.
 
 ### 7.1 Criterios de Activación y Ámbito
-- **Trigger Conversacional:** El agente activa este sub-protocolo cuando el usuario solicite atender, corregir o resolver observaciones de Code Review en un Pull Request activo (ej. *"resolvé los comentarios del PR #<id>"*, *"atendé el review del PR #<id>"*, *"revisá el feedback dejado en el diff de #<id>"*).
+- **Trigger Dual (Conversacional y Headless / Agent-Cockpit):**
+  - **Vía Chat:** El agente activa este sub-protocolo ante instrucciones directas del usuario en el chat solicitando atender o resolver revisiones (ej. *"resolvé los comentarios del PR #<id>"*, *"atendé el review del PR #<id>"*, *"revisá el feedback dejado en el diff de #<id>"*).
+  - **Vía Agent-Cockpit (Headless):** Invocación desatendida despachada desde el panel web de Agent-Cockpit especificando el `<pr_id>` a procesar en un único turno de ejecución.
 - **Aislamiento en Rama Activa:** Todas las correcciones solicitadas en la revisión de código deben realizarse estrictamente sobre la rama activa del Pull Request. Queda **terminantemente prohibido** crear ramas secundarias o abrir nuevos issues para abordar observaciones del code review del PR activo.
+- **Contrato de Ejecución Fast-Path (Exención de Planes Redundantes):**
+  - Dado que las observaciones del revisor constituyen requerimientos explícitos, acotados y ya validados en el diff, el agente **no debe redactar un `implementation_plan.md` con pausa bloqueante de aprobación**.
+  - Procede de forma inmediata y continua a través del ciclo atómico completo: sincronización -> ingesta unificada -> corrección local -> verificación estática -> commit atómico -> push -> cierre de feedback.
+  - *Gate de Escalación Arquitectónica:* Si una observación de review demanda un rediseño de fondo, una refactorización estructural mayor o contradice invariantes del sistema, el agente debe suspender el fast-path y aplicar Stop & Ask o registrar formalmente la decisión vía `adr-manager`.
 
 ### 7.2 Fase 1: Contexto y Sincronización de Rama
-1. **Posicionamiento en la Rama del PR:**
+1. **Posicionamiento Determinista en la Rama del PR:**
    - Si el workspace ya se encuentra en la rama asociada al PR, sincronizar con el remoto para incorporar posibles commits o sugerencias aplicadas desde la web:
      ```bash
      git pull --ff-only
      ```
-   - Si el workspace se encuentra en otra rama o se atiende el PR en una nueva sesión, posicionarse deterministamente en la rama del PR:
+   - Si el workspace se encuentra en otra rama o se atiende el PR en una nueva sesión / contexto headless:
      ```bash
      gh pr checkout <pr_id>
      ```
-     *(Ejecutados con `BypassSandbox: true` obligatorio desde el primer intento).*
+     *(Ejecutados con `BypassSandbox: true` obligatorio desde el primer intento por mutación de `.git/`).*
 
-### 7.3 Fase 2: Ingesta Determinista de Feedback de Review
-1. **Inspección de Reseñas Generales y Veredicto:**
-   Consultar los comentarios globales y el estado de aprobación del Pull Request:
+### 7.3 Fase 2: Ingesta Determinista Unificada de Feedback
+1. **Consulta Compacta de Comentarios Inline en el Diff (Comando Principal):**
+   Para obtener en una sola llamada los comentarios específicos y pendientes dejados en el diff del Pull Request, consultar directamente el endpoint nativo de la API de GitHub mediante GitHub CLI con filtrado `--jq` server-side/nativo:
+   ```bash
+   gh api repos/:owner/:repo/pulls/<pr_id>/comments --jq '.[] | {id: .id, path: .path, line: (.line // .original_line), body: .body}'
+   ```
+   *(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento por requerir acceso de red; los marcadores `:owner` y `:repo` son autocompletados automáticamente por GitHub CLI según el contexto del repositorio).*
+   - **Economía de Contexto:** Esta consulta descarta metadatos voluminosos (como `diff_hunk`, enlaces HTML y referencias de commit), extrayendo exclusivamente `{id, path, line, body}` para un procesamiento atómico y de bajo consumo de contexto.
+2. **Inspección de Reseñas Generales (Fallback / Complemento):**
+   Únicamente si la consulta inline devuelve un arreglo vacío (`[]`) o si la instrucción del usuario/cockpit explicita revisar el veredicto general del PR:
    ```bash
    gh pr view <pr_id> --comments
    ```
    *(Ejecutado con `BypassSandbox: true`).*
-
-2. **Consulta Determinista de Comentarios Inline en el Diff:**
-   Para obtener los comentarios específicos línea por línea dejados en el diff del Pull Request, consultar directamente el endpoint nativo de la API de GitHub mediante GitHub CLI:
-   ```bash
-   gh api repos/:owner/:repo/pulls/<pr_id>/comments --jq '.[] | {id: .id, path: .path, line: (.line // .original_line), diff_hunk: .diff_hunk, body: .body}'
-   ```
-   *(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento por requerir acceso de red; los marcadores `:owner` y `:repo` son autocompletados automáticamente por GitHub CLI según el contexto del repositorio).*
-
 3. **Prohibición Categórica de Scripts Envoltorios o Tuberías:**
    Queda estrictamente prohibido crear scripts temporales (Python, Bash, Node, ej. `fetch_comments.py`) o encadenar tuberías con utilidades de terminal (`awk`, `sed`, `jq` externo). Todo el parseo y filtrado debe realizarse mediante los flags nativos de GitHub CLI (`--jq`) para preservar el *prefix matching* de seguridad de Antigravity.
 
 ### 7.4 Fase 3: Flujo Atómico de Resolución
 1. **Mapeo y Análisis Técnico:**
-   - Inspeccionar el archivo afectado (`path`) y las líneas señaladas (`line` / `diff_hunk`) mediante la herramienta nativa `view_file`.
+   - Inspeccionar el archivo afectado (`path`) y las líneas señaladas (`line`) mediante la herramienta nativa `view_file`.
    - Contrastar la observación del revisor con el diseño del sistema y los invariantes del proyecto, identificando la solución con el menor radio de impacto posible (*Minimal Blast Radius*).
 2. **Aplicación de Parches:**
    - Aplicar las correcciones solicitadas exclusivamente a través de las herramientas nativas de edición (`replace_file_content` o `write_to_file`). Prohibido usar comandos CLI de streaming (`sed`, `cat >`, `echo >>`) o scripts efímeros de parcheo.
@@ -462,7 +467,7 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
    ```
    *(Ejecutado con `BypassSandbox: true`).*
 2. **Comentario Consolidado en el Pull Request:**
-   Para notificar formalmente al revisor humano que las observaciones fueron atendidas:
+   Para notificar formalmente al revisor humano o al orquestador que las observaciones fueron atendidas:
    - Redactar el resumen en `.pr_comment` mediante `write_to_file`.
    - Publicar el comentario en el PR (`BypassSandbox: true`):
      ```bash
@@ -474,6 +479,13 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
      ```
 3. **Preservación del Estado en Projects v2:**
    - La tarjeta de la tarea permanece en `👀 In Review / PR` en el tablero central (Project 1) a la espera de la re-inspección, aprobación y fusión (merge) definitiva por parte del usuario.
+4. **Formato de Respuesta Estructurada (Compatibilidad Headless / Agent-Cockpit):**
+   Al concluir la resolución, emitir un reporte final estructurado y determinista apto tanto para lectura humana en chat como para ingesta programática desde Agent-Cockpit:
+   - **Estado:** `PR #<id> - Code Review Resuelto`
+   - **Commits:** Listado de commits generados (SHA y título convencional).
+   - **Archivos Modificados:** Detalle conciso de archivos y líneas ajustadas.
+   - **Verificación:** Resultado de `./build.sh check` (0 errores).
+   - **Enlace:** URL directa al Pull Request en GitHub.
 
 ---
 
