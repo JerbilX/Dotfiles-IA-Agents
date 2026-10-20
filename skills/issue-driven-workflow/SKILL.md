@@ -21,9 +21,9 @@ Aplica **Divulgación Progresiva (Progressive Disclosure)**: expone aquí los pr
 3. **Formato Atómico de Commits:**
    Prohibido `git commit -m "..."`. Redactar el mensaje en `.commit_msg` con `write_to_file`, commitear con `git commit -F .commit_msg` (`BypassSandbox: true`) y limpiar con `rm -f .commit_msg` (`BypassSandbox: false`).
 4. **Higiene Confinada y Cero Tuberías:**
-   Sincronizar con `git pull --prune --ff-only` (`BypassSandbox: true`). Prohibido invocar `git remote prune` o pipes CLI (`awk`, `xargs`, `sed`). Podar ramas huérfanas `[gone]` en dos fases atómicas: inspección pasiva confinada (`git branch --format ...`) y poda directa con `git branch -d`.
+   Sincronizar con `git pull --prune --ff-only` (`BypassSandbox: true`). Prohibido invocar `git remote prune` o pipes CLI (`awk`, `xargs`, `sed`). Podar ramas huérfanas `[gone]` en un único paso atómico mediante `git-prune-gone` (`BypassSandbox: true`).
 5. **Gobernanza de Sandbox:**
-   `BypassSandbox: true` se reserva exclusivamente para la suite de `git`, `gh` y el tooling determinista autorizado (`gh-pr-review`, `agent-audit`). Operaciones de lectura e I/O operan 100% confinadas.
+   `BypassSandbox: true` se reserva exclusivamente para la suite de `git`, `gh` y el tooling determinista autorizado (`gh-pr-review`, `agent-audit`, `git-prune-gone`). Operaciones de lectura e I/O operan 100% confinadas.
 
 ---
 
@@ -75,7 +75,7 @@ gh project item-list 1 --owner "@me" --query "repo:<owner>/<repo> -status:Done" 
 1. **Ingesta:** Inspección de requerimientos y criterios en `gh issue view <id>`.
 2. **Aislamiento e Higiene:**
    - Sincronizar: `git checkout main && git pull --prune --ff-only` (`BypassSandbox: true`).
-   - Poda pasiva de huérfanas `[gone]`: `git branch --format "%(refname:short) %(upstream:track)"` (`BypassSandbox: false`). Si existen: `git branch -d <rama>` (`BypassSandbox: true`).
+   - Poda atómica de huérfanas `[gone]`: `git-prune-gone` (`BypassSandbox: true`).
    - Crear rama: `git checkout -b feat/issue-<id>-<slug>` o `fix/issue-<id>-<slug>` (`BypassSandbox: true`).
 3. **Planificación:** Diagnósticos de errores o cambios arquitectónicos requieren `implementation_plan.md` con pausa bloqueante (`RequestFeedback: true`). Evaluar Minimal Blast Radius. (*Excepción: fast-path ejecutivo directo tras acuerdo previo en chat*). Si aplica, redactar ADR en `docs/adr/` (`status: proposed`).
 4. **Desarrollo y Verificación:** Modificar archivos solo mediante APIs nativas (`replace_file_content`, `write_to_file`). Validar con `./build.sh check` (`BypassSandbox: false`). Transicionar ADRs a `status: accepted` en la rama antes del commit.

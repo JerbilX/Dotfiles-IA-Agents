@@ -8,7 +8,8 @@
   ],
   "binaries": {
     "agent-audit": "agent-audit",
-    "gh-pr-review": "gh-pr-review"
+    "gh-pr-review": "gh-pr-review",
+    "git-prune-gone": "git-prune-gone"
   },
   "mcp_servers": [],
   "target": {
