@@ -3,7 +3,7 @@ status: accepted
 date: 2026-10-21
 decision-makers: [Usuario, Agente]
 supersedes: []
-superseded-by: []
+superseded-by: ["0029-ciclo-atomico-de-adrs-e-higiene-proactiva-del-workspace.md"]
 ---
 
 # 0027 - Reestructuración de Estados del Board, Máquina de Estados Bidireccional y Ciclo de Vida de ADRs

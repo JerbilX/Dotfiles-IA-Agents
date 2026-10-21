@@ -75,21 +75,13 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 8 fas
    ```
    *(Ejecutado con `BypassSandbox: true` desde el primer intento debido al montaje `ro` de `.git/`).*
    - **Fallback Determinista:** Si el binario no está disponible en `$PATH`, invocar directamente `skills/issue-driven-workflow/bin/git-prune-gone`.
-   - **Mecánica Interna:** Inspecciona las ramas locales mediante formato estructurado (`%(HEAD)|%(refname:short)|%(upstream:track)`), detecta aquellas con tracking zombi `[gone]` y ejecuta la poda segura (`git branch -d`) sin requerir turnos intermedios del LLM ni pipes de shell.
-3. **Reconciliación Pre-Flight Just-In-Time (JIT):**
-   Ejecutar el subcomando determinista de reconciliación para ratificar cualquier ADR pendiente que haya ingresado a la rama base tras merges anteriores sin reconciliación manual:
-   ```bash
-   ./build.sh reconcile
-   ```
-   *(Ejecutado con `BypassSandbox: false`).*
-   - Si existieron merges previos que incorporaron ADRs en `status: proposed`, esta fase preventiva los ratifica de forma atómica a `status: accepted` en `main` antes de ramificar, garantizando que el workspace no herede decisiones no ratificadas sin requerir procesos demonio residentes ni depender de la memoria del usuario.
-4. Crear y cambiar a la rama descriptiva (`git checkout -b feat/issue-<id>-<slug>` o `fix/issue-<id>-<slug>`) con `BypassSandbox: true` desde el primer intento.
+3. Crear y cambiar a la rama descriptiva (`git checkout -b feat/issue-<id>-<slug>` o `fix/issue-<id>-<slug>`) con `BypassSandbox: true` desde el primer intento.
 
 ### Paso 3: Planificación y Refinamiento (📐 In Planning)
 - **Blindaje del Planning Mode:** Toda tarea que implique diagnóstico de errores (bug fixing) o modificaciones arquitectónicas requiere obligatoriamente redactar `implementation_plan.md` con pausa bloqueante (`RequestFeedback: true`).
 - **Evaluación Obligatoria de Minimal Blast Radius:** Todo plan de implementación debe evaluar y registrar explícitamente el nivel de intervención más bajo posible (Nivel 0 a 4). Si la propuesta plantea modificar directivas basales (`core/`), debe incorporar obligatoriamente la sección **"Justificación de Elevación Basal"** acreditando la inviabilidad técnica en los niveles 0 a 3.
 - **Excepción de Fast-Path Ejecutivo:** Si la solución técnica o cambio ya fue debatido y consensuado explícitamente en el chat y el usuario emitió una orden ejecutiva directa (*"procedé"*, *"avanza"*, *"aplicalo"*), el agente **NO DEBE** pausar con un plan bloqueante; procede de inmediato a la implementación.
-- **Registro de ADRs:** Si se toman decisiones arquitectónicas o estructurales, registrar un nuevo ADR con `status: proposed` mediante el skill `adr-manager` (`docs/adr/NNNN-titulo.md`). El ADR permanece estrictamente en `status: proposed` durante todo el desarrollo de la rama.
+- **Registro de ADRs:** Si se toman decisiones arquitectónicas o estructurales, registrar un nuevo ADR con `status: proposed` mediante el skill `adr-manager` (`docs/adr/NNNN-titulo.md`). Permanece en `status: proposed` durante la fase de análisis y redacción del plan.
 
 ### Paso 4: Transición a Desarrollo y Verificación (⚙️ In Progress)
 - Al aprobarse el plan o entrar en fast-path ejecutivo, transicionar el ticket a `⚙️ In Progress`:
@@ -99,7 +91,7 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 8 fas
   *(Ejecutado con `BypassSandbox: true`).*
 - Aplicar cambios atómicos exclusivamente mediante las APIs nativas de archivos (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido usar comandos de terminal para I/O (`cat`, `sed`, `awk`, `tee`).
 - Ejecutar compilaciones locales, linters y suites de prueba del proyecto para validar que no existan regresiones (`./build.sh check` con `BypassSandbox: false`).
-- **Invariante de ADR en Rama:** Todo nuevo ADR permanece en `status: proposed` en la rama de trabajo. Queda prohibido pasarlo a `status: accepted` dentro de la rama antes del PR.
+- **Promoción Atómica del ADR:** Al transicionar a `⚙️ In Progress` y comenzar el desarrollo, el YAML frontmatter del ADR se actualiza a `status: accepted` en la rama de trabajo. Queda preparado para entrar a `main` ya ratificado y de forma atómica junto con la implementación.
 
 ### Paso 5: Commit Atómico
 - Debido a que el evaluador de permisos anula el prefijo con comillas, **queda estrictamente prohibido** usar `git commit -m "..."`.
@@ -134,7 +126,7 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 8 fas
   rm -f .pr_body
   ```
 
-### Paso 8: Protocolo de Limpieza y Reconciliación Post-Merge (Done)
+### Paso 8: Protocolo de Cierre e Higiene Post-Merge (Done)
 Tras la fusión (merge) del Pull Request en GitHub por el gate humano:
 1. **Validar Cierre de la Issue:** Verificar que el merge haya cerrado automáticamente la issue vinculada (`gh issue view <id>`). Si permanece abierta por omisión en el PR body, cerrarla (`gh issue close <id>`).
 2. **Sincronizar Tablero Central:** Transicionar la tarjeta en Project 1 a `Done`:
@@ -149,11 +141,7 @@ Tras la fusión (merge) del Pull Request en GitHub por el gate humano:
    ```
    *(Ejecutados con `BypassSandbox: true`).*
 4. **Poda Atómica de Ramas Locales:** Ejecutar `git-prune-gone` (`BypassSandbox: true`) para limpiar las ramas locales que trackeaban remotos ya fusionados y borrados.
-5. **Ratificación Formal de ADRs Fusionados:** Ejecutar el subcomando de reconciliación para promover los ADRs fusionados en `main` de `status: proposed` a `status: accepted`:
-   ```bash
-   ./build.sh reconcile
-   ```
-   *(Ejecutado con `BypassSandbox: false`).*
+- **Invariante de Higiene Proactiva:** Ante cualquier consulta o interacción subsiguiente del usuario (sea una pregunta exploratoria como *"¿con qué seguimos?"* o despacho de nueva tarea), si el agente detecta que la rama actual trackea un PR ya fusionado/cerrado o tracking `[gone]`, ejecuta inmediatamente este paso de higiene sin esperar una nueva orden de desarrollo.
 
 ---
 
@@ -167,9 +155,9 @@ El tablero de Projects v2 opera como una máquina de estados formal bidirecciona
 | :--- | :--- | :--- | :--- | :--- |
 | `📥 Backlog` | `🎯 Ready for Dev` | Priorización | Requerimiento maduro con especificación y criterios de aceptación. | Transicionar tarjeta en Project 1. |
 | `🎯 Ready for Dev` | `📐 In Planning` | Despacho de tarea | Sesión de agente asignada al ticket vía instrucción directa o backlog. | Ingesta técnica (`gh issue view`), mover a `📐 In Planning`. |
-| `📐 In Planning` | `⚙️ In Progress` | Aprobación de Plan | Aprobación humana explícita de `implementation_plan.md` o fast-path ejecutivo. | Mover a `⚙️ In Progress`, iniciar codificación. ADR permanece en `proposed`. |
-| `⚙️ In Progress` | `👀 In Review / PR` | Fin de desarrollo | Código probado con `./build.sh check`, commits atómicos y push remoto. | Crear PR con `Closes #<id>`, mover a `👀 In Review / PR`. |
-| `👀 In Review / PR` | `Done` | Merge de PR | Gate humano de revisión, aprobación y fusión en `main`. | Ejecutar Paso 8 (Reconciliación Post-Merge y `./build.sh reconcile`). |
+| `📐 In Planning` | `⚙️ In Progress` | Aprobación de Plan | Aprobación humana explícita de `implementation_plan.md` o fast-path ejecutivo. | Mover a `⚙️ In Progress`, promover ADR a `status: accepted`, iniciar codificación. |
+| `⚙️ In Progress` | `👀 In Review / PR` | Fin de desarrollo | Código probado con `./build.sh check`, commits atómicos y push remoto. | Crear PR con `Closes #<id>` (ADR viaja como `accepted`), mover a `👀 In Review / PR`. |
+| `👀 In Review / PR` | `Done` | Merge de PR | Gate humano de revisión, aprobación y fusión en `main`. | Ejecutar Paso 8 (Cierre e Higiene Post-Merge). |
 | `📐 In Planning` | `Done` | Conclusión de Spike | Tarea investigativa/auditoría sin cambios de código. | Informe técnico, cierre de issue, mover a `Done` (Sección 5). |
 
 ### 3.2 Matriz de Transiciones Regresivas (Backward / Rework / Rollback)
@@ -178,9 +166,9 @@ Cuando una tarea enfrenta bloqueos, revisiones insatisfactorias o cambios de pri
 
 | Origen | Destino | Causa / Disparador | Acciones de Compensación e Higiene |
 | :--- | :--- | :--- | :--- |
-| `👀 In Review / PR` | `⚙️ In Progress` | **Observaciones en Code Review (Rework moderado/mayor):** El revisor solicita cambios funcionales, refactors o tests adicionales antes de aprobar. | 1. Mover tarjeta a `⚙️ In Progress` si el retrabajo requiere iteraciones locales significativas.<br>2. Posicionarse en la rama del PR (`gh pr checkout <pr_id>`).<br>3. Resolver observaciones vía `gh-pr-review` y herramientas nativas.<br>4. Commitear, pushear y regresar la tarjeta a `👀 In Review / PR`.<br>5. El ADR permanece consistentemente en `status: proposed`. |
-| `👀 In Review / PR` | `📐 In Planning` | **Cuestionamiento Arquitectónico o Fallo de Enfoque:** El revisor rechaza el diseño técnico, detecta inviabilidad o exige replantear la solución. | 1. Mover tarjeta a `📐 In Planning`.<br>2. Invalidar el `implementation_plan.md` previo.<br>3. Mantener ADR existente en `status: proposed` (o redactar reemplazo/enmienda).<br>4. Redactar nuevo plan de implementación con pausa bloqueante (`RequestFeedback: true`).<br>5. Prohibido tocar código hasta obtener nueva aprobación humana. |
-| `⚙️ In Progress` | `📐 In Planning` | **Bloqueo Técnico o Inviabilidad en Desarrollo:** El agente descubre que el enfoque planificado no es viable o choca con restricciones no previstas. | 1. Mover tarjeta a `📐 In Planning`.<br>2. Descartar cambios locales no viables (`git checkout .` / `git clean -fd`).<br>3. Actualizar `implementation_plan.md` justificando el cambio de rumbo.<br>4. Si hay ADR en curso, mantenerlo en `status: proposed` o ajustar la propuesta.<br>5. Solicitar confirmación humana antes de reanudar codificación. |
+| `👀 In Review / PR` | `⚙️ In Progress` | **Observaciones en Code Review (Rework moderado/mayor):** El revisor solicita cambios funcionales, refactors o tests adicionales antes de aprobar. | 1. Mover tarjeta a `⚙️ In Progress` si el retrabajo requiere iteraciones locales significativas.<br>2. Posicionarse en la rama del PR (`gh pr checkout <pr_id>`).<br>3. Resolver observaciones vía `gh-pr-review` y herramientas nativas.<br>4. Commitear, pushear y regresar la tarjeta a `👀 In Review / PR`.<br>5. Si las observaciones afectan la arquitectura, ajustar el ADR según corresponda. |
+| `👀 In Review / PR` | `📐 In Planning` | **Cuestionamiento Arquitectónico o Fallo de Enfoque:** El revisor rechaza el diseño técnico, detecta inviabilidad o exige replantear la solución. | 1. Mover tarjeta a `📐 In Planning`.<br>2. Invalidar el `implementation_plan.md` previo.<br>3. Revertir ADR a `status: proposed` (o redactar reemplazo/enmienda).<br>4. Redactar nuevo plan de implementación con pausa bloqueante (`RequestFeedback: true`).<br>5. Prohibido tocar código hasta obtener nueva aprobación humana. |
+| `⚙️ In Progress` | `📐 In Planning` | **Bloqueo Técnico o Inviabilidad en Desarrollo:** El agente descubre que el enfoque planificado no es viable o choca con restricciones no previstas. | 1. Mover tarjeta a `📐 In Planning`.<br>2. Descartar cambios locales no viables (`git checkout .` / `git clean -fd`).<br>3. Actualizar `implementation_plan.md` justificando el cambio de rumbo.<br>4. Si hay ADR en curso, revertirlo a `status: proposed` o ajustar la propuesta.<br>5. Solicitar confirmación humana antes de reanudar codificación. |
 | `📐 In Planning` | `🎯 Ready for Dev` | **Despriorización Temporal o Bloqueo Externo:** Se interrumpe la planificación por falta de insumos externos o cambio temporal de foco. | 1. Mover tarjeta a `🎯 Ready for Dev`.<br>2. Si se creó rama local efímera, eliminarla (`git checkout main && git branch -D <rama>`).<br>3. Registrar comentario en el issue (`gh issue comment`) detallando el bloqueo o motivo de pausa. |
 | `📐 In Planning` | `📥 Backlog` | **Descarte Temprano o Cancelación:** La exploración inicial concluye que la iniciativa es inviable o no prioritaria. | 1. Mover tarjeta a `📥 Backlog`.<br>2. Eliminar rama de trabajo si existiere.<br>3. Registrar diagnóstico en el issue (`gh issue comment`). Si se redactó borrador de ADR en rama, no ingresa a `main`. |
 | `⚙️ In Progress` | `🎯 Ready for Dev` / `📥 Backlog` | **Aborto de Implementación:** Se decide cancelar el desarrollo ya iniciado. | 1. Mover tarjeta al destino correspondiente.<br>2. Eliminar rama local y rama remota (`git push origin --delete <rama>`).<br>3. Documentar en el issue el estado en que queda el requerimiento. |
