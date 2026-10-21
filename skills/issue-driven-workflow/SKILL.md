@@ -27,9 +27,9 @@ Procedimientos detallados y plantillas en `references/`:
 
 | Dominio | Contenido | Referencia Especializada |
 | :--- | :--- | :--- |
-| **Backlog** | Criterios, Minimal Blast Radius (0-4) y Projects v2. | [`references/issue-backlog.md`](references/issue-backlog.md) |
+| **Backlog** | Criterios, Minimal Blast Radius (0-4), 6 estados y Projects v2. | [`references/issue-backlog.md`](references/issue-backlog.md) |
 | **Aprovisionamiento** | `git init`, gate de origin y repo privado en GitHub. | [`references/repo-provisioning.md`](references/repo-provisioning.md) |
-| **Ramas y PRs** | Cat. A/B, higiene, 7 fases E2E y apertura de PRs. | [`references/branch-lifecycle.md`](references/branch-lifecycle.md) |
+| **Ramas y PRs** | Cat. A/B, higiene, 8 fases E2E, máquina bidireccional y PRs. | [`references/branch-lifecycle.md`](references/branch-lifecycle.md) |
 | **Code Review** | Ingesta `gh-pr-review`, parches y resolución de hilos. | [`references/code-review.md`](references/code-review.md) |
 | **Rollback** | Reversión con `git revert` y `build.sh rollback`. | [`references/rollback.md`](references/rollback.md) |
 
@@ -49,36 +49,37 @@ gh project item-list 1 --owner "@me" --query "repo:<owner>/<repo> -status:Done" 
 
 ### 3.2 Despacho Vía A: Instrucción Directa (*"implementa la issue #<id>"*)
 1. Ingesta: `gh issue view <id>` (`BypassSandbox: true`).
-2. Mover a `⚙️ In Progress`:
+2. Mover a `📐 In Planning`:
    ```bash
-   gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "⚙️ In Progress"
+   gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "📐 In Planning"
    ```
 3. Proceder al ciclo E2E.
 
 ### 3.3 Despacho Vía B: Backlog (*"siguiente tarea lista"*)
 1. Consultar listos:
-   ```bash
-   gh project item-list 1 --owner "@me" --query 'repo:<owner>/<repo> status:"🎯 Ready for Dev"' --format json --jq '.items[] | {number: .content.number, title: .content.title, url: .content.url}'
-   ```
-2. Elegir ítem prioritario (Top 2-3), mover a `⚙️ In Progress` y proceder al ciclo E2E.
+```bash
+gh project item-list 1 --owner "@me" --query 'repo:<owner>/<repo> status:"🎯 Ready for Dev"' --format json --jq '.items[] | {number: .content.number, title: .content.title, url: .content.url}'
+```
+2. Elegir ítem prioritario (Top 2-3), mover a `📐 In Planning` y proceder al ciclo E2E.
 
 ---
 
 ## 4. Ciclo de Vida E2E (Resumen Ejecutivo)
 
 ```
-[1. Ingesta] ──> [2. Higiene] ──> [3. Plan/ADR] ──> [4. Desarrollo] ──> [5. Commit] ──> [6. Push] ──> [7. PR & Board]
+[1. Ingesta] ──> [2. Higiene] ──> [3. Plan/ADR] ──> [4. Desarrollo] ──> [5. Commit] ──> [6. Push] ──> [7. PR & Board] ──> [8. Reconciliación]
 ```
 
-Guía paso a paso: [`references/branch-lifecycle.md`](references/branch-lifecycle.md).
+Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](references/branch-lifecycle.md).
 
-- [ ] **1. Ingesta:** `gh issue view <id>` y mover a `⚙️ In Progress` en Project 1.
-- [ ] **2. Higiene:** Sincronizar `main`, podar con `git-prune-gone` y aislar en `feat/` o `fix/`.
-- [ ] **3. Plan/ADR:** `implementation_plan.md` ante bugs/arquitectura (salvo fast-path); ADR si aplica.
-- [ ] **4. Desarrollo:** I/O nativo, verificar con `./build.sh check` y pasar ADR a `accepted`.
+- [ ] **1. Ingesta:** `gh issue view <id>` y mover a `📐 In Planning` en Project 1.
+- [ ] **2. Higiene:** Sincronizar `main`, podar con `git-prune-gone`, ratificar preventivamente con `./build.sh reconcile` y aislar en `feat/` o `fix/`.
+- [ ] **3. Plan/ADR:** `implementation_plan.md` con gate bloqueante; ADR con `status: proposed`.
+- [ ] **4. Desarrollo:** Mover a `⚙️ In Progress`, I/O nativo y verificar con `./build.sh check`.
 - [ ] **5. Commit:** Redactar en `.commit_msg`, `git commit -F .commit_msg` y borrar temporal.
 - [ ] **6. Push:** Publicar con `git push -u origin <rama>`.
 - [ ] **7. PR & Tablero:** PR con `Closes #<id>` vía `.pr_body`, mover a `👀 In Review / PR` y reportar.
+- [ ] **8. Reconciliación Post-Merge:** Tras merge en `main`, mover a `Done`, sincronizar rama base, ejecutar `git-prune-gone` y ratificar ADRs con `./build.sh reconcile`.
 
 ---
 

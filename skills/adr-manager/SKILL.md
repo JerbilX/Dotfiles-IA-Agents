@@ -36,7 +36,9 @@ Cualquier agente que trabaje en un proyecto de software debe aplicar rigurosamen
                      └── ¿Se requiere nueva decisión arquitectónica?
                            └── [Creación Nativa] Crear NNNN-*.md con status: proposed
                                  │
-                                 └── [Gate Humano] Aprobación de Plan / PR ──> status: accepted en rama de trabajo
+                                 ├── [Ciclo de Rama/PR] Permanece status: proposed (In Planning / Progress / Review)
+                                 │
+                                 └── [Gate Humano: Merge a main] ──> Ratificación post-merge a status: accepted
 ```
 
 ---
@@ -101,14 +103,17 @@ Cuando se acuerde entre el usuario y el agente documentar una nueva decisión:
 
 1. **Estado Inicial Obligatorio (Borrador / Propuesta):**
    - Todo nuevo ADR redactado por el agente nace estrictamente con `status: proposed` durante la etapa de ideación, borrador o discusión previa a la aprobación del plan (`implementation_plan.md` o chat).
-2. **Prohibición de Auto-Aceptación No Autorizada:**
-   - El agente tiene **estrictamente prohibido** marcar un ADR como `accepted` de forma autónoma sin que medie una validación o confirmación humana del enfoque arquitectónico propuesto.
-3. **Mecanismo de Aceptación Pre-PR (El PR como Gate Humano Definitivo):**
-   - Para erradicar la apertura de Pull Requests redundantes y micro-fixes dedicados exclusivamente a cambiar `status: proposed` a `status: accepted`:
-     - **En desarrollos guiados por Pull Requests:** Cuando el usuario aprueba el plan de implementación (`implementation_plan.md`), emite una directiva ejecutiva de avance (*"procedé"*, *"avanza"*, *"aplicalo"*), o al finalizar la implementación técnica antes de commitear y abrir el Pull Request, el ADR **DEBE transicionar a `status: accepted` en la misma rama de trabajo** utilizando `replace_file_content`.
-     - **Fundamento y Resguardo de Seguridad:** Dado que la fusión (merge) del Pull Request en la rama principal (`main`) es prerrogativa exclusiva del usuario en la interfaz de GitHub, dicho merge constituye el gate humano definitivo que ratifica la decisión arquitectónica. Si el usuario rechaza o cierra el PR sin fusionar, la rama se descarta y el ADR nunca ingresa a la historia de `main`.
-     - **Prohibición de ADRs en `proposed` dentro de PRs aprobados:** Queda **terminantemente prohibido** comitear y abrir un PR con un ADR en `status: proposed` si la decisión ya fue acordada e implementada en dicho PR, evitando dejar decisiones en estado residual o inconsistente en `main`.
-4. **ADRs Desacoplados de Código (Propuestas Puras):**
+2. **Prohibición de Auto-Aceptación No Autorizada y Pre-PR:**
+   - El agente tiene **estrictamente prohibido** marcar un ADR como `accepted` de forma autónoma o cambiarlo a `accepted` dentro de la rama efímera de trabajo antes de que el Pull Request sea efectivamente fusionado en `main`.
+   - Todo nuevo ADR permanece obligatoriamente en `status: proposed` a lo largo de las fases `📐 In Planning`, `⚙️ In Progress` y `👀 In Review / PR`.
+3. **Resiliencia ante Regresiones del Tablero:**
+   - Si la tarea experimenta un retroceso en el ciclo de vida (ej. `In Review / PR` -> `In Progress` para atender observaciones, `In Review / PR` -> `In Planning` por replanteo de arquitectura, o `In Progress` -> `In Planning` por bloqueo técnico):
+     - El ADR se mantiene consistentemente en `status: proposed`, erradicando la inestabilidad de decisiones aceptadas prematuramente que contaminaban el historial de ramas o PRs.
+     - Si la propuesta técnica es descartada o rechazada definitivamente, transiciona a `status: rejected` documentando los motivos en el cuerpo del ADR.
+4. **Ratificación Formal Post-Merge (Reconciliación en `main`):**
+   - La fusión (merge) del Pull Request en la rama principal (`main`) por parte del usuario en GitHub constituye el gate humano definitivo que ratifica la decisión arquitectónica.
+   - Tras el merge, el protocolo de Limpieza y Reconciliación Post-Merge (ejecutado por `Agent-Cockpit` o el agente mediante `./build.sh reconcile`) actualiza formalmente el YAML frontmatter del ADR a `status: accepted` en `main`.
+5. **ADRs Desacoplados de Código (Propuestas Puras):**
    - Si un ADR se formula de manera puramente exploratoria o como propuesta arquitectónica aislada sin un PR de código asociado, permanecerá con `status: proposed` hasta que el usuario confirme explícitamente su aceptación (*"Acepto el ADR-NNNN"*) o se implemente en su respectiva rama y PR.
 
 ---

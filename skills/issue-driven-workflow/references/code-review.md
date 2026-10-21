@@ -166,5 +166,7 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
      rm -f .pr_comment
      ```
 
-4. **Preservación del Estado en Projects v2:**
-   - La tarjeta de la tarea permanece en `👀 In Review / PR` en el tablero central (Project 1) a la espera de la re-inspección, aprobación y fusión (merge) definitiva por parte del usuario.
+4. **Gobernanza del Estado en Projects v2 y Resiliencia de ADRs:**
+   - Para correcciones puntuales e iteraciones continuas de revisión, la tarjeta puede permanecer en `👀 In Review / PR` o transicionar a `⚙️ In Progress` durante el retrabajo si exige cambios sustanciales antes de solicitar una re-evaluación.
+   - Si las observaciones cuestionan la arquitectura o enfoque estructural, aplicar la transición regresiva hacia `📐 In Planning`, invalidar el plan previo y redactar un nuevo `implementation_plan.md` con pausa bloqueante antes de modificar código.
+   - Todo ADR asociado se mantiene rigurosamente en `status: proposed` a lo largo del proceso de revisión.
