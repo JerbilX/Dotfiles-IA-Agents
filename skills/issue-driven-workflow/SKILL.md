@@ -38,7 +38,7 @@ Procedimientos detallados y plantillas en `references/`:
 ## 3. Despacho y Recepción de Tareas
 
 > [!IMPORTANT]
-> Consultas de coordinación (*"¿qué hay en el board?"*) son consultivas; prohibido mutar o cambiar de rama sin orden de implementación.
+> Consultas de coordinación (*"¿qué hay en el board?"*, *"¿con qué seguimos?"*) no autorizan crear ramas ni modificar código. Sin embargo, la **higiene proactiva** (retornar a la rama base y podar ramas locales zombi si el PR previo fue fusionado o cerrado) es obligatoria ante cualquier interacción.
 
 ### 3.1 Consultas de Tablero (*"¿qué hay en el board?"*)
 Filtrar activos del repo (Top 2-3 con justificación):
@@ -67,19 +67,19 @@ gh project item-list 1 --owner "@me" --query 'repo:<owner>/<repo> status:"🎯 R
 ## 4. Ciclo de Vida E2E (Resumen Ejecutivo)
 
 ```
-[1. Ingesta] ──> [2. Higiene] ──> [3. Plan/ADR] ──> [4. Desarrollo] ──> [5. Commit] ──> [6. Push] ──> [7. PR & Board] ──> [8. Reconciliación]
+[1. Ingesta] ──> [2. Higiene] ──> [3. Plan/ADR] ──> [4. Desarrollo] ──> [5. Commit] ──> [6. Push] ──> [7. PR & Board] ──> [8. Cierre & Higiene]
 ```
 
 Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](references/branch-lifecycle.md).
 
 - [ ] **1. Ingesta:** `gh issue view <id>` y mover a `📐 In Planning` en Project 1.
-- [ ] **2. Higiene:** Sincronizar `main`, podar con `git-prune-gone`, ratificar preventivamente con `./build.sh reconcile` y aislar en `feat/` o `fix/`.
-- [ ] **3. Plan/ADR:** `implementation_plan.md` con gate bloqueante; ADR con `status: proposed`.
-- [ ] **4. Desarrollo:** Mover a `⚙️ In Progress`, I/O nativo y verificar con `./build.sh check`.
+- [ ] **2. Higiene:** Sincronizar rama base (`git pull --prune --ff-only`), podar con `git-prune-gone` y aislar en `feat/` o `fix/`.
+- [ ] **3. Plan/ADR:** `implementation_plan.md` con gate bloqueante; ADR nace con `status: proposed`.
+- [ ] **4. Desarrollo:** Mover a `⚙️ In Progress`, promover ADR a `status: accepted`, I/O nativo y verificar con `./build.sh check`.
 - [ ] **5. Commit:** Redactar en `.commit_msg`, `git commit -F .commit_msg` y borrar temporal.
 - [ ] **6. Push:** Publicar con `git push -u origin <rama>`.
-- [ ] **7. PR & Tablero:** PR con `Closes #<id>` vía `.pr_body`, mover a `👀 In Review / PR` y reportar.
-- [ ] **8. Reconciliación Post-Merge:** Tras merge en `main`, mover a `Done`, sincronizar rama base, ejecutar `git-prune-gone` y ratificar ADRs con `./build.sh reconcile`.
+- [ ] **7. PR & Tablero:** PR con `Closes #<id>` vía `.pr_body` (ADR viaja como `accepted`), mover a `👀 In Review / PR` y reportar.
+- [ ] **8. Cierre & Higiene (Done):** Tras merge en `main`, transicionar a `Done`, retornar a rama base, sincronizar y podar ramas locales zombi con `git-prune-gone`.
 
 ---
 
