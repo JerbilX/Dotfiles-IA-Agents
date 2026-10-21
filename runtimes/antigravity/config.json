@@ -5,7 +5,8 @@
     "adr-manager",
     "issue-driven-workflow",
     "autonomous-learning",
-    "conversation-audit"
+    "conversation-audit",
+    "project-documentation"
   ],
   "binaries": {
     "build_release": "eso-build",

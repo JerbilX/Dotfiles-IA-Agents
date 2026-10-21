@@ -9,6 +9,7 @@ MCP_SCHEMA_FILE="${RUNTIMES_BASE_DIR}/schema/mcp-server.schema.json"
 SKILLS_DIR="${SCRIPT_DIR}/skills"
 MAX_CONTEXT_WORDS="${MAX_CONTEXT_WORDS:-4000}"
 MAX_MODULE_WORDS="${MAX_MODULE_WORDS:-300}"
+MAX_README_WORDS="${MAX_README_WORDS:-600}"
 
 # ------------------------------------------------------------------------------
 # Descubrimiento y Resolución Dinámica de Runtimes
@@ -1515,6 +1516,77 @@ check_local_bin_symlinks() {
     fi
 }
 
+check_documentation() {
+    local readme_file="${SCRIPT_DIR}/README.md"
+
+    # 1. Presencia de README.md
+    if [ ! -f "${readme_file}" ]; then
+        echo "  [✗] Error: README.md no existe en la raíz del repositorio" >&2
+        CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        return 0
+    fi
+
+    # 2. Presupuesto de palabras en README.md
+    local words=0
+    words="$(wc -w < "${readme_file}" | tr -d ' ')"
+    if [ "${words}" -gt "${MAX_README_WORDS}" ]; then
+        echo "  [!] Advertencia: README.md supera el umbral recomendado (${words} > ${MAX_README_WORDS} palabras). Modularizar hacia docs/" >&2
+        CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+    else
+        echo "  [✓] Documentación: README.md cumple presupuesto de palabras (${words}/${MAX_README_WORDS} palabras)"
+    fi
+
+    # 3. Integridad de enlaces locales relativos en Markdown hacia docs/
+    local broken_links=0
+    if command -v python3 >/dev/null 2>&1; then
+        local broken_list
+        broken_list="$(python3 -c '
+import re, os, sys
+
+readme = sys.argv[1]
+repo_root = sys.argv[2]
+
+with open(readme, "r", encoding="utf-8") as f:
+    content = f.read()
+
+# Pattern for Markdown links: [text](docs/...)
+links = re.findall(r"\[.*?\]\((docs/[^\s\)\#\?]+)(?:[#\?][^\s\)]*)?\)", content)
+broken = []
+for link in links:
+    target_path = os.path.join(repo_root, link)
+    if not os.path.exists(target_path):
+        broken.append(link)
+
+for b in broken:
+    print(b)
+' "${readme_file}" "${SCRIPT_DIR}")"
+
+        if [ -n "${broken_list}" ]; then
+            while IFS= read -r broken_target; do
+                [ -z "${broken_target}" ] && continue
+                echo "  [✗] Enlace roto detectado en README.md: ${broken_target}" >&2
+                CHECK_ERRORS=$((CHECK_ERRORS + 1))
+                broken_links=$((broken_links + 1))
+            done <<< "${broken_list}"
+        fi
+    elif command -v grep >/dev/null 2>&1; then
+        local raw_links=()
+        mapfile -t raw_links < <(grep -oE '\[[^]]*\]\(docs/[^)#?]+' "${readme_file}" | sed -E 's/.*\(//' || true)
+        for link in "${raw_links[@]}"; do
+            [ -z "${link}" ] && continue
+            if [ ! -e "${SCRIPT_DIR}/${link}" ]; then
+                echo "  [✗] Enlace roto detectado en README.md: ${link}" >&2
+                CHECK_ERRORS=$((CHECK_ERRORS + 1))
+                broken_links=$((broken_links + 1))
+            fi
+        done
+    fi
+
+    if [ "${broken_links}" -eq 0 ]; then
+        echo "  [✓] Documentación: Enlaces relativos a docs/ en README.md verificados"
+    fi
+}
+
 cmd_check() {
     local target_arg="${1:-all}"
     validate_runtime_arg "${target_arg}" || return 1
@@ -1527,6 +1599,9 @@ cmd_check() {
 
     # Verificaciones comunes de directivas core
     check_core_rules
+
+    # Verificación de documentación técnica (README y enlaces a docs/)
+    check_documentation
 
     # Verificaciones por runtime
     for r in "${target_runtimes[@]}"; do

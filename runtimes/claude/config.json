@@ -4,7 +4,8 @@
     "adr-manager",
     "issue-driven-workflow",
     "autonomous-learning",
-    "conversation-audit"
+    "conversation-audit",
+    "project-documentation"
   ],
   "binaries": {
     "agent-audit": "agent-audit",
