@@ -73,7 +73,7 @@ gh project item-list 1 --owner "@me" --query 'repo:<owner>/<repo> status:"🎯 R
 Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](references/branch-lifecycle.md).
 
 - [ ] **1. Ingesta:** `gh issue view <id>` y mover a `📐 In Planning` en Project 1.
-- [ ] **2. Higiene:** Sincronizar `main`, podar con `git-prune-gone` y aislar en `feat/` o `fix/`.
+- [ ] **2. Higiene:** Sincronizar `main`, podar con `git-prune-gone`, ratificar preventivamente con `./build.sh reconcile` y aislar en `feat/` o `fix/`.
 - [ ] **3. Plan/ADR:** `implementation_plan.md` con gate bloqueante; ADR con `status: proposed`.
 - [ ] **4. Desarrollo:** Mover a `⚙️ In Progress`, I/O nativo y verificar con `./build.sh check`.
 - [ ] **5. Commit:** Redactar en `.commit_msg`, `git commit -F .commit_msg` y borrar temporal.

@@ -76,8 +76,14 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 8 fas
    *(Ejecutado con `BypassSandbox: true` desde el primer intento debido al montaje `ro` de `.git/`).*
    - **Fallback Determinista:** Si el binario no está disponible en `$PATH`, invocar directamente `skills/issue-driven-workflow/bin/git-prune-gone`.
    - **Mecánica Interna:** Inspecciona las ramas locales mediante formato estructurado (`%(HEAD)|%(refname:short)|%(upstream:track)`), detecta aquellas con tracking zombi `[gone]` y ejecuta la poda segura (`git branch -d`) sin requerir turnos intermedios del LLM ni pipes de shell.
-   - **Prohibición Categórica de Pipelines y Wrappers CLI (`awk` / `xargs`):** Queda terminantemente prohibido utilizar tuberías o utilidades intermediarias (ej. `git branch -vv | awk '/: gone]/{print $1}' | xargs -r git branch -d`). Encadenar comandos en pipes rompe el *prefix matching* de seguridad en Antigravity y viola los estándares de entorno.
-3. Crear y cambiar a la rama descriptiva (`git checkout -b feat/issue-<id>-<slug>` o `fix/issue-<id>-<slug>`) con `BypassSandbox: true` desde el primer intento.
+3. **Reconciliación Pre-Flight Just-In-Time (JIT):**
+   Ejecutar el subcomando determinista de reconciliación para ratificar cualquier ADR pendiente que haya ingresado a la rama base tras merges anteriores sin reconciliación manual:
+   ```bash
+   ./build.sh reconcile
+   ```
+   *(Ejecutado con `BypassSandbox: false`).*
+   - Si existieron merges previos que incorporaron ADRs en `status: proposed`, esta fase preventiva los ratifica de forma atómica a `status: accepted` en `main` antes de ramificar, garantizando que el workspace no herede decisiones no ratificadas sin requerir procesos demonio residentes ni depender de la memoria del usuario.
+4. Crear y cambiar a la rama descriptiva (`git checkout -b feat/issue-<id>-<slug>` o `fix/issue-<id>-<slug>`) con `BypassSandbox: true` desde el primer intento.
 
 ### Paso 3: Planificación y Refinamiento (📐 In Planning)
 - **Blindaje del Planning Mode:** Toda tarea que implique diagnóstico de errores (bug fixing) o modificaciones arquitectónicas requiere obligatoriamente redactar `implementation_plan.md` con pausa bloqueante (`RequestFeedback: true`).

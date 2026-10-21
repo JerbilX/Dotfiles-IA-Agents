@@ -56,5 +56,6 @@ Opción elegida: **"Opción 2"**, porque resuelve integralmente la divergencia e
   * Claridad total en `Agent-Cockpit` y GitHub Projects sobre el estado real de la tarea (planificando vs codificando).
   * Inmunidad documental frente a branches descartadas o PRs rechazados: ningún ADR entra a `main` como `accepted` sin merge efectivo.
   * Higiene automatizada post-merge mediante sincronización, poda con `git-prune-gone` y ratificación con `./build.sh reconcile`.
+  * **Reconciliación Just-In-Time (JIT):** El Paso 2 de Higiene ejecuta `./build.sh reconcile` preventivamente sobre `main` al despachar cualquier nueva tarea, garantizando que los ADRs fusionados se ratifiquen de forma automática incluso si la sesión previa se cerró sin reconciliación manual.
 * **Negativas / Trade-offs:**
   * Incorpora una fase explícita post-merge (Paso 8) para ratificar los ADRs y limpiar referencias tras la fusión en `main`.
