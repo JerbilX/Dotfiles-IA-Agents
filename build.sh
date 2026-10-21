@@ -905,6 +905,62 @@ cmd_status() {
     done
 }
 
+# ------------------------------------------------------------------------------
+# Reconciliación y Ratificación Post-Merge de ADRs (cmd_reconcile)
+# ------------------------------------------------------------------------------
+
+cmd_reconcile() {
+    local target_adr="${1:-all}"
+    local adr_dir="${SCRIPT_DIR}/docs/adr"
+    echo "==> [reconcile] Iniciando reconciliación y ratificación de ADRs post-merge..."
+
+    if [ ! -d "${adr_dir}" ]; then
+        echo "  [!] Directorio de ADRs no encontrado: ${adr_dir}"
+        return 0
+    fi
+
+    local count=0
+    for f in "${adr_dir}"/*.md; do
+        [ ! -f "$f" ] && continue
+        local fname
+        fname="$(basename "$f")"
+
+        if [ "${target_adr}" != "all" ] && [[ "${fname}" != *"${target_adr}"* ]]; then
+            continue
+        fi
+
+        if grep -qE '^status:[[:space:]]*proposed' "$f"; then
+            if command -v python3 >/dev/null 2>&1; then
+                python3 -c "
+import sys, re
+path = sys.argv[1]
+with open(path, 'r', encoding='utf-8') as fh:
+    content = fh.read()
+parts = content.split('---', 2)
+if len(parts) >= 3:
+    frontmatter = parts[1]
+    new_fm = re.sub(r'(?m)^status:\s*proposed\b', 'status: accepted', frontmatter)
+    if new_fm != frontmatter:
+        new_content = '---' + new_fm + '---' + parts[2]
+        with open(path, 'w', encoding='utf-8') as fh:
+            fh.write(new_content)
+        sys.exit(0)
+sys.exit(1)
+" "$f" && {
+                    echo "  [✓] Ratificado a 'status: accepted': ${fname}"
+                    count=$((count + 1))
+                }
+            else
+                sed -i '0,/^status:[[:space:]]*proposed/s//status: accepted/' "$f"
+                echo "  [✓] Ratificado a 'status: accepted': ${fname}"
+                count=$((count + 1))
+            fi
+        fi
+    done
+
+    echo "==> [reconcile] Reconciliación completada: ${count} ADR(s) ratificados formalmente."
+}
+
 cmd_mcp() {
     local target_arg="${1:-all}"
     validate_runtime_arg "${target_arg}" || return 1
@@ -1533,11 +1589,14 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         check)
             cmd_check "${RUNTIME_ARG}"
             ;;
+        reconcile)
+            cmd_reconcile "${RUNTIME_ARG}"
+            ;;
         all)
             cmd_all "${RUNTIME_ARG}"
             ;;
         *)
-            echo "Uso: $0 {build|link|skills|mcp|status|rollback|check|all} [runtime]" >&2
+            echo "Uso: $0 {build|link|skills|mcp|status|rollback|check|reconcile|all} [runtime/adr]" >&2
             exit 1
             ;;
     esac
