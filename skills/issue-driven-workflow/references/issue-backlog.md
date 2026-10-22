@@ -81,7 +81,7 @@ gh project item-add 1 --owner "@me" --url <issue-url>
 
 ## 7. Taxonomía Canónica de Estados en Projects v2
 
-El campo `Status` del tablero central (Project 1 `Proyectos-IA-V3`) define 6 estados canónicos:
+El campo `Status` del tablero central (Project 1 `Proyectos-IA-V3`) define 6 estados canónicos, cuya transición está desacoplada de la CLI del agente y gobernada por el ciclo nativo de Git/GitHub y los Built-in Workflows:
 
 | Estado | Significado Operativo | Agente Activo | Acciones Permitidas |
 | :--- | :--- | :---: | :--- |
@@ -90,7 +90,7 @@ El campo `Status` del tablero central (Project 1 `Proyectos-IA-V3`) define 6 est
 | `📐 In Planning` | Tarea tomada por una sesión de agente. Fase activa de investigación técnica, exploración de dependencias y redacción de `implementation_plan.md` y/o borrador de ADR. | Sí | Lectura de código, tests locales no mutantes, redacción de plan/ADR. Prohibido mutar código de producción hasta aprobación humana (salvo fast-path). |
 | `⚙️ In Progress` | Tarea en desarrollo activo tras aprobación humana del plan de implementación o por orden ejecutiva directa. | Sí | Edición de código de producción mediante I/O nativo, tests locales (`./build.sh check`), commits atómicos. |
 | `👀 In Review / PR` | Implementación finalizada y Pull Request abierto en GitHub con vinculación `Closes #<id>`. | En espera / Review | Atención de comentarios de Code Review (`gh-pr-review`) en la rama del PR. |
-| `Done` | PR fusionado (merge) en `main` o tarea investigativa cerrada autónomamente. Reconciliación post-merge completada. | No | Tarea concluida. No admite mutaciones posteriores. |
+| `Done` | PR fusionado (merge) en `main` o tarea investigativa cerrada autónomamente. Cierre automático vía Built-in Workflows. | No | Tarea concluida. No admite mutaciones posteriores. |
 
 ---
 

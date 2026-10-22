@@ -74,7 +74,7 @@
 - **Prohibición de Backlogs Locales:** Terminantemente prohibido crear o depender de archivos `TODO.md`, `backlog.md` o carpetas temporales huérfanas (`tasks/`, `prompts/`).
 - **Registro Canónico y Control de Alcance (Scope Creep):** Toda tarea futura, deuda técnica o bug secundario detectado durante el desarrollo debe registrarse formalmente como una nueva GitHub Issue e indexarse en Projects v2. Prohibido inflar el alcance del ticket asignado.
 - **Estructura Canónica del Tablero:** El ciclo de vida en Projects v2 se rige por 6 estados formales: `📥 Backlog` -> `🎯 Ready for Dev` -> `📐 In Planning` -> `⚙️ In Progress` -> `👀 In Review / PR` -> `Done`.
-- **Gobernanza y Delegación Procedimental:** El despacho, la máquina de estados bidireccional (avance progresivo y retrocesos controlados con compensación) y la interacción CLI se rigen exclusivamente por el skill `issue-driven-workflow`.
+- **Gobernanza y Delegación Procedimental:** El despacho, la máquina de estados desacoplada (ciclo nativo Git/GitHub y automatizaciones de Projects v2) y la interacción CLI se rigen exclusivamente por el skill `issue-driven-workflow`.
 
 
 
@@ -82,7 +82,7 @@
 
 - **Prohibición de Push Directo a `main` y Flujo de PRs:** Prohibido comitear, pushear directamente a `main` o ejecutar `git merge` hacia `main`. Todo cambio debe aislarse en rama dedicada (`feat/issue-<id>-<slug>` o `fix/issue-<id>-<slug>`) y canalizarse mediante Pull Request formal con vinculación de cierre (`Closes #<id>` o `Fixes #<id>`). Aprobación y merge son potestad exclusiva del usuario.
 - **Trigger de Activación Obligatoria y Despacho:** Ante directivas de desarrollo ("implementa la issue #X", "toma la siguiente tarea lista") o apertura de PRs, activar y consultar obligatoriamente el skill `issue-driven-workflow` antes de modificar archivos. Consultas exploratorias o de coordinación no autorizan crear ramas ni modificar código, pero la higiene del workspace (sincronizar rama base y podar ramas locales de PRs cerrados/mergeados) es obligatoria y proactiva ante cualquier interacción.
-- **Ciclo E2E y Cierre de Tarea:** Toda tarea recorre 8 fases secuenciales: Ingesta, Higiene, Plan/ADR (`In Planning`), Desarrollo (`In Progress`), Commit, Push, PR & Tablero (`In Review / PR`) y Cierre/Higiene (`Done`). Al fusionarse el PR, el cierre definitivo exige validar merge, transicionar el tablero a `Done`, sincronizar rama base y podar ramas locales zombi.
+- **Ciclo E2E y Cierre de Tarea:** Toda tarea recorre 8 fases secuenciales: Ingesta, Higiene, Plan/ADR (`In Planning`), Desarrollo (`In Progress`), Commit, Push, PR (`In Review / PR`) y Cierre/Higiene (`Done`). Al fusionarse el PR, el cierre definitivo exige validar merge y cierre de la issue (avanzando el tablero a `Done` mediante automatizaciones nativas), sincronizar rama base y podar ramas locales zombi.
 
 
 

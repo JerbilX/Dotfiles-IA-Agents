@@ -87,12 +87,8 @@ Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes
    rm -f .pr_body
    ```
 
-2. **Indexación y Transición del PR de Reversión:**
-   Asegurar que la tarjeta del PR de reversión ingrese en el tablero central (Project 1) en estado `👀 In Review / PR`:
-   ```bash
-   gh project item-edit 1 --owner "@me" --url <revert-pr-url> --field "Status" --value "👀 In Review / PR"
-   ```
-   *(Ejecutado con `BypassSandbox: true`).*
+2. **Transición Automatizada del PR de Reversión:**
+   La publicación del Pull Request activa de forma nativa su inclusión y transición en Projects v2 a `👀 In Review / PR` mediante los Built-in Workflows, sin requerir `gh project item-edit`.
 
 3. **Reapertura de la Issue Original Fallida:**
    Para no perder la trazabilidad de la tarea original que falló, reabrir formalmente su issue:
@@ -111,11 +107,7 @@ Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes
    ```bash
    rm -f .issue_comment
    ```
-   Transicionar deterministamente la tarjeta de la issue reabierta en Project 1 al estado `🎯 Ready for Dev`:
-   ```bash
-   gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "🎯 Ready for Dev"
-   ```
-   *(Ejecutado con `BypassSandbox: true`).*
+   Al reabrirse el issue con `gh issue reopen`, el Built-in Workflow *Item reopened* de Projects v2 transiciona automáticamente la tarjeta a `🎯 Ready for Dev` sin mutaciones manuales de CLI.
 
 ---
 
