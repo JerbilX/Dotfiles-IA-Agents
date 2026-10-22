@@ -49,16 +49,12 @@ En ausencia de archivo de configuración o si no se explicita `repository_type`,
 Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 8 fases:
 
 ```
-[1. Ingesta] -> [2. Higiene de Ramas] -> [3. Planificación (In Planning)] -> [4. Desarrollo (In Progress)] -> [5. Commit] -> [6. Push] -> [7. PR & Tablero (In Review)] -> [8. Reconciliación Post-Merge (Done)]
+[1. Ingesta] -> [2. Higiene de Ramas] -> [3. Planificación (In Planning)] -> [4. Desarrollo (In Progress)] -> [5. Commit] -> [6. Push] -> [7. PR (In Review)] -> [8. Cierre e Higiene (Done)]
 ```
 
 ### Paso 1: Ingesta Técnica
 1. Lectura profunda de los requerimientos, contexto, diagnóstico y criterios de aceptación en `gh issue view <id>` (`BypassSandbox: true`).
-2. Transicionar el ticket al estado formal `📐 In Planning` en el tablero central (Project 1):
-   ```bash
-   gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "📐 In Planning"
-   ```
-   *(Ejecutado con `BypassSandbox: true`).*
+2. La asignación e inicio de análisis sitúa la tarea operativamente en fase de planificación local (`📐 In Planning`), sin requerir mutaciones por CLI en GitHub Projects v2.
 
 ### Paso 2: Aislamiento e Higiene del Workspace
 1. Posicionarse en la rama base del repositorio (`main` por defecto, o `dev` en Categoría B) y sincronizar cambios podando referencias remotas obsoletas:
@@ -84,63 +80,51 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 8 fas
 - **Registro de ADRs:** Si se toman decisiones arquitectónicas o estructurales, registrar un nuevo ADR con `status: proposed` mediante el skill `adr-manager` (`docs/adr/NNNN-titulo.md`). Permanece en `status: proposed` durante la fase de análisis y redacción del plan.
 
 ### Paso 4: Transición a Desarrollo y Verificación (⚙️ In Progress)
-- Al aprobarse el plan o entrar en fast-path ejecutivo, transicionar el ticket a `⚙️ In Progress`:
-  ```bash
-  gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "⚙️ In Progress"
-  ```
-  *(Ejecutado con `BypassSandbox: true`).*
+- Al aprobarse el plan o entrar en fast-path ejecutivo, la tarea entra en desarrollo activo (`⚙️ In Progress`) en la rama efímera local, sin requerir mutaciones por CLI en Projects v2.
 - Aplicar cambios atómicos exclusivamente mediante las APIs nativas de archivos (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido usar comandos de terminal para I/O (`cat`, `sed`, `awk`, `tee`).
 - Ejecutar compilaciones locales, linters y suites de prueba del proyecto para validar que no existan regresiones (`./build.sh check` con `BypassSandbox: false`).
-- **Promoción Atómica del ADR:** Al transicionar a `⚙️ In Progress` y comenzar el desarrollo, el YAML frontmatter del ADR se actualiza a `status: accepted` en la rama de trabajo. Queda preparado para entrar a `main` ya ratificado y de forma atómica junto con la implementación.
+- **Promoción Atómica del ADR:** Al comenzar el desarrollo, el YAML frontmatter del ADR se actualiza a `status: accepted` en la rama de trabajo. Queda preparado para entrar a `main` ya ratificado y de forma atómica junto con la implementación.
 
 ### Paso 5: Commit Atómico
 - Debido a que el evaluador de permisos anula el prefijo con comillas, **queda estrictamente prohibido** usar `git commit -m "..."`.
 - Redactar el mensaje convencional en `.commit_msg` con `write_to_file`.
 - Ejecutar el commit leyendo el archivo con `BypassSandbox: true` desde el primer intento:
-  ```bash
-  git commit -F .commit_msg
-  ```
+   ```bash
+   git commit -F .commit_msg
+   ```
 - Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
-  ```bash
-  rm -f .commit_msg
-  ```
+   ```bash
+   rm -f .commit_msg
+   ```
 
 ### Paso 6: Publicación Remota
 - Subir la rama al repositorio remoto (`BypassSandbox: true`):
-  ```bash
-  git push -u origin <nombre-de-rama>
-  ```
+   ```bash
+   git push -u origin <nombre-de-rama>
+   ```
 
 ### Paso 7: Apertura de Pull Request (👀 In Review / PR)
 - Redactar el cuerpo del PR en `.pr_body` con `write_to_file` y publicarlo mediante GitHub CLI (`BypassSandbox: true`):
-  ```bash
-  gh pr create --base <base_branch> --title "<tipo>(<alcance>): <descripción>" --body-file .pr_body
-  ```
-  *(Si `<base_branch>` es la rama por defecto del repositorio en GitHub, ej. `main` en Categoría A, el flag `--base` puede omitirse; en Categoría B debe especificarse explícitamente `--base dev`).*
-- Sincronizar el ítem en Project 1 a `👀 In Review / PR`:
-  ```bash
-  gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "👀 In Review / PR"
-  ```
+   ```bash
+   gh pr create --base <base_branch> --title "<tipo>(<alcance>): <descripción>" --body-file .pr_body
+   ```
+   *(Si `<base_branch>` es la rama por defecto del repositorio en GitHub, ej. `main` en Categoría A, el flag `--base` puede omitirse; en Categoría B debe especificarse explícitamente `--base dev`).*
+- La vinculación `Closes #<id>` y el flujo nativo `Pull request linked to issue` en Projects v2 avanza automáticamente la tarjeta a `👀 In Review / PR` sin llamadas manuales de CLI.
 - Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
-  ```bash
-  rm -f .pr_body
-  ```
+   ```bash
+   rm -f .pr_body
+   ```
 
 ### Paso 8: Protocolo de Cierre e Higiene Post-Merge (Done)
 Tras la fusión (merge) del Pull Request en GitHub por el gate humano:
-1. **Validar Cierre de la Issue:** Verificar que el merge haya cerrado automáticamente la issue vinculada (`gh issue view <id>`). Si permanece abierta por omisión en el PR body, cerrarla (`gh issue close <id>`).
-2. **Sincronizar Tablero Central:** Transicionar la tarjeta en Project 1 a `Done`:
-   ```bash
-   gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "Done"
-   ```
-   *(Ejecutado con `BypassSandbox: true`).*
-3. **Sincronizar Rama Base:** Retornar a la rama troncal y sincronizar en fast-forward podando referencias remotas obsoletas:
+1. **Validar Cierre de la Issue:** Verificar que el merge haya cerrado automáticamente la issue vinculada (`gh issue view <id>`). Si permanece abierta por omisión en el PR body, cerrarla (`gh issue close <id>`). Las automatizaciones nativas de Projects v2 (*Item closed* / *Pull request merged*) transicionan automáticamente la tarjeta a `Done`.
+2. **Sincronizar Rama Base:** Retornar a la rama troncal y sincronizar en fast-forward podando referencias remotas obsoletas:
    ```bash
    git checkout <base_branch>
    git pull --prune --ff-only
    ```
    *(Ejecutados con `BypassSandbox: true`).*
-4. **Poda Atómica de Ramas Locales:** Ejecutar `git-prune-gone` (`BypassSandbox: true`) para limpiar las ramas locales que trackeaban remotos ya fusionados y borrados.
+3. **Poda Atómica de Ramas Locales:** Ejecutar `git-prune-gone` (`BypassSandbox: true`) para limpiar las ramas locales que trackeaban remotos ya fusionados y borrados.
 - **Invariante de Higiene Proactiva:** Ante cualquier consulta o interacción subsiguiente del usuario (sea una pregunta exploratoria como *"¿con qué seguimos?"* o despacho de nueva tarea), si el agente detecta que la rama actual trackea un PR ya fusionado/cerrado o tracking `[gone]`, ejecuta inmediatamente este paso de higiene sin esperar una nueva orden de desarrollo.
 
 ---
@@ -153,12 +137,12 @@ El tablero de Projects v2 opera como una máquina de estados formal bidirecciona
 
 | Origen | Destino | Disparador / Evento | Condición de Entrada | Acción Operativa Inmediata |
 | :--- | :--- | :--- | :--- | :--- |
-| `📥 Backlog` | `🎯 Ready for Dev` | Priorización | Requerimiento maduro con especificación y criterios de aceptación. | Transicionar tarjeta en Project 1. |
-| `🎯 Ready for Dev` | `📐 In Planning` | Despacho de tarea | Sesión de agente asignada al ticket vía instrucción directa o backlog. | Ingesta técnica (`gh issue view`), mover a `📐 In Planning`. |
-| `📐 In Planning` | `⚙️ In Progress` | Aprobación de Plan | Aprobación humana explícita de `implementation_plan.md` o fast-path ejecutivo. | Mover a `⚙️ In Progress`, promover ADR a `status: accepted`, iniciar codificación. |
-| `⚙️ In Progress` | `👀 In Review / PR` | Fin de desarrollo | Código probado con `./build.sh check`, commits atómicos y push remoto. | Crear PR con `Closes #<id>` (ADR viaja como `accepted`), mover a `👀 In Review / PR`. |
-| `👀 In Review / PR` | `Done` | Merge de PR | Gate humano de revisión, aprobación y fusión en `main`. | Ejecutar Paso 8 (Cierre e Higiene Post-Merge). |
-| `📐 In Planning` | `Done` | Conclusión de Spike | Tarea investigativa/auditoría sin cambios de código. | Informe técnico, cierre de issue, mover a `Done` (Sección 5). |
+| `📥 Backlog` | `🎯 Ready for Dev` | Priorización | Requerimiento maduro con especificación y criterios de aceptación. | Priorización humana (en UI) o asignación. |
+| `🎯 Ready for Dev` | `📐 In Planning` | Despacho de tarea | Sesión de agente asignada al ticket vía instrucción directa o backlog. | Ingesta técnica (`gh issue view`). Fase local de análisis. |
+| `📐 In Planning` | `⚙️ In Progress` | Aprobación de Plan | Aprobación humana explícita de `implementation_plan.md` o fast-path ejecutivo. | Promover ADR a `status: accepted`, iniciar codificación en rama efímera. |
+| `⚙️ In Progress` | `👀 In Review / PR` | Fin de desarrollo | Código probado con `./build.sh check`, commits atómicos y push remoto. | Crear PR con `Closes #<id>` (ADR viaja como `accepted`). Built-in Workflow avanza tarjeta a `👀 In Review / PR`. |
+| `👀 In Review / PR` | `Done` | Merge de PR | Gate humano de revisión, aprobación y fusión en `main`. | GitHub cierra la issue vinculada y Built-in Workflow avanza a `Done`. Ejecutar Paso 8 (Higiene Post-Merge). |
+| `📐 In Planning` | `Done` | Conclusión de Spike | Tarea investigativa/auditoría sin cambios de código. | Informe técnico en `.issue_comment` y cierre con `gh issue close <id>`. Built-in Workflow avanza tarjeta a `Done` (Sección 5). |
 
 ### 3.2 Matriz de Transiciones Regresivas (Backward / Rework / Rollback)
 
@@ -166,13 +150,13 @@ Cuando una tarea enfrenta bloqueos, revisiones insatisfactorias o cambios de pri
 
 | Origen | Destino | Causa / Disparador | Acciones de Compensación e Higiene |
 | :--- | :--- | :--- | :--- |
-| `👀 In Review / PR` | `⚙️ In Progress` | **Observaciones en Code Review (Rework moderado/mayor):** El revisor solicita cambios funcionales, refactors o tests adicionales antes de aprobar. | 1. Mover tarjeta a `⚙️ In Progress` si el retrabajo requiere iteraciones locales significativas.<br>2. Posicionarse en la rama del PR (`gh pr checkout <pr_id>`).<br>3. Resolver observaciones vía `gh-pr-review` y herramientas nativas.<br>4. Commitear, pushear y regresar la tarjeta a `👀 In Review / PR`.<br>5. Si las observaciones afectan la arquitectura, ajustar el ADR según corresponda. |
-| `👀 In Review / PR` | `📐 In Planning` | **Cuestionamiento Arquitectónico o Fallo de Enfoque:** El revisor rechaza el diseño técnico, detecta inviabilidad o exige replantear la solución. | 1. Mover tarjeta a `📐 In Planning`.<br>2. Invalidar el `implementation_plan.md` previo.<br>3. Revertir ADR a `status: proposed` (o redactar reemplazo/enmienda).<br>4. Redactar nuevo plan de implementación con pausa bloqueante (`RequestFeedback: true`).<br>5. Prohibido tocar código hasta obtener nueva aprobación humana. |
-| `⚙️ In Progress` | `📐 In Planning` | **Bloqueo Técnico o Inviabilidad en Desarrollo:** El agente descubre que el enfoque planificado no es viable o choca con restricciones no previstas. | 1. Mover tarjeta a `📐 In Planning`.<br>2. Descartar cambios locales no viables (`git checkout .` / `git clean -fd`).<br>3. Actualizar `implementation_plan.md` justificando el cambio de rumbo.<br>4. Si hay ADR en curso, revertirlo a `status: proposed` o ajustar la propuesta.<br>5. Solicitar confirmación humana antes de reanudar codificación. |
-| `📐 In Planning` | `🎯 Ready for Dev` | **Despriorización Temporal o Bloqueo Externo:** Se interrumpe la planificación por falta de insumos externos o cambio temporal de foco. | 1. Mover tarjeta a `🎯 Ready for Dev`.<br>2. Si se creó rama local efímera, eliminarla (`git checkout main && git branch -D <rama>`).<br>3. Registrar comentario en el issue (`gh issue comment`) detallando el bloqueo o motivo de pausa. |
-| `📐 In Planning` | `📥 Backlog` | **Descarte Temprano o Cancelación:** La exploración inicial concluye que la iniciativa es inviable o no prioritaria. | 1. Mover tarjeta a `📥 Backlog`.<br>2. Eliminar rama de trabajo si existiere.<br>3. Registrar diagnóstico en el issue (`gh issue comment`). Si se redactó borrador de ADR en rama, no ingresa a `main`. |
-| `⚙️ In Progress` | `🎯 Ready for Dev` / `📥 Backlog` | **Aborto de Implementación:** Se decide cancelar el desarrollo ya iniciado. | 1. Mover tarjeta al destino correspondiente.<br>2. Eliminar rama local y rama remota (`git push origin --delete <rama>`).<br>3. Documentar en el issue el estado en que queda el requerimiento. |
-| `👀 In Review / PR` | `📥 Backlog` / Cerrado | **Rechazo Definitivo de PR:** El PR se cierra sin merge por el usuario. | 1. Cerrar PR en GitHub.<br>2. Si contenía un nuevo ADR, el ADR nunca entra a `main` (descartado con la rama). Si fue propuesto en documento independiente, marcar `status: rejected`.<br>3. Ejecutar `git-prune-gone` localmente y transicionar tarjeta en Project 1. |
+| `👀 In Review / PR` | `⚙️ In Progress` | **Observaciones en Code Review (Rework moderado/mayor):** El revisor solicita cambios funcionales, refactors o tests adicionales antes de aprobar. | 1. Posicionarse en la rama del PR (`gh pr checkout <pr_id>`).<br>2. Resolver observaciones vía `gh-pr-review` y herramientas nativas.<br>3. Commitear, pushear y notificar.<br>4. Si las observaciones afectan la arquitectura, ajustar el ADR según corresponda.<br>*(Si está activo el Built-in Workflow 'Code changes requested', el evento de review solicita cambios y actualiza el tablero automáticamente)*. |
+| `👀 In Review / PR` | `📐 In Planning` | **Cuestionamiento Arquitectónico o Fallo de Enfoque:** El revisor rechaza el diseño técnico, detecta inviabilidad o exige replantear la solución. | 1. Invalidar el `implementation_plan.md` previo.<br>2. Revertir ADR a `status: proposed` (o redactar reemplazo/enmienda).<br>3. Redactar nuevo plan de implementación con pausa bloqueante (`RequestFeedback: true`).<br>4. Prohibido tocar código hasta obtener nueva aprobación humana. |
+| `⚙️ In Progress` | `📐 In Planning` | **Bloqueo Técnico o Inviabilidad en Desarrollo:** El agente descubre que el enfoque planificado no es viable o choca con restricciones no previstas. | 1. Descartar cambios locales no viables (`git checkout .` / `git clean -fd`).<br>2. Actualizar `implementation_plan.md` justificando el cambio de rumbo.<br>3. Si hay ADR en curso, revertirlo a `status: proposed` o ajustar la propuesta.<br>4. Solicitar confirmación humana antes de reanudar codificación. |
+| `📐 In Planning` | `🎯 Ready for Dev` | **Despriorización Temporal o Bloqueo Externo:** Se interrumpe la planificación por falta de insumos externos o cambio temporal de foco. | 1. Si se creó rama local efímera, eliminarla (`git checkout main && git branch -D <rama>`).<br>2. Registrar comentario en el issue (`gh issue comment`) detallando el bloqueo o motivo de pausa. |
+| `📐 In Planning` | `📥 Backlog` | **Descarte Temprano o Cancelación:** La exploración inicial concluye que la iniciativa es inviable o no prioritaria. | 1. Eliminar rama de trabajo si existiere.<br>2. Registrar diagnóstico en el issue (`gh issue comment`). Si se redactó borrador de ADR en rama, no ingresa a `main`. |
+| `⚙️ In Progress` | `🎯 Ready for Dev` / `📥 Backlog` | **Aborto de Implementación:** Se decide cancelar el desarrollo ya iniciado. | 1. Eliminar rama local y rama remota (`git push origin --delete <rama>`).<br>2. Documentar en el issue el estado en que queda el requerimiento. |
+| `👀 In Review / PR` | `📥 Backlog` / Cerrado | **Rechazo Definitivo de PR:** El PR se cierra sin merge por el usuario. | 1. Cerrar PR en GitHub.<br>2. Si contenía un nuevo ADR, el ADR nunca entra a `main` (descartado con la rama). Si fue propuesto en documento independiente, marcar `status: rejected`.<br>3. Ejecutar `git-prune-gone` localmente. |
 
 ---
 
@@ -184,11 +168,7 @@ Cuando una tarea enfrenta bloqueos, revisiones insatisfactorias o cambios de pri
   Closes #<id_implementacion>
   Closes #<id_investigacion>
   ```
-- **Sincronización Determinista con el Tablero Central:** Asegurar que el estado del ítem en Project 1 pase a `👀 In Review / PR` mediante el comando directo por nombre de campo:
-  ```bash
-  gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "👀 In Review / PR"
-  ```
-  *(Queda prohibido ejecutar consultas exploratorias de `field-list` o `item-list` para resolver IDs cuando el comando directo es determinista).*
+- **Transición Automatizada del Tablero Central:** La vinculación canónica (`Closes #<id>`) activa el Built-in Workflow `Pull request linked to issue` en Projects v2, situando el ítem automáticamente en `👀 In Review / PR`. Queda terminantemente prohibido que el agente ejecute llamadas manuales de mutación (`gh project item-edit`).
 - **Gate de Aprobación Humana:** La revisión del diff, aprobación y fusión del PR es responsabilidad exclusiva del PM / Tech Lead en la interfaz de GitHub.
 
 ---
@@ -214,11 +194,8 @@ Cuando una tarea despachada tenga por objeto una auditoría forense (`audit(...)
      ```bash
      gh issue close <id> --comment "Cierre automatizado tras concluir la investigación/auditoría técnica."
      ```
-4. **Sincronización con Projects v2:**
-   - Sincronizar el tablero a `Done` si GitHub CLI no lo realiza automáticamente:
-     ```bash
-     gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "Done"
-     ```
+4. **Sincronización Automatizada con Projects v2:**
+   - Al ejecutarse `gh issue close`, el Built-in Workflow *Item closed* de GitHub Projects v2 transiciona automáticamente la tarjeta a `Done` sin requerir invocaciones a `gh project item-edit`.
 5. **Reporte Final al Usuario:**
    - Reportar al usuario la conclusión del análisis, el enlace al issue cerrado y la confirmación del estado de la tarjeta en `Done`.
 
@@ -230,5 +207,21 @@ Al completar la publicación del PR, el agente **DEBE emitir un reporte final es
 1. Resumen técnico conciso de los cambios realizados.
 2. Verificaciones y pruebas ejecutadas exitosamente.
 3. Enlace web directo al Pull Request creado en GitHub.
-4. Confirmación del estado de la tarjeta en el tablero de Projects v2 (`👀 In Review / PR`).
+4. Confirmación del estado de la tarea (Pull Request vinculado a la issue en revisión).
 5. Indicación explícita para que el usuario revise el diff y apruebe/fusione el PR.
+
+---
+
+## 7. Configuración Canónica de Built-in Workflows en Projects v2
+
+Para garantizar que el tablero central (`Proyectos-IA-V3`) sincronice automáticamente el ciclo de vida sin que el agente deba ejecutar comandos burocráticos de CLI, el proyecto se configura en la interfaz web de GitHub (**Project Settings -> Workflows**):
+
+| Workflow Nativo | Disparador (Trigger) | Acción (Set value) | Propósito |
+| :--- | :--- | :--- | :--- |
+| **`Auto-add to project`** | `When filter matches` (`is:issue,pr is:open` por repo) | Add item to project | Indexación desatendida de issues y PRs sin `item-add`. |
+| **`Pull request linked to issue`** | `When a pull request is linked to an issue` | `Status: 👀 In Review / PR` | Transición a revisión al publicar PR con `Closes #<id>`. |
+| **`Pull request merged`** | `When a pull request is merged` | `Status: Done` | Cierre automático de PR cards al mergear en rama base. |
+| **`Item closed`** | `When an item is closed` | `Status: Done` | Cierre automático de issue cards al mergear PR o cerrar spikes. |
+| **`Code changes requested`** | `When review requests changes` | `Status: ⚙️ In Progress` | Retorno automático a progreso si el review exige correcciones. |
+| **`Item reopened`** | `When an item is reopened` | `Status: 🎯 Ready for Dev` | Reactivación de tickets reabiertos para nuevo ciclo E2E. |
+

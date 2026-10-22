@@ -49,37 +49,33 @@ gh project item-list 1 --owner "@me" --query "repo:<owner>/<repo> -status:Done" 
 
 ### 3.2 Despacho Vía A: Instrucción Directa (*"implementa la issue #<id>"*)
 1. Ingesta: `gh issue view <id>` (`BypassSandbox: true`).
-2. Mover a `📐 In Planning`:
-   ```bash
-   gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "📐 In Planning"
-   ```
-3. Proceder al ciclo E2E.
+2. Proceder al ciclo E2E (aislamiento local en rama efímera; sin mutaciones CLI de Project).
 
 ### 3.3 Despacho Vía B: Backlog (*"siguiente tarea lista"*)
 1. Consultar listos:
 ```bash
 gh project item-list 1 --owner "@me" --query 'repo:<owner>/<repo> status:"🎯 Ready for Dev"' --format json --jq '.items[] | {number: .content.number, title: .content.title, url: .content.url}'
 ```
-2. Elegir ítem prioritario (Top 2-3), mover a `📐 In Planning` y proceder al ciclo E2E.
+2. Elegir ítem prioritario (Top 2-3) y proceder al ciclo E2E.
 
 ---
 
 ## 4. Ciclo de Vida E2E (Resumen Ejecutivo)
 
 ```
-[1. Ingesta] ──> [2. Higiene] ──> [3. Plan/ADR] ──> [4. Desarrollo] ──> [5. Commit] ──> [6. Push] ──> [7. PR & Board] ──> [8. Cierre & Higiene]
+[1. Ingesta] ──> [2. Higiene] ──> [3. Plan/ADR] ──> [4. Desarrollo] ──> [5. Commit] ──> [6. Push] ──> [7. PR] ──> [8. Cierre & Higiene]
 ```
 
 Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](references/branch-lifecycle.md).
 
-- [ ] **1. Ingesta:** `gh issue view <id>` y mover a `📐 In Planning` en Project 1.
+- [ ] **1. Ingesta:** `gh issue view <id>` (sin llamadas a `gh project item-edit`).
 - [ ] **2. Higiene:** Sincronizar rama base (`git pull --prune --ff-only`), podar con `git-prune-gone` y aislar en `feat/` o `fix/`.
 - [ ] **3. Plan/ADR:** `implementation_plan.md` con gate bloqueante; ADR nace con `status: proposed`.
-- [ ] **4. Desarrollo:** Mover a `⚙️ In Progress`, promover ADR a `status: accepted`, I/O nativo y verificar con `./build.sh check`.
+- [ ] **4. Desarrollo:** Promover ADR a `status: accepted` al iniciar desarrollo, I/O nativo y verificar con `./build.sh check`.
 - [ ] **5. Commit:** Redactar en `.commit_msg`, `git commit -F .commit_msg` y borrar temporal.
 - [ ] **6. Push:** Publicar con `git push -u origin <rama>`.
-- [ ] **7. PR & Tablero:** PR con `Closes #<id>` vía `.pr_body` (ADR viaja como `accepted`), mover a `👀 In Review / PR` y reportar.
-- [ ] **8. Cierre & Higiene (Done):** Tras merge en `main`, transicionar a `Done`, retornar a rama base, sincronizar y podar ramas locales zombi con `git-prune-gone`.
+- [ ] **7. PR:** PR con `Closes #<id>` vía `.pr_body` (ADR viaja como `accepted`). La apertura del PR y la vinculación nativa activan el estado de revisión en GitHub (`👀 In Review / PR`).
+- [ ] **8. Cierre & Higiene (Done):** Tras merge en `main`, GitHub cierra la issue y avanza a `Done` automáticamente vía Built-in Workflows. Retornar a rama base, sincronizar y podar ramas locales zombi con `git-prune-gone`.
 
 ---
 
@@ -104,8 +100,5 @@ Para tareas sin cambios de código ([`references/branch-lifecycle.md`](reference
 
 1. Informe técnico: `gh issue comment <id> --body-file .issue_comment` (`BypassSandbox: true`).
 2. Cerrar: `gh issue close <id>` (`BypassSandbox: true`).
-3. Mover a `Done` en Project 1:
-   ```bash
-   gh project item-edit 1 --owner "@me" --url <issue-url> --field "Status" --value "Done"
-   ```
+3. La acción nativa de cierre transiciona automáticamente la tarjeta a `Done` en Projects v2 mediante Built-in Workflows (sin `gh project item-edit`).
 4. Confirmar en chat; prohibido delegar el cierre al usuario.
