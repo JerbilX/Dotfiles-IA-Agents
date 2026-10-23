@@ -69,7 +69,7 @@ gh project item-list 1 --owner "@me" --query 'repo:<owner>/<repo> status:"🎯 R
 Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](references/branch-lifecycle.md).
 
 - [ ] **1. Ingesta:** `gh issue view <id>` (sin llamadas a `gh project item-edit`).
-- [ ] **2. Higiene:** Sincronizar rama base (`git pull --prune --ff-only`), podar con `git-prune-gone` y aislar en `feat/` o `fix/`.
+- [ ] **2. Higiene:** Sincronizar rama base (`git pull --prune --ff-only`), podar con `git-prune-gone` (soporte nativo para squash y salvaguarda de no integradas) y aislar en `feat/` o `fix/`.
 - [ ] **3. Plan/ADR:** `implementation_plan.md` con gate bloqueante; ADR nace con `status: proposed`.
 - [ ] **4. Desarrollo:** Promover ADR a `status: accepted` al iniciar desarrollo, I/O nativo y verificar con `./build.sh check`.
 - [ ] **5. Commit:** Redactar en `.commit_msg`, `git commit -F .commit_msg` y borrar temporal.
@@ -78,7 +78,7 @@ Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](refe
 - [ ] **8. Cierre & Higiene (Done):**
   - **Fusión Remota por CLI (Vía Preferente):** Ante orden ejecutiva en chat (*"aprobado, mergeá"*), el agente ejecuta `gh pr merge <id> --squash --delete-branch` (`BypassSandbox: true`). Prohibido el merge autónomo sin instrucción humana previa.
   - **Fusión Web (Vía Alternativa):** El usuario fusiona manualmente en la interfaz web de GitHub.
-  - **Higiene Atómica Post-Merge:** Retornar a rama base, sincronizar (`git pull --prune --ff-only`), podar ramas locales zombi con `git-prune-gone` y desmontar worktree si aplica (`BypassSandbox: true`). GitHub Built-in Workflows cierra la issue y avanza a `Done` automáticamente.
+  - **Higiene Atómica Post-Merge:** Retornar a rama base, sincronizar (`git pull --prune --ff-only`), podar ramas locales zombi con `git-prune-gone` (compatible con squash merge) y desmontar worktree si aplica (`BypassSandbox: true`). GitHub Built-in Workflows cierra la issue y avanza a `Done` automáticamente.
 
 ---
 

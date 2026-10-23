@@ -1587,6 +1587,30 @@ for b in broken:
     fi
 }
 
+check_unit_tests() {
+    local tests_dir="${SCRIPT_DIR}/tests"
+    if [ ! -d "${tests_dir}" ]; then
+        return 0
+    fi
+
+    echo "==> [check] Ejecutando suite de pruebas unitarias (tests/)..."
+    if command -v python3 >/dev/null 2>&1; then
+        local test_output
+        if ! test_output=$(python3 -m unittest discover -s "${tests_dir}" -p "test_*.py" 2>&1); then
+            echo "  [✗] Fallo en la suite de pruebas unitarias:" >&2
+            echo "${test_output}" | sed 's/^/      /' >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        else
+            local count
+            count=$(echo "${test_output}" | grep -oE "Ran [0-9]+ tests" | awk '{print $2}' || echo "N/A")
+            echo "  [✓] Pruebas unitarias: ${count} prueba(s) ejecutada(s) con éxito"
+        fi
+    else
+        echo "  [!] Advertencia: python3 no está instalado; omitiendo pruebas unitarias" >&2
+        CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+    fi
+}
+
 cmd_check() {
     local target_arg="${1:-all}"
     validate_runtime_arg "${target_arg}" || return 1
@@ -1602,6 +1626,9 @@ cmd_check() {
 
     # Verificación de documentación técnica (README y enlaces a docs/)
     check_documentation
+
+    # Verificación de suite de pruebas unitarias
+    check_unit_tests
 
     # Verificaciones por runtime
     for r in "${target_runtimes[@]}"; do
