@@ -14,8 +14,8 @@ Orquestador canónico para desarrollo guiado por GitHub Issues, Projects v2 y Pu
 
 Subordinado a directivas universales de `core/` y `rules/`:
 
-* **Backlog Canónico:** Prohibido `TODO.md` o `tasks/`; registro en Issues e indexación en Projects v2 (`core/08-task-backlog.md`).
-* **Aislamiento y PRs:** Prohibido push directo a `main`. Ramas efímeras (`feat/` o `fix/`) y entrega vía PR (`core/09-issue-driven-development.md`).
+* **Backlog Canónico:** Prohibido `TODO.md` o `tasks/`; registro en Issues e indexación en Projects v2 (`core/08-task-backlog-management.md`).
+* **Aislamiento y PRs:** Prohibido push directo a `main`. Ramas efímeras (`feat/` o `fix/`) y entrega vía PR (`core/09-issue-driven-workflow.md`).
 * **Higiene y Atomicidad:** I/O solo con herramientas nativas, commits vía `.commit_msg` y eliminación inmediata de temporales (`core/10-environment-standards.md`).
 * **Sandbox:** `BypassSandbox: true` reservado a `git`, `gh` y tooling autorizado (`git-prune-gone`, `gh-pr-review`, `agent-audit`) (`runtimes/*/rules/01-sandbox.md`).
 
@@ -72,7 +72,7 @@ Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](refe
 - [ ] **2. Higiene:** Sincronizar rama base (`git pull --prune --ff-only`), podar con `git-prune-gone` (soporte nativo para squash y salvaguarda de no integradas) y aislar en `feat/` o `fix/`.
 - [ ] **3. Plan/ADR:** `implementation_plan.md` con gate bloqueante; ADR nace con `status: proposed`.
 - [ ] **4. Desarrollo:** Promover ADR a `status: accepted` al iniciar desarrollo, I/O nativo y verificar con `./build.sh check`.
-- [ ] **5. Commit:** Redactar en `.commit_msg`, `git commit -F .commit_msg` y borrar temporal.
+- [ ] **5. Commit:** Staging explícito (`git add <rutas>` con `BypassSandbox: true`; prohibido `git add .`/`-A`), redactar en `.commit_msg`, `git commit -F .commit_msg` y borrar temporal.
 - [ ] **6. Push:** Publicar con `git push -u origin <rama>`.
 - [ ] **7. PR:** PR con `Closes #<id>` vía `.pr_body` (ADR viaja como `accepted`). La apertura del PR y la vinculación nativa activan el estado de revisión en GitHub (`👀 In Review / PR`).
 - [ ] **8. Cierre & Higiene (Done):**

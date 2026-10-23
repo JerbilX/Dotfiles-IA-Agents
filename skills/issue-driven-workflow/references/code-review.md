@@ -100,6 +100,11 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
      *(Ejecutado con `BypassSandbox: false` confinado).*
    - Validar que no existan errores (0 errores) y que el presupuesto de contexto se mantenga dentro de los umbrales definidos.
 4. **Commit Atómico de Corrección:**
+   - Preparar exclusivamente los archivos corregidos mediante staging explícito con rutas directas:
+     ```bash
+     git add <ruta1> <ruta2> ...
+     ```
+     *(Ejecutado con `BypassSandbox: true` desde el primer intento; prohibido usar `git add .` o `git add -A`).*
    - Redactar el mensaje en el archivo temporal `.commit_msg` mediante `write_to_file` siguiendo el estándar convencional:
      `fix(<alcance>): atender feedback de code review en PR #<id>`
    - Ejecutar el commit leyendo el archivo con `BypassSandbox: true`:

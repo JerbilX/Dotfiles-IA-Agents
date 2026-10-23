@@ -4,10 +4,12 @@
 *.tmp
 .commit_msg
 .pr_body
-.comment_body
+.pr_comment
+.reply_body
 .issue_body
 .issue_comment
 *.probe
 .probe_*
+.worktrees/
 __pycache__/
 *.pyc
