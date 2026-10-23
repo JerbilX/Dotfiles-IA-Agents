@@ -93,16 +93,24 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 8 fas
 - **Promoción Atómica del ADR:** Al comenzar el desarrollo, el YAML frontmatter del ADR se actualiza a `status: accepted` en la rama de trabajo. Queda preparado para entrar a `main` ya ratificado y de forma atómica junto con la implementación.
 
 ### Paso 5: Commit Atómico
-- Debido a que el evaluador de permisos anula el prefijo con comillas, **queda estrictamente prohibido** usar `git commit -m "..."`.
-- Redactar el mensaje convencional en `.commit_msg` con `write_to_file`.
-- Ejecutar el commit leyendo el archivo con `BypassSandbox: true` desde el primer intento:
-   ```bash
-   git commit -F .commit_msg
-   ```
-- Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
-   ```bash
-   rm -f .commit_msg
-   ```
+1. **Staging Explícito de Cambios:**
+   - Preparar exclusivamente los archivos modificados o creados para la tarea utilizando rutas explícitas:
+     ```bash
+     git add <ruta1> <ruta2> ...
+     ```
+     *(Ejecutado con `BypassSandbox: true` desde el primer intento por mutación del índice en `.git/`).*
+   - **Prohibición Categórica de Staging Masivo:** Queda terminantemente prohibido utilizar `git add .`, `git add -A` o comodines globales indiscriminados durante el ciclo E2E (salvo de forma excepcional durante el commit inicial de aprovisionamiento en repositorios nuevos). El staging debe ser selectivo y explícito para evitar capturar archivos temporales o cambios ajenos al alcance.
+2. **Redacción y Creación del Commit:**
+   - Debido a que el evaluador de permisos anula el prefijo con comillas, **queda estrictamente prohibido** usar `git commit -m "..."`.
+   - Redactar el mensaje convencional en `.commit_msg` con `write_to_file`.
+   - Ejecutar el commit leyendo el archivo con `BypassSandbox: true` desde el primer intento:
+     ```bash
+     git commit -F .commit_msg
+     ```
+   - Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+     ```bash
+     rm -f .commit_msg
+     ```
 
 ### Paso 6: Publicación Remota
 - Subir la rama al repositorio remoto (`BypassSandbox: true`):
