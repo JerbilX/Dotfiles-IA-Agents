@@ -1,12 +1,12 @@
 # Referencia: Protocolo de Rollback y Reversión de Emergencia
 
-Protocolo operativo determinista para emergencias, regresiones críticas o roturas tras la fusión de Pull Requests en la rama troncal `main`.
+Protocolo operativo determinista para emergencias, regresiones críticas o roturas tras la fusión de Pull Requests en la rama troncal `<base_branch>` (`main` en Categoría A o `dev` en Categoría B).
 
 ---
 
 ## 1. Criterios de Activación
 
-- **Rotura de Build o Tests:** El código en `main` no compila o falla catastróficamente en `./build.sh check` o suites de prueba locales.
+- **Rotura de Build o Tests:** El código en `<base_branch>` no compila o falla catastróficamente en `./build.sh check` o suites de prueba locales.
 - **Bloqueo Crítico de Operación:** Directivas o scripts generan bucles infinitos, fallos de permisos insalvables o vulneraciones de seguridad.
 - **Inconsistencia Arquitectónica:** Fusión accidental de cambios que contradicen decisiones vigentes (`docs/adr/`) sin discusión previa.
 
@@ -14,11 +14,11 @@ Protocolo operativo determinista para emergencias, regresiones críticas o rotur
 
 ## 2. Ciclo de Ramas y Git (Reversión Atómica)
 
-Para preservar la prohibición estricta de push directo o reescritura de historia (`git reset --hard`) en `main`:
+Para preservar la prohibición estricta de push directo o reescritura de historia (`git reset --hard`) en `<base_branch>` (resuelta desde `.repo-config.json` o `config.json`, siendo `main` por defecto o `dev` en Categoría B):
 
-1. **Sincronizar `main`:**
+1. **Sincronizar `<base_branch>`:**
    ```bash
-   git checkout main
+   git checkout <base_branch>
    git pull --prune --ff-only
    ```
    *(Ejecutados con `BypassSandbox: true` desde el primer intento).*
@@ -31,7 +31,7 @@ Para preservar la prohibición estricta de push directo o reescritura de histori
    *(Ejecutado con `BypassSandbox: true` desde el primer intento).*
 
 3. **Invocación Atómica y Desatendida de `git revert`:**
-   Obtener el SHA del commit integrado en `main` (`<commit_sha>`) y determinar su naturaleza inspeccionando sus ancestros directos:
+   Obtener el SHA del commit integrado en `<base_branch>` (`<commit_sha>`) y determinar su naturaleza inspeccionando sus ancestros directos:
    ```bash
    git rev-list --parents -n 1 <commit_sha>
    ```
@@ -88,14 +88,16 @@ Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes
 
    ### Cambios
    - Reversión atómica del commit `<commit_sha>` (squash o merge commit).
-   - Restablecimiento del estado estable previo en `main`.
+   - Restablecimiento del estado estable previo en `<base_branch>`.
 
    Reverts #<pr_id>
    ```
-   Publicar el PR mediante GitHub CLI (`BypassSandbox: true`):
+   Publicar el PR apuntando a la rama troncal donde ocurrió la integración defectuosa (`<base_branch>`) mediante GitHub CLI (`BypassSandbox: true`):
    ```bash
-   gh pr create --title "fix(revert): revert PR #<pr_id> - <motivo>" --body-file .pr_body
+   gh pr create --base <base_branch> --title "fix(revert): revert PR #<pr_id> - <motivo>" --body-file .pr_body
    ```
+   *(Donde `<base_branch>` se resuelve desde `.repo-config.json` o `config.json`, siendo `main` en Categoría A o `dev` en Categoría B).*
+
    Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
    ```bash
    rm -f .pr_body

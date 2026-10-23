@@ -90,7 +90,7 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 8 fas
 - Al aprobarse el plan o entrar en fast-path ejecutivo, la tarea entra en desarrollo activo (`⚙️ In Progress`) en la rama efímera local, sin requerir mutaciones por CLI en Projects v2.
 - Aplicar cambios atómicos exclusivamente mediante las APIs nativas de archivos (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido usar comandos de terminal para I/O (`cat`, `sed`, `awk`, `tee`).
 - Ejecutar compilaciones locales, linters y suites de prueba del proyecto para validar que no existan regresiones (`./build.sh check` con `BypassSandbox: false`).
-- **Promoción Atómica del ADR:** Al comenzar el desarrollo, el YAML frontmatter del ADR se actualiza a `status: accepted` en la rama de trabajo. Queda preparado para entrar a `main` ya ratificado y de forma atómica junto con la implementación.
+- **Promoción Atómica del ADR:** Al comenzar el desarrollo, el YAML frontmatter del ADR se actualiza a `status: accepted` en la rama de trabajo. Queda preparado para entrar a la rama troncal (`<base_branch>`) ya ratificado y de forma atómica junto con la implementación.
 
 ### Paso 5: Commit Atómico
 1. **Staging Explícito de Cambios:**
@@ -144,14 +144,16 @@ Tras la apertura del PR y la revisión por el usuario, si este emite una **orden
    *(incorporar `--auto` si existen checks obligatorios de CI pendientes: `gh pr merge <id> --squash --delete-branch --auto`)* con `BypassSandbox: true` desde el primer intento.
    > [!IMPORTANT]
    > **Invariante Human-in-the-Loop:** Queda terminantemente prohibido que el agente invoque `gh pr merge` por iniciativa propia o de forma autónoma. La ejecución exige una orden ejecutiva explícita o confirmación humana en el chat.
+   >
+   > **Comportamiento en Categoría B:** Al ejecutar `gh pr merge --delete-branch`, GitHub CLI elimina la rama local y posiciona automáticamente el workspace en la rama predeterminada del repositorio en GitHub (habitualmente `main`). Por ello, en proyectos de Categoría B (donde la integración continua ocurre en `dev`), es obligatorio conmutar explícitamente a `<base_branch>` (`git checkout dev`) antes de ejecutar la sincronización y la poda.
 
 2. **Encadenamiento Atómico de Higiene Post-Merge:**
    Inmediatamente tras la confirmación exitosa del merge remoto, el agente ejecuta de forma secuencial y determinista:
-   a. Retornar a la rama base:
+   a. Retornar a la rama base (`main` por defecto, o `dev` en Categoría B):
       ```bash
       git checkout <base_branch>
       ```
-      *(BypassSandbox: true).*
+      *(BypassSandbox: true; obligatorio incluso si `gh pr merge` dejó el workspace en `main`).*
    b. Sincronizar en fast-forward podando tracking remoto:
       ```bash
       git pull --prune --ff-only
@@ -208,17 +210,17 @@ Cuando una tarea enfrenta bloqueos, revisiones insatisfactorias o cambios de pri
 | :--- | :--- | :--- | :--- |
 | `👀 In Review / PR` | `⚙️ In Progress` | **Observaciones en Code Review (Rework moderado/mayor):** El revisor solicita cambios funcionales, refactors o tests adicionales antes de aprobar. | 1. Posicionarse en la rama del PR (`gh pr checkout <pr_id>`).<br>2. Resolver observaciones vía `gh-pr-review` y herramientas nativas.<br>3. Commitear, pushear y notificar.<br>4. Si las observaciones afectan la arquitectura, ajustar el ADR según corresponda.<br>*(Si está activo el Built-in Workflow 'Code changes requested', el evento de review solicita cambios y actualiza el tablero automáticamente)*. |
 | `👀 In Review / PR` | `📐 In Planning` | **Cuestionamiento Arquitectónico o Fallo de Enfoque:** El revisor rechaza el diseño técnico, detecta inviabilidad o exige replantear la solución. | 1. Invalidar el `implementation_plan.md` previo.<br>2. Revertir ADR a `status: proposed` (o redactar reemplazo/enmienda).<br>3. Redactar nuevo plan de implementación con pausa bloqueante (`RequestFeedback: true`).<br>4. Prohibido tocar código hasta obtener nueva aprobación humana. |
-| `⚙️ In Progress` | `📐 In Planning` | **Bloqueo Técnico o Inviabilidad en Desarrollo:** El agente descubre que el enfoque planificado no es viable o choca con restricciones no previstas. | 1. Descartar cambios locales no viables (`git checkout .` / `git clean -fd`).<br>2. Actualizar `implementation_plan.md` justificando el cambio de rumbo.<br>3. Si hay ADR en curso, revertirlo a `status: proposed` o ajustar la propuesta.<br>4. Solicitar confirmación humana antes de reanudar codificación. |
-| `📐 In Planning` | `🎯 Ready for Dev` | **Despriorización Temporal o Bloqueo Externo:** Se interrumpe la planificación por falta de insumos externos o cambio temporal de foco. | 1. Si se creó rama local efímera, eliminarla (`git checkout main && git branch -D <rama>`).<br>2. Registrar comentario en el issue (`gh issue comment`) detallando el bloqueo o motivo de pausa. |
-| `📐 In Planning` | `📥 Backlog` | **Descarte Temprano o Cancelación:** La exploración inicial concluye que la iniciativa es inviable o no prioritaria. | 1. Eliminar rama de trabajo si existiere.<br>2. Registrar diagnóstico en el issue (`gh issue comment`). Si se redactó borrador de ADR en rama, no ingresa a `main`. |
-| `⚙️ In Progress` | `🎯 Ready for Dev` / `📥 Backlog` | **Aborto de Implementación:** Se decide cancelar el desarrollo ya iniciado. | 1. Eliminar rama local y rama remota (`git push origin --delete <rama>`).<br>2. Documentar en el issue el estado en que queda el requerimiento. |
-| `👀 In Review / PR` | `📥 Backlog` / Cerrado | **Rechazo Definitivo de PR:** El PR se cierra sin merge por el usuario. | 1. Cerrar PR en GitHub.<br>2. Si contenía un nuevo ADR, el ADR nunca entra a `main` (descartado con la rama). Si fue propuesto en documento independiente, marcar `status: rejected`.<br>3. Ejecutar `git-prune-gone` localmente. |
+| `⚙️ In Progress` | `📐 In Planning` | **Bloqueo Técnico o Inviabilidad en Desarrollo:** El agente descubre que el enfoque planificado no es viable o choca con restricciones no previstas. | 1. Aislar de forma reversible los cambios descartados mediante `git stash push -u -m "abort issue-<id>"` (o commit WIP en la rama efímera). Prohibido ejecutar `git clean` o borrados destructivos sin confirmación humana explícita.<br>2. Actualizar `implementation_plan.md` justificando el cambio de rumbo.<br>3. Si hay ADR en curso, revertirlo a `status: proposed` o ajustar la propuesta.<br>4. Solicitar confirmación humana antes de reanudar codificación. |
+| `📐 In Planning` | `🎯 Ready for Dev` | **Despriorización Temporal o Bloqueo Externo:** Se interrumpe la planificación por falta de insumos externos o cambio temporal de foco. | 1. Si se creó rama local efímera, posicionarse en la rama base (`git checkout <base_branch>`) y eliminarla (`git branch -D <rama>`) en pasos atómicos sin encadenar comandos.<br>2. Registrar comentario en el issue (`gh issue comment`) detallando el bloqueo o motivo de pausa. |
+| `📐 In Planning` | `📥 Backlog` | **Descarte Temprano o Cancelación:** La exploración inicial concluye que la iniciativa es inviable o no prioritaria. | 1. Eliminar rama de trabajo si existiere.<br>2. Registrar diagnóstico en el issue (`gh issue comment`). Si se redactó borrador de ADR en rama, no ingresa a la rama troncal (`<base_branch>`). |
+| `⚙️ In Progress` | `🎯 Ready for Dev` / `📥 Backlog` | **Aborto de Implementación:** Se decide cancelar el desarrollo ya iniciado. | 1. Posicionarse en la rama base (`git checkout <base_branch>`), eliminar la rama local (`git branch -D <rama>`) y la rama remota (`git push origin --delete <rama>`) en pasos atómicos.<br>2. Documentar en el issue el estado en que queda el requerimiento. |
+| `👀 In Review / PR` | `📥 Backlog` / Cerrado | **Rechazo Definitivo de PR:** El PR se cierra sin merge por el usuario. | 1. Cerrar PR en GitHub.<br>2. Si contenía un nuevo ADR, el ADR nunca entra a la rama troncal (descartado con la rama). Si fue propuesto en documento independiente, marcar `status: rejected`.<br>3. Ejecutar `git-prune-gone` localmente. |
 
 ---
 
 ## 4. Flujo Mandatorio de Pull Requests y Projects v2
 
-- **Prohibición Total de Push/Merge a `main`:** Queda terminantemente prohibido que el agente comitee o pushee cambios productivos directamente a la rama `main`, o que ejecute `git merge` hacia `main` por su cuenta.
+- **Prohibición Total de Push/Merge a Ramas Troncales:** Queda terminantemente prohibido que el agente comitee o pushee cambios productivos directamente a la rama troncal (`<base_branch>`, sea `main` o `dev`), o que ejecute `git merge` hacia la troncal por su cuenta.
 - **Vinculación Canónica de Cierre (Simple y Múltiple):** El cuerpo del Pull Request debe incluir obligatoriamente la directiva `Closes #<id>` o `Fixes #<id>` para asegurar el cierre automático de la issue al fusionarse el PR. Si el Pull Request resuelve conjuntamente una issue de implementación y una issue previa de investigación/auditoría o spike que motivó el cambio, debe listar cada una de forma independiente en líneas contiguas:
   ```markdown
   Closes #<id_implementacion>
