@@ -736,6 +736,33 @@ link_runtime() {
     link_runtime_mcp "${r}"
 }
 
+setup_gh_aliases() {
+    echo "==> [link] Asegurando configuración de aliases de GitHub CLI ('gh')..."
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "  [-] gh no está instalado o no se encuentra en \$PATH; omitiendo aliases."
+        return 0
+    fi
+
+    local err=false
+    if gh alias set --shell board 'gh project item-list 1 --owner @me --limit 100 --query "repo:$1 -status:Done" --format json --jq ".items[] | {number: .content.number, title: .content.title, status: .status}"' --clobber >/dev/null 2>&1; then
+        echo "  [+] [gh] Alias configurado: 'board' -> consulta de tareas activas (-status:Done) con limit 100"
+    else
+        echo "  [!] Advertencia: No se pudo configurar el alias 'board' de gh" >&2
+        err=true
+    fi
+
+    if gh alias set --shell board-ready 'gh project item-list 1 --owner @me --limit 100 --query "repo:$1 status:\"🎯 Ready for Dev\"" --format json --jq ".items[] | {number: .content.number, title: .content.title, url: .content.url}"' --clobber >/dev/null 2>&1; then
+        echo "  [+] [gh] Alias configurado: 'board-ready' -> consulta de tareas listas (Ready for Dev) con limit 100"
+    else
+        echo "  [!] Advertencia: No se pudo configurar el alias 'board-ready' de gh" >&2
+        err=true
+    fi
+
+    if [ "${err}" = false ]; then
+        echo "==> [link] Aliases de gh configurados con éxito."
+    fi
+}
+
 cmd_link() {
     local target_arg="${1:-all}"
     validate_runtime_arg "${target_arg}" || return 1
@@ -745,6 +772,7 @@ cmd_link() {
         [ -z "$r" ] && continue
         link_runtime "$r"
     done
+    setup_gh_aliases
 }
 
 # ------------------------------------------------------------------------------
@@ -1611,6 +1639,103 @@ check_unit_tests() {
     fi
 }
 
+check_gh_aliases() {
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "  [-] gh no está instalado; omitiendo verificación de aliases"
+        return 0
+    fi
+
+    local aliases_list
+    aliases_list="$(gh alias list 2>/dev/null || true)"
+    local missing=()
+
+    if ! echo "${aliases_list}" | grep -qE '^board:'; then
+        missing+=("board")
+    fi
+    if ! echo "${aliases_list}" | grep -qE '^board-ready:'; then
+        missing+=("board-ready")
+    fi
+
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo "  [!] Advertencia: Alias(es) de gh no configurados: ${missing[*]} (ejecuta './build.sh link' o 'gh alias set')" >&2
+        CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+    else
+        echo "  [✓] GitHub CLI: Aliases de tablero ('board' y 'board-ready') configurados"
+    fi
+}
+
+check_skill_bypass_quotes() {
+    if [ ! -d "${SKILLS_DIR}" ]; then
+        return 0
+    fi
+
+    echo "==> [check] Verificando ausencia de argumentos entrecomillados en comandos con bypass (skills/)..."
+    if command -v python3 >/dev/null 2>&1; then
+        local lint_output
+        if ! lint_output=$(python3 -c '
+import glob, os, re, sys
+
+skills_dir = sys.argv[1]
+patterns = [
+    (re.compile(r"git\s+commit\s+-m\s+[\"\x27]"), "git commit -m con comillas"),
+    (re.compile(r"git\s+stash\s+.*-m\s+[\"\x27]"), "git stash con mensaje entrecomillado"),
+    (re.compile(r"gh\s+project\s+.*--owner\s+[\"\x27]"), "--owner entrecomillado"),
+    (re.compile(r"gh\s+project\s+item-list\s+.*--query\s+[\"\x27]"), "gh project item-list --query entrecomillado"),
+    (re.compile(r"gh\s+issue\s+close\s+.*--comment\s+[\"\x27]"), "gh issue close --comment entrecomillado"),
+    (re.compile(r"gh-pr-review\s+reply\s+.*--body\s+[\"\x27]"), "gh-pr-review reply --body entrecomillado"),
+]
+
+errors = []
+for fpath in sorted(glob.glob(os.path.join(skills_dir, "**/*.md"), recursive=True)):
+    with open(fpath, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    lines = content.splitlines()
+    in_bash = False
+    bash_lines = []
+    bash_start = 0
+
+    for idx, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if stripped.startswith("```bash"):
+            in_bash = True
+            bash_lines = []
+            bash_start = idx
+            continue
+        elif stripped.startswith("```") and in_bash:
+            in_bash = False
+            has_bypass = False
+            for lookahead in range(idx, min(len(lines), idx + 3)):
+                if "BypassSandbox: true" in lines[lookahead]:
+                    has_bypass = True
+                    break
+            if has_bypass:
+                for b_idx, b_line in enumerate(bash_lines, bash_start + 1):
+                    b_strip = b_line.strip()
+                    if b_strip.startswith("#") or "fallback" in b_strip.lower():
+                        continue
+                    for pat, desc in patterns:
+                        if pat.search(b_line):
+                            rel_path = os.path.relpath(fpath)
+                            errors.append(f"  [✗] {desc} en {rel_path}:{b_idx} -> {b_strip}")
+            continue
+
+        if in_bash:
+            bash_lines.append(line)
+
+if errors:
+    print("\n".join(errors))
+    sys.exit(1)
+sys.exit(0)
+' "${SKILLS_DIR}" 2>&1); then
+            echo "${lint_output}" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        else
+            echo "  [✓] Skills: Ausencia de argumentos entrecomillados en comandos con bypass"
+        fi
+    fi
+}
+
 cmd_check() {
     local target_arg="${1:-all}"
     validate_runtime_arg "${target_arg}" || return 1
@@ -1638,6 +1763,12 @@ cmd_check() {
 
     # Verificaciones comunes de ~/.local/bin
     check_local_bin_symlinks
+
+    # Verificación de aliases de GitHub CLI
+    check_gh_aliases
+
+    # Verificación de comandos con bypass en skills/
+    check_skill_bypass_quotes
 
     echo "==> [check] Verificación completada: ${CHECK_ERRORS} error(es), ${CHECK_WARNINGS} advertencia(s)."
     if [ "${CHECK_ERRORS}" -gt 0 ]; then

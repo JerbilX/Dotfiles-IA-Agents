@@ -27,7 +27,7 @@ Concatena en orden determinista los módulos de `core/*.md` con las especializac
 ```
 
 ### 2. `link`
-Verifica la existencia del directorio destino declarado en `target.config_dir`, genera respaldos con timestamp (`.bak.YYYYMMDD_HHMMSS`) de cualquier archivo preexistente y crea enlaces simbólicos atómicos (`ln -sfn`) hacia las ubicaciones canónicas del host:
+Verifica la existencia del directorio destino declarado en `target.config_dir`, genera respaldos con timestamp (`.bak.YYYYMMDD_HHMMSS`) de cualquier archivo preexistente, crea enlaces simbólicos atómicos (`ln -sfn`) hacia las ubicaciones canónicas del host y configura los aliases prefix-matchables de GitHub CLI (`board` y `board-ready`):
 ```bash
 ./build.sh link             # Enlaza todos los runtimes
 ./build.sh link antigravity # Enlaza ~/.gemini/config/
@@ -72,7 +72,7 @@ Ejecuta una auditoría estática de integridad de **solo lectura** (*read-only*)
 ./build.sh check antigravity # Audita exclusivamente Antigravity
 ./build.sh check claude      # Audita exclusivamente Claude Code
 ```
-Inspecciona esquemas JSON, sintaxis, presencia de binarios, colisiones de prefijos numéricos o títulos H1, integridad de symlinks en el host, presupuesto de contexto (global y modular) e integridad de la documentación técnica.
+Inspecciona esquemas JSON, sintaxis, presencia de binarios, aliases de GitHub CLI, colisiones de prefijos numéricos o títulos H1, comandos con bypass entrecomillados en skills, integridad de symlinks en el host, presupuesto de contexto (global y modular) e integridad de la documentación técnica.
 
 ### 8. `reconcile`
 Ejecuta la reconciliación y ratificación determinista de Architecture Decision Records (ADRs) tras la fusión de Pull Requests en la rama troncal (`main`). Identifica ADRs en `status: proposed` que ya forman parte del historial de `main` y actualiza atómicamente su metadato a `status: accepted`:
