@@ -155,11 +155,11 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
    Al usar `--all <pr_id>`, incluye además `prNumber` y `totalFound`. Si algún hilo falla, se reporta en `errors` con su respectivo `threadId` y mensaje sin interrumpir los demás.
 
 2. **Réplica Opcional a un Hilo de Revisión Específico:**
-   Si se requiere dejar constancia explícita sobre un hilo puntual antes o después de resolverlo:
+   Si se requiere dejar constancia explícita sobre un hilo puntual antes o después de resolverlo, redactar el texto en el archivo temporal `.reply_body` con `write_to_file` y enviarlo mediante `--body-file` para preservar el prefix matching en Antigravity:
    ```bash
-   gh-pr-review reply <thread_id> --body "Resuelto en commit <short_sha>: <descripción concisa>"
+   gh-pr-review reply <thread_id> --body-file .reply_body
    ```
-   *(O utilizando `--body-file .reply_body`, ejecutado con `BypassSandbox: true`).*
+   *(Ejecutado con `BypassSandbox: true`; limpiar inmediatamente el archivo temporal con `rm -f .reply_body` bajo `BypassSandbox: false`).*
 
 3. **Comentario Consolidado en el Pull Request:**
    Para notificar formalmente al revisor humano que todas las observaciones fueron atendidas:

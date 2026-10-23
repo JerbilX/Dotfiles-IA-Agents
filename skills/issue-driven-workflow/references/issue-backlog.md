@@ -73,9 +73,9 @@ Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix
 
 El workflow nativo `Auto-add to project` indexa automáticamente los issues de repositorios que coinciden con su filtro configurado. Para garantizar la indexación inmediata y agnóstica en repositorios fuera de dicho filtro (o como salvaguarda idempotente ante demoras del workflow):
 ```bash
-gh project item-add 1 --owner "@me" --url <issue-url>
+gh project item-add 1 --owner @me --url <issue-url>
 ```
-*(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento; `--owner "@me"` resuelve dinámicamente al usuario autenticado).*
+*(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento; `--owner @me` resuelve dinámicamente al usuario autenticado sin comillas).*
 
 ---
 
@@ -106,7 +106,7 @@ Al completar la creación e indexación, el agente debe reportar al usuario:
 ## 9. Control de Alcance (Scope Creep) y Tareas Derivadas
 
 - El agente **no debe inflar** el objetivo del ticket original con refactors, mejoras o arreglos colaterales no contemplados en la especificación de la issue.
-- Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create --body-file .issue_body`), indexarla al tablero central (`gh project item-add 1 --owner "@me" --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
+- Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create --body-file .issue_body`), indexarla al tablero central (`gh project item-add 1 --owner @me --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
 - **Vinculación Múltiple en Tareas Derivadas:** Si una tarea de investigación, auditoría forense o spike genera una o más issues derivadas de corrección/implementación, cuando se resuelva la causa raíz y se abra el Pull Request respectivo, el cuerpo del PR (`.pr_body`) DEBE declarar explícitamente el cierre de todas las issues vinculadas:
   ```markdown
   Closes #<issue_derivada>
@@ -121,11 +121,21 @@ Al completar la creación e indexación, el agente debe reportar al usuario:
 Ante preguntas de consulta, estado o coordinación sobre tareas pendientes en el tablero central (Project 1 `Proyectos-IA-V3`):
 
 1. **Comando CLI Simple y Filtrado Contextual por Repositorio:**
-   Para prevenir la sobrecarga cognitiva y la dilución de contexto provocada por el volcado de inventarios masivos multi-proyecto, la consulta estándar ante preguntas sobre el board debe filtrar los ítems activos exclusivamente para el repositorio donde está posicionado el agente:
+   Para prevenir la sobrecarga cognitiva y la dilución de contexto provocada por el volcado de inventarios masivos multi-proyecto, la consulta estándar ante preguntas sobre el board debe invocar el alias prefix-matchable `gh board` pasando únicamente el identificador `<owner>/<repo>`:
    ```bash
-   gh project item-list 1 --owner "@me" --query "repo:<owner>/<repo> -status:Done" --format json --jq '.items[] | {number: .content.number, title: .content.title, status: .status}'
+   gh board <owner>/<repo>
    ```
    *(Ejecutado con `BypassSandbox: true` obligatorio; sustituir `<owner>/<repo>` por la identificación del repositorio actual).*
+
+   - **Aprovisionamiento Canónico del Alias (vía `./build.sh link` o manual):**
+     ```bash
+     gh alias set --shell board 'gh project item-list 1 --owner @me --limit 100 --query "repo:$1 -status:Done" --format json --jq ".items[] | {number: .content.number, title: .content.title, status: .status}"' --clobber
+     gh alias set --shell board-ready 'gh project item-list 1 --owner @me --limit 100 --query "repo:$1 status:\"🎯 Ready for Dev\"" --format json --jq ".items[] | {number: .content.number, title: .content.title, url: .content.url}"' --clobber
+     ```
+   - **Fallback sin Alias Configurado:** Si el alias no existe aún en el host, ejecutar la consulta cruda explicitando `--limit 100` para evitar el truncado de 30 ítems:
+     ```bash
+     gh project item-list 1 --owner @me --limit 100 --query "repo:<owner>/<repo> -status:Done" --format json --jq '.items[] | {number: .content.number, title: .content.title, status: .status}'
+     ```
 
 2. **Priorización Analítica y Recomendación (Top 2 a 3):**
    - **Evaluación Técnica:** El agente debe procesar el listado acotado del repositorio actual y evaluar la relevancia técnica de las tareas:

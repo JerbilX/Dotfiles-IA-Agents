@@ -64,7 +64,8 @@ Para ejecutar el aprovisionamiento completo de directivas, enlaces simbólicos, 
 2. **Respaldos Atómicos Pre-Despliegue:** Antes de sobreescribir o enlazar cualquier archivo existente en el host (ej. `~/.gemini/config/AGENTS.md` o `~/.claude/CLAUDE.md`), genera una copia de respaldo con timestamp (`.bak.YYYYMMDD_HHMMSS`).
 3. **Enlaces Simbólicos Canónicos:** Crea enlaces atómicos `ln -sfn` hacia las rutas destino declaradas en `target.config_dir` y `target.skills_dir`.
 4. **Exposición de Binarios de Skills:** Enlaza los scripts ejecutables y binarios declarados en `~/.local/bin/` aplicando los alias configurados en cada runtime.
-5. **Auditoría Estática:** Ejecuta automáticamente la suite de verificación (`check`) reportando el estado final de integridad.
+5. **Configuración de Aliases de GitHub CLI:** Configura de forma idempotente los aliases `board` y `board-ready` en `gh` para consultas prefix-matchables al tablero de Projects v2 sin comillas.
+6. **Auditoría Estática:** Ejecuta automáticamente la suite de verificación (`check`) reportando el estado final de integridad.
 
 ---
 

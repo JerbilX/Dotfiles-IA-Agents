@@ -56,9 +56,9 @@ Si el usuario **confirma**:
    *(Ejecutado con `BypassSandbox: true` sobre el repositorio actual).*
 3. Si el entorno cuenta con permisos para Projects (`gh project`), proceder a enlazar el repositorio al tablero central:
    ```bash
-   gh project link 1 --owner "@me" --repo <nombre-del-directorio>
+   gh project link 1 --owner @me --repo <nombre-del-directorio>
    ```
-   *(Ejecutado con `BypassSandbox: true`).*
+   *(Ejecutado con `BypassSandbox: true`; `--owner @me` resuelve dinámicamente al usuario autenticado sin comillas).*
 
 Si el usuario **rechaza**:
 - El repositorio permanece exclusivamente bajo control de versiones local hasta nueva orden explícita.

@@ -43,9 +43,9 @@ Procedimientos detallados y plantillas en `references/`:
 ### 3.1 Consultas de Tablero (*"¿qué hay en el board?"*)
 Filtrar activos del repo (Top 2-3 con justificación):
 ```bash
-gh project item-list 1 --owner "@me" --query "repo:<owner>/<repo> -status:Done" --format json --jq '.items[] | {number: .content.number, title: .content.title, status: .status}'
+gh board <owner>/<repo>
 ```
-*(BypassSandbox: true).*
+*(BypassSandbox: true; alias prefix-matchable. Fallback si el alias no está configurado: `gh project item-list 1 --owner @me --limit 100 --query "repo:<owner>/<repo> -status:Done" --format json --jq '.items[] | {number: .content.number, title: .content.title, status: .status}'`).*
 
 ### 3.2 Despacho Vía A: Instrucción Directa (*"implementa la issue #<id>"*)
 1. Ingesta: `gh issue view <id>` (`BypassSandbox: true`).
@@ -54,8 +54,9 @@ gh project item-list 1 --owner "@me" --query "repo:<owner>/<repo> -status:Done" 
 ### 3.3 Despacho Vía B: Backlog (*"siguiente tarea lista"*)
 1. Consultar listos:
 ```bash
-gh project item-list 1 --owner "@me" --query 'repo:<owner>/<repo> status:"🎯 Ready for Dev"' --format json --jq '.items[] | {number: .content.number, title: .content.title, url: .content.url}'
+gh board-ready <owner>/<repo>
 ```
+*(BypassSandbox: true; alias prefix-matchable. Fallback si el alias no está configurado: `gh project item-list 1 --owner @me --limit 100 --query 'repo:<owner>/<repo> status:"🎯 Ready for Dev"' --format json --jq '.items[] | {number: .content.number, title: .content.title, url: .content.url}'`).*
 2. Elegir ítem prioritario (Top 2-3) y proceder al ciclo E2E.
 
 ---
