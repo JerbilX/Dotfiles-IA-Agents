@@ -75,7 +75,10 @@ Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](refe
 - [ ] **5. Commit:** Redactar en `.commit_msg`, `git commit -F .commit_msg` y borrar temporal.
 - [ ] **6. Push:** Publicar con `git push -u origin <rama>`.
 - [ ] **7. PR:** PR con `Closes #<id>` vía `.pr_body` (ADR viaja como `accepted`). La apertura del PR y la vinculación nativa activan el estado de revisión en GitHub (`👀 In Review / PR`).
-- [ ] **8. Cierre & Higiene (Done):** Tras merge en `main`, GitHub cierra la issue y avanza a `Done` automáticamente vía Built-in Workflows. Retornar a rama base, sincronizar y podar ramas locales zombi con `git-prune-gone`.
+- [ ] **8. Cierre & Higiene (Done):**
+  - **Fusión Remota por CLI (Vía Preferente):** Ante orden ejecutiva en chat (*"aprobado, mergeá"*), el agente ejecuta `gh pr merge <id> --squash --delete-branch` (`BypassSandbox: true`). Prohibido el merge autónomo sin instrucción humana previa.
+  - **Fusión Web (Vía Alternativa):** El usuario fusiona manualmente en la interfaz web de GitHub.
+  - **Higiene Atómica Post-Merge:** Retornar a rama base, sincronizar (`git pull --prune --ff-only`), podar ramas locales zombi con `git-prune-gone` y desmontar worktree si aplica (`BypassSandbox: true`). GitHub Built-in Workflows cierra la issue y avanza a `Done` automáticamente.
 
 ---
 

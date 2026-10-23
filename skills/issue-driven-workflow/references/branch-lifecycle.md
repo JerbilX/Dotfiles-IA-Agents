@@ -41,6 +41,8 @@ En ausencia de archivo de configuración o si no se explicita `repository_type`,
   git checkout -b <nombre-de-rama>
   ```
   *(Ejecutado con `BypassSandbox: true` desde el primer intento debido al montaje `ro` de `.git/`).*
+- **Compatibilidad con Worktrees (Orquestadores / Entornos Paralelos):**
+  En flujos gobernados por orquestadores externos (ej. `Agent-Cockpit`) o agentes en paralelo, la rama efímera puede aislarse en un worktree dedicado (`git worktree add .worktrees/issue-<id> -b <nombre-de-rama>`). El ciclo de vida y las reglas de higiene aplican idénticamente, sumando el desmonte del worktree en el Paso 8.
 
 ---
 
@@ -116,15 +118,56 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 8 fas
    ```
 
 ### Paso 8: Protocolo de Cierre e Higiene Post-Merge (Done)
-Tras la fusión (merge) del Pull Request en GitHub por el gate humano:
-1. **Validar Cierre de la Issue:** Verificar que el merge haya cerrado automáticamente la issue vinculada (`gh issue view <id>`). Si permanece abierta por omisión en el PR body, cerrarla (`gh issue close <id>`). Las automatizaciones nativas de Projects v2 (*Item closed* / *Pull request merged*) transicionan automáticamente la tarjeta a `Done`.
-2. **Sincronizar Rama Base:** Retornar a la rama troncal y sincronizar en fast-forward podando referencias remotas obsoletas:
+
+La resolución final del Pull Request puede operar por dos vías de ejecución:
+
+#### Vía A: Fusión Remota por CLI (Vía Preferente ante Orden Ejecutiva)
+Tras la apertura del PR y la revisión por el usuario, si este emite una **orden ejecutiva o aprobación explícita en el chat** (*"aprobado, mergeá"*, *"mergealo"*, *"procede con el merge"*):
+
+1. **Fusión Remota por CLI (`gh pr merge`):**
    ```bash
-   git checkout <base_branch>
-   git pull --prune --ff-only
+   gh pr merge <id> --squash --delete-branch
    ```
-   *(Ejecutados con `BypassSandbox: true`).*
-3. **Poda Atómica de Ramas Locales:** Ejecutar `git-prune-gone` (`BypassSandbox: true`) para limpiar las ramas locales que trackeaban remotos ya fusionados y borrados.
+   *(incorporar `--auto` si existen checks obligatorios de CI pendientes: `gh pr merge <id> --squash --delete-branch --auto`)* con `BypassSandbox: true` desde el primer intento.
+   > [!IMPORTANT]
+   > **Invariante Human-in-the-Loop:** Queda terminantemente prohibido que el agente invoque `gh pr merge` por iniciativa propia o de forma autónoma. La ejecución exige una orden ejecutiva explícita o confirmación humana en el chat.
+
+2. **Encadenamiento Atómico de Higiene Post-Merge:**
+   Inmediatamente tras la confirmación exitosa del merge remoto, el agente ejecuta de forma secuencial y determinista:
+   a. Retornar a la rama base:
+      ```bash
+      git checkout <base_branch>
+      ```
+      *(BypassSandbox: true).*
+   b. Sincronizar en fast-forward podando tracking remoto:
+      ```bash
+      git pull --prune --ff-only
+      ```
+      *(BypassSandbox: true).*
+   c. Podar ramas locales huérfanas:
+      ```bash
+      git-prune-gone
+      ```
+      *(BypassSandbox: true).*
+   d. **Desmontaje de Worktree (Entornos Aislados / Agent-Cockpit):** Si el desarrollo se ejecutó en un worktree efímero (patrón orquestadores multi-agente), desmontar y limpiar el directorio de trabajo con:
+      ```bash
+      git worktree remove .worktrees/issue-<id>
+      ```
+      *(BypassSandbox: true).*
+
+3. **Validación de Cierre y Reporte:**
+   Verificar que el merge haya cerrado automáticamente la issue vinculada (`gh issue view <id>`). Si permanece abierta por omisión en el PR body, cerrarla (`gh issue close <id>`). Las automatizaciones nativas de Projects v2 (*Item closed* / *Pull request merged*) transicionan automáticamente la tarjeta a `Done`. Confirmar en el chat el cierre exitoso y la higiene del workspace.
+
+#### Vía B: Fusión Manual en GitHub Web (Vía Alternativa / Fallback)
+Si el usuario prefiere fusionar manualmente desde la interfaz web de GitHub (o ante conflictos/políticas de merge de ramas que requieran UI web):
+1. El usuario revisa, aprueba y fusiona el PR en la interfaz web de GitHub.
+2. Tras la fusión, ante la siguiente interacción o confirmación en chat, el agente ejecuta el encadenamiento atómico de higiene:
+   - `git checkout <base_branch>` (`BypassSandbox: true`)
+   - `git pull --prune --ff-only` (`BypassSandbox: true`)
+   - `git-prune-gone` (`BypassSandbox: true`)
+   - Si aplica worktree efímero: `git worktree remove .worktrees/issue-<id>` (`BypassSandbox: true`)
+3. Validar cierre de issue y tablero en `Done`.
+
 - **Invariante de Higiene Proactiva:** Ante cualquier consulta o interacción subsiguiente del usuario (sea una pregunta exploratoria como *"¿con qué seguimos?"* o despacho de nueva tarea), si el agente detecta que la rama actual trackea un PR ya fusionado/cerrado o tracking `[gone]`, ejecuta inmediatamente este paso de higiene sin esperar una nueva orden de desarrollo.
 
 ---
@@ -141,7 +184,7 @@ El tablero de Projects v2 opera como una máquina de estados formal bidirecciona
 | `🎯 Ready for Dev` | `📐 In Planning` | Despacho de tarea | Sesión de agente asignada al ticket vía instrucción directa o backlog. | Ingesta técnica (`gh issue view`). Fase local de análisis. |
 | `📐 In Planning` | `⚙️ In Progress` | Aprobación de Plan | Aprobación humana explícita de `implementation_plan.md` o fast-path ejecutivo. | Promover ADR a `status: accepted`, iniciar codificación en rama efímera. |
 | `⚙️ In Progress` | `👀 In Review / PR` | Fin de desarrollo | Código probado con `./build.sh check`, commits atómicos y push remoto. | Crear PR con `Closes #<id>` (ADR viaja como `accepted`). Built-in Workflow avanza tarjeta a `👀 In Review / PR`. |
-| `👀 In Review / PR` | `Done` | Merge de PR | Gate humano de revisión, aprobación y fusión en `main`. | GitHub cierra la issue vinculada y Built-in Workflow avanza a `Done`. Ejecutar Paso 8 (Higiene Post-Merge). |
+| `👀 In Review / PR` | `Done` | Merge de PR | Orden ejecutiva en chat (*"mergeá"*) o fusión manual en GitHub Web. | Fusión vía `gh pr merge <id> --squash --delete-branch` (o web); Built-in Workflow avanza a `Done`. Ejecutar encadenamiento atómico de higiene (Paso 8). |
 | `📐 In Planning` | `Done` | Conclusión de Spike | Tarea investigativa/auditoría sin cambios de código. | Informe técnico en `.issue_comment` y cierre con `gh issue close <id>`. Built-in Workflow avanza tarjeta a `Done` (Sección 5). |
 
 ### 3.2 Matriz de Transiciones Regresivas (Backward / Rework / Rollback)
@@ -169,7 +212,7 @@ Cuando una tarea enfrenta bloqueos, revisiones insatisfactorias o cambios de pri
   Closes #<id_investigacion>
   ```
 - **Transición Automatizada del Tablero Central:** La vinculación canónica (`Closes #<id>`) activa el Built-in Workflow `Pull request linked to issue` en Projects v2, situando el ítem automáticamente en `👀 In Review / PR`. Queda terminantemente prohibido que el agente ejecute llamadas manuales de mutación (`gh project item-edit`).
-- **Gate de Aprobación Humana:** La revisión del diff, aprobación y fusión del PR es responsabilidad exclusiva del PM / Tech Lead en la interfaz de GitHub.
+- **Gate de Aprobación Humana e Invariante Human-in-the-Loop:** La revisión del diff y la aprobación del PR es potestad exclusiva del usuario. La fusión del PR puede realizarse manualmente por el usuario en la interfaz web de GitHub o ejecutarse desatendidamente por el agente mediante `gh pr merge <id> --squash --delete-branch` (`BypassSandbox: true`) ÚNICAMENTE tras recibir la orden ejecutiva o aprobación explícita en el chat (*"aprobado, mergeá"*, *"procede con el merge"*). Prohibido el merge autónomo sin instrucción previa.
 
 ---
 
@@ -208,7 +251,7 @@ Al completar la publicación del PR, el agente **DEBE emitir un reporte final es
 2. Verificaciones y pruebas ejecutadas exitosamente.
 3. Enlace web directo al Pull Request creado en GitHub.
 4. Confirmación del estado de la tarea (Pull Request vinculado a la issue en revisión).
-5. Indicación explícita para que el usuario revise el diff y apruebe/fusione el PR.
+5. Indicación explícita para que el usuario revise el diff y apruebe el PR (pudiendo indicar *"aprobado, mergeá"* en el chat para que el agente ejecute la fusión remota y la higiene de forma desatendida, o fusionarlo directamente en GitHub).
 
 ---
 
