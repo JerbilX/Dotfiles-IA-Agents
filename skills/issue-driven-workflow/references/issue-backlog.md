@@ -71,7 +71,7 @@ Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix
 
 ## 6. Inyección Inmediata y Agnóstica al Tablero Central (Projects v2)
 
-Para garantizar la indexación inmediata y agnóstica en el tablero central (sin depender de automatizaciones de auto-add restringidas en planes GitHub Free):
+El workflow nativo `Auto-add to project` indexa automáticamente los issues de repositorios que coinciden con su filtro configurado. Para garantizar la indexación inmediata y agnóstica en repositorios fuera de dicho filtro (o como salvaguarda idempotente ante demoras del workflow):
 ```bash
 gh project item-add 1 --owner "@me" --url <issue-url>
 ```
