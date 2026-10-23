@@ -31,18 +31,32 @@ Para preservar la prohibición estricta de push directo o reescritura de histori
    *(Ejecutado con `BypassSandbox: true` desde el primer intento).*
 
 3. **Invocación Atómica y Desatendida de `git revert`:**
-   Obtener el SHA del commit de merge (`<merge_commit_sha>`) y revertirlo indicando la línea principal (`-m 1`):
+   Obtener el SHA del commit integrado en `main` (`<commit_sha>`) y determinar su naturaleza inspeccionando sus ancestros directos:
    ```bash
-   git revert -m 1 <merge_commit_sha> --no-commit
+   git rev-list --parents -n 1 <commit_sha>
    ```
-   *(Ejecutado con `BypassSandbox: true`). El flag `--no-commit` previene que Git abra un editor interactivo en terminal y permite formatear el mensaje de commit de manera determinista y controlada.*
+   *(Ejecutado con `BypassSandbox: true`).*
+
+   - **Squash Commit (1 padre - Escenario Canónico):** Si la salida contiene 2 identificadores (`<commit_sha> <parent1>`), se trata de un commit de squash (estándar canónico del flujo). Revertir directamente sin especificar línea principal:
+     ```bash
+     git revert --no-commit <commit_sha>
+     ```
+     *(Nota: especificar `-m 1` en un squash commit produce el error `fatal: mainline was specified but commit ... is not a merge`).*
+
+   - **Merge Commit Tradicional (2 o más padres):** Si la salida contiene 3 o más identificadores (`<commit_sha> <parent1> <parent2>...`), se trata de un merge commit tradicional. Revertir indicando la línea principal (`-m 1`):
+     ```bash
+     git revert -m 1 <commit_sha> --no-commit
+     ```
+     *(Nota: omitir `-m 1` en un merge commit tradicional produce el error `fatal: commit ... is a merge but no -m option was given`).*
+
+   *En ambos casos, el flag `--no-commit` previene que Git abra un editor interactivo en terminal y permite formatear el mensaje de commit de manera determinista y controlada.*
 
 4. **Commit Atómico de Reversión:**
    Redactar el mensaje convencional en `.commit_msg` con la herramienta nativa `write_to_file`:
    ```markdown
    fix(revert): revert PR #<pr_id> - <motivo breve>
 
-   Reverts PR #<pr_id> (<merge_commit_sha>).
+   Reverts PR #<pr_id> (<commit_sha>).
    Razón: <diagnóstico técnico conciso de la regresión o anomalía>.
    ```
    Ejecutar el commit leyendo el archivo temporal (`BypassSandbox: true`):
@@ -73,7 +87,7 @@ Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes
    [Descripción de la anomalía o regresión que motiva la reversión]
 
    ### Cambios
-   - Reversión atómica del merge commit `<merge_commit_sha>`.
+   - Reversión atómica del commit `<commit_sha>` (squash o merge commit).
    - Restablecimiento del estado estable previo en `main`.
 
    Reverts #<pr_id>

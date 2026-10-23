@@ -2,10 +2,12 @@
 """
 CLI determinista git-prune-gone para poda segura y atómica de ramas locales huérfanas ([gone]).
 Cumple con los estándares de Nivel 1 (tooling), confinamiento de sandbox y prefix matching.
+Ref: docs/adr/0032-compatibilidad-de-poda-y-rollback-con-squash-merge.md
 """
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Tuple
@@ -24,6 +26,54 @@ def is_git_repository() -> bool:
     except FileNotFoundError:
         sys.stderr.write("Error: El comando 'git' no está instalado o no se encuentra en $PATH.\n")
         sys.exit(1)
+
+
+def resolve_base_branch(custom_base: Optional[str] = None) -> str:
+    """
+    Resuelve la rama base contra la cual verificar la integración.
+    Prioridad: argumento CLI -> .repo-config.json -> config.json -> 'main'.
+    """
+    if custom_base:
+        return custom_base.strip()
+
+    for cfg_name in [".repo-config.json", "config.json"]:
+        if os.path.isfile(cfg_name):
+            try:
+                with open(cfg_name, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict) and "base_branch" in data and isinstance(data["base_branch"], str):
+                        val = data["base_branch"].strip()
+                        if val:
+                            return val
+            except Exception:
+                pass
+
+    return "main"
+
+
+def verify_branch_exists(branch_name: str) -> bool:
+    """
+    Verifica si una referencia o rama existe en el repositorio local o remoto.
+    """
+    proc = subprocess.run(
+        ["git", "rev-parse", "--verify", f"{branch_name}^{{commit}}"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return True
+
+    # Fallback a referencia remota si aplica
+    proc_remote = subprocess.run(
+        ["git", "rev-parse", "--verify", f"origin/{branch_name}^{{commit}}"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    return proc_remote.returncode == 0
 
 
 def get_branches_info() -> List[Tuple[str, str, str]]:
@@ -58,45 +108,47 @@ def get_branches_info() -> List[Tuple[str, str, str]]:
     return branches
 
 
-def prune_branches(branches: List[str], force: bool = False) -> Tuple[List[str], List[Dict[str, str]]]:
+def classify_branch(base: str, branch: str) -> str:
     """
-    Intenta podar las ramas de la lista. Retorna (pruned, failed).
+    Clasifica una rama respecto a la rama base en:
+    - 'merged': Rama integrada mediante merge commit tradicional (ancestro directo).
+    - 'squash-merged': Rama integrada mediante squash merge (árbol equivalente).
+    - 'unmerged': Rama con cambios no integrados o con conflictos respecto a base.
     """
-    if not branches:
-        return [], []
-
-    flag = "-D" if force else "-d"
-    # Intento en lote primero
-    batch_cmd = ["git", "branch", flag] + branches
-    proc = subprocess.run(
-        batch_cmd,
+    # 1. Comprobación de ascendencia directa (tradicional)
+    proc_anc = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", branch, base],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         check=False,
     )
+    if proc_anc.returncode == 0:
+        return "merged"
 
-    if proc.returncode == 0:
-        return branches, []
+    # 2. Comprobación de equivalencia de árbol en memoria (squash merge)
+    proc_base_tree = subprocess.run(
+        ["git", "rev-parse", f"{base}^{{tree}}"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if proc_base_tree.returncode != 0:
+        return "unmerged"
+    base_tree = proc_base_tree.stdout.strip()
 
-    # Si el lote falló, procesar individualmente para podar las seguras e identificar errores específicos
-    pruned = []
-    failed = []
-    for b in branches:
-        res = subprocess.run(
-            ["git", "branch", flag, b],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
-        )
-        if res.returncode == 0:
-            pruned.append(b)
-        else:
-            err = res.stderr.strip() or res.stdout.strip() or "Error al eliminar rama"
-            failed.append({"branch": b, "error": err})
+    proc_tree = subprocess.run(
+        ["git", "merge-tree", "--write-tree", base, branch],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if proc_tree.returncode == 0 and proc_tree.stdout.strip() == base_tree:
+        return "squash-merged"
 
-    return pruned, failed
+    return "unmerged"
 
 
 def main() -> int:
@@ -107,7 +159,7 @@ def main() -> int:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Inspecciona y lista ramas zombi sin eliminarlas.",
+        help="Inspecciona y clasifica ramas zombi sin eliminarlas.",
     )
     parser.add_argument(
         "--json",
@@ -118,13 +170,27 @@ def main() -> int:
         "-f",
         "--force",
         action="store_true",
-        help="Fuerza la eliminación con git branch -D en lugar de la poda segura -d.",
+        help="Fuerza la eliminación con git branch -D de todas las ramas [gone], incluidas las no integradas.",
+    )
+    parser.add_argument(
+        "--base",
+        metavar="RAMA",
+        help="Rama base contra la cual verificar la integración (default: detectada de .repo-config.json o 'main').",
     )
 
     args = parser.parse_args()
 
     if not is_git_repository():
         msg = "Error: El directorio actual no pertenece a un repositorio Git."
+        if args.json:
+            print(json.dumps({"error": msg}))
+        else:
+            sys.stderr.write(f"{msg}\n")
+        return 1
+
+    base_branch = resolve_base_branch(args.base)
+    if not verify_branch_exists(base_branch):
+        msg = f"Error: La rama base '{base_branch}' no existe en el repositorio."
         if args.json:
             print(json.dumps({"error": msg}))
         else:
@@ -147,7 +213,10 @@ def main() -> int:
         if args.json:
             print(json.dumps({
                 "status": "clean",
+                "base_branch": base_branch,
+                "candidates": [],
                 "pruned": [],
+                "unmerged": [],
                 "failed": [],
                 "skipped_current": [],
                 "message": "Árbol de ramas locales limpio: no hay ramas con upstream zombi ([gone]).",
@@ -156,48 +225,125 @@ def main() -> int:
             print("Árbol de ramas locales limpio: no hay ramas con upstream zombi ([gone]).")
         return 0
 
+    # Clasificación de candidatos
+    classified_candidates: List[Dict[str, str]] = []
+    for c in candidates:
+        cls = classify_branch(base_branch, c)
+        classified_candidates.append({"branch": c, "classification": cls})
+
     # Caso: dry-run
     if args.dry_run:
         if args.json:
             print(json.dumps({
                 "status": "dry_run",
-                "candidates": candidates,
+                "base_branch": base_branch,
+                "candidates": classified_candidates,
                 "skipped_current": skipped_current,
             }, indent=2, ensure_ascii=False))
         else:
-            if candidates:
-                print("Ramas candidatas a poda ([gone]):")
-                for c in candidates:
-                    print(f"  - {c}")
+            if classified_candidates:
+                print(f"Ramas candidatas a poda ([gone]) contra base '{base_branch}':")
+                for item in classified_candidates:
+                    b = item["branch"]
+                    c = item["classification"]
+                    if c == "merged":
+                        print(f"  - {b} [merged] (será podada de forma segura con git branch -d)")
+                    elif c == "squash-merged":
+                        print(f"  - {b} [squash-merged] (integrada en {base_branch} - será podada con git branch -D)")
+                    else:
+                        print(f"  - {b} [unmerged] (no integrada - omitida a menos que use --force)")
             if skipped_current:
-                print("\n[!] Advertencia: La(s) siguiente(s) rama(s) activa(s) tiene(n) upstream [gone] pero no pueden eliminarse mientras estén seleccionadas:")
+                print(f"\n[!] Advertencia: La(s) siguiente(s) rama(s) activa(s) tiene(n) upstream [gone] pero no pueden eliminarse mientras estén seleccionadas:")
                 for sc in skipped_current:
-                    print(f"  - {sc} (rama actual - cambie a main/dev antes de podar)")
+                    print(f"  - {sc} (rama actual - cambie a {base_branch} antes de podar)")
         return 0
 
     # Ejecución de poda
-    pruned, failed = prune_branches(candidates, force=args.force)
+    pruned: List[Dict[str, str]] = []
+    unmerged: List[Dict[str, str]] = []
+    failed: List[Dict[str, str]] = []
+
+    for item in classified_candidates:
+        b = item["branch"]
+        cls = item["classification"]
+
+        if cls == "merged":
+            # Rama con merge tradicional: poda segura con -d
+            res = subprocess.run(
+                ["git", "branch", "-d", b],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+            if res.returncode == 0:
+                pruned.append({"branch": b, "classification": cls})
+            else:
+                err = res.stderr.strip() or res.stdout.strip() or "Error al podar rama merged"
+                failed.append({"branch": b, "classification": cls, "error": err})
+
+        elif cls == "squash-merged":
+            # Rama verificada como integrada vía squash: poda segura con -D
+            res = subprocess.run(
+                ["git", "branch", "-D", b],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+            if res.returncode == 0:
+                pruned.append({"branch": b, "classification": cls})
+            else:
+                err = res.stderr.strip() or res.stdout.strip() or "Error al podar rama squash-merged"
+                failed.append({"branch": b, "classification": cls, "error": err})
+
+        else:  # unmerged
+            if args.force:
+                res = subprocess.run(
+                    ["git", "branch", "-D", b],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    check=False,
+                )
+                if res.returncode == 0:
+                    pruned.append({"branch": b, "classification": "unmerged (forced)"})
+                else:
+                    err = res.stderr.strip() or res.stdout.strip() or "Error al forzar eliminación"
+                    failed.append({"branch": b, "classification": cls, "error": err})
+            else:
+                msg = f"Rama no integrada en '{base_branch}'. Requiere -f / --force para eliminar."
+                unmerged.append({"branch": b, "classification": cls, "error": msg})
+                failed.append({"branch": b, "classification": cls, "error": msg})
 
     if args.json:
-        result: Dict[str, Any] = {
-            "status": "success" if not failed else "partial_failure" if pruned else "failed",
+        status = "success" if not failed else ("partial_failure" if pruned else "failed")
+        result = {
+            "status": status,
+            "base_branch": base_branch,
             "pruned": pruned,
+            "unmerged": unmerged,
             "failed": failed,
             "skipped_current": skipped_current,
         }
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
         if pruned:
-            print("Ramas podadas exitosamente:")
+            print(f"Ramas podadas exitosamente contra base '{base_branch}':")
             for p in pruned:
-                print(f"  - {p} (eliminada)")
+                print(f"  - {p['branch']} (eliminada: {p['classification']})")
+        if unmerged:
+            print(f"\nRamas no integradas omitidas ([gone]):")
+            for u in unmerged:
+                print(f"  - {u['branch']} [{u['classification']}]: {u['error']}")
         if skipped_current:
-            print("\n[!] Advertencia: La rama actual tiene upstream [gone] y no fue eliminada:")
+            print(f"\n[!] Advertencia: La rama actual tiene upstream [gone] y no fue eliminada:")
             for sc in skipped_current:
-                print(f"  - {sc} (activa - cambie a main/dev antes de podar)")
-        if failed:
+                print(f"  - {sc} (activa - cambie a {base_branch} antes de podar)")
+        other_failed = [f for f in failed if f not in unmerged]
+        if other_failed:
             print("\nError al podar las siguientes ramas:")
-            for f in failed:
+            for f in other_failed:
                 print(f"  - {f['branch']}: {f['error']}")
 
     return 1 if failed else 0

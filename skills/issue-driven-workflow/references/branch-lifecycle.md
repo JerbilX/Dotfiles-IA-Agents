@@ -72,6 +72,11 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 8 fas
    git-prune-gone
    ```
    *(Ejecutado con `BypassSandbox: true` desde el primer intento debido al montaje `ro` de `.git/`).*
+   - **Compatibilidad con Squash Merge y Salvaguarda de Integridad:** `git-prune-gone` inspecciona ramas locales con tracking `[gone]` y las clasifica contra la rama base (`--base`, detectada automáticamente de `.repo-config.json` o `main`):
+     - `merged`: Ascendencia directa confirmada por merge tradicional (se poda de forma segura con `git branch -d`).
+     - `squash-merged`: Integración de árbol comprobada en memoria vía `git merge-tree --write-tree` (se poda de forma segura con `git branch -D` al estar verificada su integración total).
+     - `unmerged`: Cambios no integrados o en conflicto respecto a la base. Se preservan intactas y se reportan con código de salida 1; solo se eliminan si se explicita `--force` (`-f`).
+   - **Flags Operativos:** Soporta `--base <rama>` para repositorios de Categoría B (o ramas personalizadas), `--dry-run` para inspección pasiva sin borrado, `--json` para telemetría estructurada y `-f` / `--force` para forzar la eliminación de ramas descartadas.
    - **Fallback Determinista:** Si el binario no está disponible en `$PATH`, invocar directamente `skills/issue-driven-workflow/bin/git-prune-gone`.
 3. Crear y cambiar a la rama descriptiva (`git checkout -b feat/issue-<id>-<slug>` o `fix/issue-<id>-<slug>`) con `BypassSandbox: true` desde el primer intento.
 
