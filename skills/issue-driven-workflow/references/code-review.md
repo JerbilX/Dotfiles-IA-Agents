@@ -176,4 +176,4 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
 4. **Gobernanza del Estado en Projects v2 y Resiliencia de ADRs:**
    - Para correcciones puntuales e iteraciones continuas de revisión, la tarjeta puede permanecer en `👀 In Review / PR` o transicionar a `⚙️ In Progress` durante el retrabajo si exige cambios sustanciales antes de solicitar una re-evaluación.
    - Si las observaciones cuestionan la arquitectura o enfoque estructural, aplicar la transición regresiva hacia `📐 In Planning`, invalidar el plan previo y redactar un nuevo `implementation_plan.md` con pausa bloqueante antes de modificar código.
-   - Todo ADR asociado se mantiene rigurosamente en `status: proposed` a lo largo del proceso de revisión.
+   - Todo ADR asociado permanece en `status: accepted` a lo largo del proceso de revisión; únicamente revierte a `status: proposed` (o se redacta reemplazo/enmienda) ante una transición regresiva por Cuestionamiento Arquitectónico hacia `📐 In Planning`.

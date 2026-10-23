@@ -250,7 +250,7 @@ Cuando una tarea despachada tenga por objeto una auditoría forense (`audit(...)
 3. **Cierre Autónomo Inmediato:**
    - Cerrar formalmente la issue de manera autónoma con GitHub CLI (`BypassSandbox: true`):
      ```bash
-     gh issue close <id> --comment "Cierre automatizado tras concluir la investigación/auditoría técnica."
+     gh issue close <id>
      ```
 4. **Sincronización Automatizada con Projects v2:**
    - Al ejecutarse `gh issue close`, el Built-in Workflow *Item closed* de GitHub Projects v2 transiciona automáticamente la tarjeta a `Done` sin requerir invocaciones a `gh project item-edit`.
@@ -276,7 +276,7 @@ Para garantizar que el tablero central (`Proyectos-IA-V3`) sincronice automátic
 
 | Workflow Nativo | Disparador (Trigger) | Acción (Set value) | Propósito |
 | :--- | :--- | :--- | :--- |
-| **`Auto-add to project`** | `When filter matches` (`is:issue,pr is:open` por repo) | Add item to project | Indexación desatendida de issues y PRs sin `item-add`. |
+| **`Auto-add to project`** | `When filter matches` (`is:issue,pr is:open` por repo) | Add item to project | Indexación desatendida de issues y PRs en repositorios bajo su filtro (con `item-add` como salvaguarda fuera de él). |
 | **`Pull request linked to issue`** | `When a pull request is linked to an issue` | `Status: 👀 In Review / PR` | Transición a revisión al publicar PR con `Closes #<id>`. |
 | **`Pull request merged`** | `When a pull request is merged` | `Status: Done` | Cierre automático de PR cards al mergear en rama base. |
 | **`Item closed`** | `When an item is closed` | `Status: Done` | Cierre automático de issue cards al mergear PR o cerrar spikes. |
