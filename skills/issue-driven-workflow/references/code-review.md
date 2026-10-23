@@ -48,6 +48,7 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
      "prNumber": 100,
      "totalThreads": 3,
      "unresolvedCount": 1,
+     "truncated": false,
      "threads": [
        {
          "threadId": "PRRT_kwDOU_2SzM4A...",
@@ -57,6 +58,7 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
          "diffSide": "RIGHT",
          "isResolved": false,
          "commentCount": 2,
+         "commentsTruncated": false,
          "rootComment": {
            "id": "PRRC_kw...",
            "databaseId": 12345678,
