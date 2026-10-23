@@ -17,10 +17,12 @@ def run_gh_graphql(query: str, variables: Optional[Dict[str, Any]] = None) -> Di
     cmd = ["gh", "api", "graphql", "-f", f"query={query}"]
     if variables:
         for k, v in variables.items():
-            if isinstance(v, int):
+            if v is None:
+                continue
+            if isinstance(v, int) and not isinstance(v, bool):
                 cmd.extend(["-F", f"{k}={v}"])
             else:
-                cmd.extend(["-F", f"{k}={v}"])
+                cmd.extend(["-f", f"{k}={v}"])
 
     try:
         proc = subprocess.run(
@@ -60,13 +62,17 @@ def parse_repo_arg(repo_arg: Optional[str]) -> tuple[str, str]:
 def cmd_comments(args: argparse.Namespace) -> int:
     owner, repo = parse_repo_arg(args.repo)
     query = """
-query($owner: String!, $repo: String!, $pr: Int!) {
+query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $pr) {
       id
       title
       url
-      reviewThreads(first: 100) {
+      reviewThreads(first: 100, after: $cursor) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
         nodes {
           id
           isResolved
@@ -76,6 +82,10 @@ query($owner: String!, $repo: String!, $pr: Int!) {
           originalLine
           diffSide
           comments(first: 50) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
             nodes {
               id
               databaseId
@@ -93,23 +103,44 @@ query($owner: String!, $repo: String!, $pr: Int!) {
   }
 }
 """
-    variables = {
-        "owner": owner,
-        "repo": repo,
-        "pr": args.pr,
-    }
+    threads_nodes: List[Dict[str, Any]] = []
+    cursor: Optional[str] = None
+    pr_data: Optional[Dict[str, Any]] = None
+    has_truncated_comments = False
 
-    result = run_gh_graphql(query, variables)
-    if "error" in result:
-        sys.stderr.write(f"Error consultando hilos de revisión: {result['error']}\n")
-        return 1
+    while True:
+        variables: Dict[str, Any] = {
+            "owner": owner,
+            "repo": repo,
+            "pr": args.pr,
+        }
+        if cursor:
+            variables["cursor"] = cursor
 
-    pr_data = result.get("data", {}).get("repository", {}).get("pullRequest")
-    if not pr_data:
-        sys.stderr.write(f"Error: No se encontró el Pull Request #{args.pr}\n")
-        return 1
+        result = run_gh_graphql(query, variables)
+        if "error" in result:
+            sys.stderr.write(f"Error consultando hilos de revisión: {result['error']}\n")
+            return 1
 
-    threads_nodes = pr_data.get("reviewThreads", {}).get("nodes", [])
+        repo_obj = (result.get("data") or {}).get("repository") or {}
+        pr_obj = repo_obj.get("pullRequest")
+        if not pr_obj:
+            sys.stderr.write(f"Error: No se encontró el Pull Request #{args.pr}\n")
+            return 1
+
+        if pr_data is None:
+            pr_data = pr_obj
+
+        review_threads = pr_obj.get("reviewThreads") or {}
+        page_nodes = review_threads.get("nodes") or []
+        threads_nodes.extend(page_nodes)
+
+        page_info = review_threads.get("pageInfo") or {}
+        if page_info.get("hasNextPage") and page_info.get("endCursor"):
+            cursor = page_info["endCursor"]
+        else:
+            break
+
     output_threads: List[Dict[str, Any]] = []
 
     for node in threads_nodes:
@@ -117,7 +148,13 @@ query($owner: String!, $repo: String!, $pr: Int!) {
         if not args.all and is_resolved:
             continue
 
-        raw_comments = node.get("comments", {}).get("nodes", [])
+        comments_obj = node.get("comments") or {}
+        comments_page_info = comments_obj.get("pageInfo") or {}
+        thread_comments_truncated = bool(comments_page_info.get("hasNextPage", False))
+        if thread_comments_truncated:
+            has_truncated_comments = True
+
+        raw_comments = comments_obj.get("nodes") or []
         formatted_comments = []
         for c in raw_comments:
             formatted_comments.append({
@@ -141,6 +178,7 @@ query($owner: String!, $repo: String!, $pr: Int!) {
             "isResolved": is_resolved,
             "isOutdated": node.get("isOutdated", False),
             "commentCount": len(formatted_comments),
+            "commentsTruncated": thread_comments_truncated,
             "rootComment": root_comment,
             "latestFeedback": latest_feedback,
         }
@@ -152,10 +190,11 @@ query($owner: String!, $repo: String!, $pr: Int!) {
 
     summary = {
         "prNumber": args.pr,
-        "prTitle": pr_data.get("title"),
-        "prUrl": pr_data.get("url"),
+        "prTitle": pr_data.get("title") if pr_data else None,
+        "prUrl": pr_data.get("url") if pr_data else None,
         "totalThreads": len(threads_nodes),
         "unresolvedCount": sum(1 for n in threads_nodes if not n.get("isResolved", False)),
+        "truncated": has_truncated_comments,
         "returnedThreads": len(output_threads),
         "threads": output_threads,
     }
@@ -179,19 +218,26 @@ mutation($threadId: ID!) {
     if "error" in result:
         return False, result["error"]
 
-    payload = result.get("data", {}).get("resolveReviewThread", {}).get("thread", {})
-    if payload.get("isResolved", True):
+    data = result.get("data") or {}
+    mutation_payload = data.get("resolveReviewThread") or {}
+    thread_payload = mutation_payload.get("thread") or {}
+
+    if thread_payload.get("isResolved") is True:
         return True, None
-    return False, "La mutación no marcó el hilo como resuelto"
+    return False, "La mutación no confirmó el estado resuelto (isResolved is not True)"
 
 
 def fetch_unresolved_threads(pr_number: int, repo_arg: Optional[str] = None) -> tuple[Optional[List[str]], Optional[str]]:
     owner, repo = parse_repo_arg(repo_arg)
     query = """
-query($owner: String!, $repo: String!, $pr: Int!) {
+query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $pr) {
-      reviewThreads(first: 100) {
+      reviewThreads(first: 100, after: $cursor) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
         nodes {
           id
           isResolved
@@ -201,21 +247,37 @@ query($owner: String!, $repo: String!, $pr: Int!) {
   }
 }
 """
-    variables = {
-        "owner": owner,
-        "repo": repo,
-        "pr": pr_number,
-    }
-    result = run_gh_graphql(query, variables)
-    if "error" in result:
-        return None, f"Error consultando hilos del PR #{pr_number}: {result['error']}"
+    cursor: Optional[str] = None
+    unresolved: List[str] = []
 
-    pr_data = result.get("data", {}).get("repository", {}).get("pullRequest")
-    if not pr_data:
-        return None, f"Error: No se encontró el Pull Request #{pr_number}"
+    while True:
+        variables: Dict[str, Any] = {
+            "owner": owner,
+            "repo": repo,
+            "pr": pr_number,
+        }
+        if cursor:
+            variables["cursor"] = cursor
+        result = run_gh_graphql(query, variables)
+        if "error" in result:
+            return None, f"Error consultando hilos del PR #{pr_number}: {result['error']}"
 
-    nodes = pr_data.get("reviewThreads", {}).get("nodes", [])
-    unresolved = [n["id"] for n in nodes if not n.get("isResolved", False) and n.get("id")]
+        pr_data = (result.get("data") or {}).get("repository", {}).get("pullRequest")
+        if not pr_data:
+            return None, f"Error: No se encontró el Pull Request #{pr_number}"
+
+        review_threads = pr_data.get("reviewThreads") or {}
+        nodes = review_threads.get("nodes") or []
+        for n in nodes:
+            if not n.get("isResolved", False) and n.get("id"):
+                unresolved.append(n["id"])
+
+        page_info = review_threads.get("pageInfo") or {}
+        if page_info.get("hasNextPage") and page_info.get("endCursor"):
+            cursor = page_info["endCursor"]
+        else:
+            break
+
     return unresolved, None
 
 
