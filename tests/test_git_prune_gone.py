@@ -263,6 +263,145 @@ class TestGitPruneGone(unittest.TestCase):
         self.assertEqual(data["pruned"][0]["classification"], "squash-merged")
         self.assertFalse(self._branch_exists(branch))
 
+    def _setup_local_remote(self):
+        remote_dir = tempfile.mkdtemp(prefix="test_prune_remote_")
+        subprocess.run(["git", "init", "--bare", "-b", "main"], cwd=remote_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self._git(["remote", "set-url", "origin", remote_dir])
+        self._git(["push", "-u", "origin", "main"])
+        return remote_dir
+
+    def test_sync_dirty_worktree_aborts(self):
+        """Verifica que --sync aborte con código 1 y 'dirty_worktree' si hay cambios pendientes."""
+        remote_dir = self._setup_local_remote()
+        try:
+            # Crear cambio no commiteado (untracked o modificado)
+            dirty_file = os.path.join(self.test_dir, "dirty.txt")
+            with open(dirty_file, "w", encoding="utf-8") as f:
+                f.write("cambios sin commitear\n")
+
+            res = self._run_cli(["--sync", "--json"])
+            self.assertEqual(res.returncode, 1)
+            data = json.loads(res.stdout)
+            self.assertEqual(data["status"], "dirty_worktree")
+            self.assertIn("cambio(s) pendiente(s)", data["error"])
+
+            # Probar también salida texto plano
+            res_txt = self._run_cli(["--sync"])
+            self.assertEqual(res_txt.returncode, 1)
+            self.assertIn("Error: El árbol de trabajo contiene", res_txt.stderr)
+        finally:
+            shutil.rmtree(remote_dir, ignore_errors=True)
+
+    def test_sync_pull_failed_aborts(self):
+        """Verifica que --sync aborte con código 1 y 'pull_failed' si el fast-forward no es posible."""
+        remote_dir = self._setup_local_remote()
+        clone_dir = tempfile.mkdtemp(prefix="test_prune_clone_")
+        try:
+            # Clonar remote y crear commit divergente en remote
+            subprocess.run(["git", "clone", remote_dir, clone_dir], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.name", "Peer Dev"], cwd=clone_dir, check=True)
+            subprocess.run(["git", "config", "user.email", "peer@test.local"], cwd=clone_dir, check=True)
+            with open(os.path.join(clone_dir, "README.md"), "a", encoding="utf-8") as f:
+                f.write("peer change\n")
+            subprocess.run(["git", "commit", "-am", "peer commit on remote"], cwd=clone_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            # En self.test_dir crear commit local divergente en main
+            with open(os.path.join(self.test_dir, "README.md"), "a", encoding="utf-8") as f:
+                f.write("local diverging change\n")
+            self._git(["commit", "-am", "local diverging commit"])
+
+            # Ejecutar --sync (fallará porque no es fast-forward)
+            res = self._run_cli(["--sync", "--json"])
+            self.assertEqual(res.returncode, 1)
+            data = json.loads(res.stdout)
+            self.assertEqual(data["status"], "pull_failed")
+            self.assertIn("fast-forward", data["error"])
+        finally:
+            shutil.rmtree(remote_dir, ignore_errors=True)
+            shutil.rmtree(clone_dir, ignore_errors=True)
+
+    def test_sync_clean_and_prune_squash_from_feature_branch(self):
+        """Verifica que --sync conmute a main, haga pull y pode la rama squash-merged."""
+        remote_dir = self._setup_local_remote()
+        clone_dir = tempfile.mkdtemp(prefix="test_prune_clone_")
+        try:
+            # Crear y publicar rama feat/squash-sync
+            branch = "feat/squash-sync"
+            self._git(["checkout", "-b", branch])
+            fpath = os.path.join(self.test_dir, "feature_sync.txt")
+            with open(fpath, "w", encoding="utf-8") as f:
+                f.write("feature sync content\n")
+            self._git(["add", "."])
+            self._git(["commit", "-m", "feat: sync commit"])
+            self._git(["push", "-u", "origin", branch])
+
+            # En el clon peer, hacer squash merge en main y borrar rama remota
+            subprocess.run(["git", "clone", remote_dir, clone_dir], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.name", "Peer Dev"], cwd=clone_dir, check=True)
+            subprocess.run(["git", "config", "user.email", "peer@test.local"], cwd=clone_dir, check=True)
+            subprocess.run(["git", "merge", "--squash", f"origin/{branch}"], cwd=clone_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "commit", "-m", f"feat: squash merge {branch} (#10)"], cwd=clone_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "push", "origin", "--delete", branch], cwd=clone_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            # En self.test_dir estamos todavía en feat/squash-sync y main local está desactualizado
+            curr = self._git(["branch", "--show-current"])
+            self.assertEqual(curr, branch)
+
+            res = self._run_cli(["--sync", "--json"])
+            self.assertEqual(res.returncode, 0, f"Error: {res.stderr}\n{res.stdout}")
+            data = json.loads(res.stdout)
+            self.assertEqual(data["status"], "success")
+            self.assertEqual(data["sync"]["status"], "synced")
+            self.assertTrue(data["sync"]["checkout_performed"])
+            self.assertEqual(len(data["pruned"]), 1)
+            self.assertEqual(data["pruned"][0]["branch"], branch)
+            self.assertEqual(data["pruned"][0]["classification"], "squash-merged")
+            self.assertFalse(self._branch_exists(branch))
+
+            # Asegurar que el workspace quedó posicionado en main
+            curr_after = self._git(["branch", "--show-current"])
+            self.assertEqual(curr_after, "main")
+        finally:
+            shutil.rmtree(remote_dir, ignore_errors=True)
+            shutil.rmtree(clone_dir, ignore_errors=True)
+
+    def test_sync_dry_run(self):
+        """Verifica que --sync --dry-run sincronice pero no elimine la rama candidata."""
+        remote_dir = self._setup_local_remote()
+        clone_dir = tempfile.mkdtemp(prefix="test_prune_clone_")
+        try:
+            branch = "feat/dry-sync"
+            self._git(["checkout", "-b", branch])
+            fpath = os.path.join(self.test_dir, "dry.txt")
+            with open(fpath, "w", encoding="utf-8") as f:
+                f.write("dry content\n")
+            self._git(["add", "."])
+            self._git(["commit", "-m", "feat: dry commit"])
+            self._git(["push", "-u", "origin", branch])
+
+            subprocess.run(["git", "clone", remote_dir, clone_dir], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.name", "Peer Dev"], cwd=clone_dir, check=True)
+            subprocess.run(["git", "config", "user.email", "peer@test.local"], cwd=clone_dir, check=True)
+            subprocess.run(["git", "merge", "--squash", f"origin/{branch}"], cwd=clone_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "commit", "-m", f"feat: squash merge {branch}"], cwd=clone_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "push", "origin", "--delete", branch], cwd=clone_dir, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            res = self._run_cli(["--sync", "--dry-run", "--json"])
+            self.assertEqual(res.returncode, 0)
+            data = json.loads(res.stdout)
+            self.assertEqual(data["status"], "dry_run")
+            self.assertEqual(data["sync"]["status"], "synced")
+            self.assertEqual(len(data["candidates"]), 1)
+            self.assertEqual(data["candidates"][0]["classification"], "squash-merged")
+            # La rama NO debe haber sido eliminada
+            self.assertTrue(self._branch_exists(branch))
+        finally:
+            shutil.rmtree(remote_dir, ignore_errors=True)
+            shutil.rmtree(clone_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()

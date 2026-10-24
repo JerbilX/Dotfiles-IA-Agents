@@ -3,6 +3,7 @@
 CLI determinista git-prune-gone para poda segura y atómica de ramas locales huérfanas ([gone]).
 Cumple con los estándares de Nivel 1 (tooling), confinamiento de sandbox y prefix matching.
 Ref: docs/adr/0032-compatibilidad-de-poda-y-rollback-con-squash-merge.md
+Ref: docs/adr/0033-optimizacion-de-turnos-e2e-git-prune-gone-sync.md
 """
 
 import argparse
@@ -74,6 +75,94 @@ def verify_branch_exists(branch_name: str) -> bool:
         check=False,
     )
     return proc_remote.returncode == 0
+
+
+def get_current_branch() -> Optional[str]:
+    """
+    Retorna el nombre de la rama actualmente activa, o None si está en detached HEAD.
+    """
+    proc = subprocess.run(
+        ["git", "branch", "--show-current"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        val = proc.stdout.strip()
+        return val if val else None
+    return None
+
+
+def check_worktree_clean() -> Tuple[bool, str]:
+    """
+    Verifica que el árbol de trabajo no contenga cambios pendientes (staged, unstaged o untracked).
+    """
+    proc = subprocess.run(
+        ["git", "status", "--porcelain"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        err = proc.stderr.strip() or "Error al inspeccionar estado del árbol de trabajo."
+        return False, err
+    lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    if lines:
+        return False, f"El árbol de trabajo contiene {len(lines)} cambio(s) pendiente(s) sin commitear."
+    return True, ""
+
+
+def sync_base_branch(base: str) -> Tuple[bool, str, Dict[str, Any]]:
+    """
+    Conmuta a la rama base (si no está seleccionada) y ejecuta git pull --prune --ff-only.
+    Retorna (éxito, mensaje_error, metadata_sync).
+    """
+    curr = get_current_branch()
+    checkout_performed = False
+
+    if curr != base:
+        proc_co = subprocess.run(
+            ["git", "checkout", base],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        if proc_co.returncode != 0:
+            err = proc_co.stderr.strip() or proc_co.stdout.strip() or "Error al ejecutar git checkout"
+            return False, f"Fallo al cambiar a la rama base '{base}': {err}", {
+                "status": "checkout_failed",
+                "base_branch": base,
+                "current_branch": curr,
+                "checkout_performed": False,
+                "error": err,
+            }
+        checkout_performed = True
+
+    proc_pull = subprocess.run(
+        ["git", "pull", "--prune", "--ff-only"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if proc_pull.returncode != 0:
+        err = proc_pull.stderr.strip() or proc_pull.stdout.strip() or "Error al ejecutar git pull --prune --ff-only"
+        return False, f"Fallo al sincronizar '{base}' en fast-forward: {err}", {
+            "status": "pull_failed",
+            "base_branch": base,
+            "checkout_performed": checkout_performed,
+            "error": err,
+        }
+
+    return True, "", {
+        "status": "synced",
+        "base_branch": base,
+        "checkout_performed": checkout_performed,
+        "pull_output": proc_pull.stdout.strip(),
+    }
 
 
 def get_branches_info() -> List[Tuple[str, str, str]]:
@@ -177,6 +266,11 @@ def main() -> int:
         metavar="RAMA",
         help="Rama base contra la cual verificar la integración (default: detectada de .repo-config.json o 'main').",
     )
+    parser.add_argument(
+        "--sync",
+        action="store_true",
+        help="Sincroniza la rama base (checkout si es necesario, pull --prune --ff-only) antes de podar.",
+    )
 
     args = parser.parse_args()
 
@@ -197,6 +291,33 @@ def main() -> int:
             sys.stderr.write(f"{msg}\n")
         return 1
 
+    sync_meta: Optional[Dict[str, Any]] = None
+    if args.sync:
+        clean, err_clean = check_worktree_clean()
+        if not clean:
+            if args.json:
+                print(json.dumps({
+                    "status": "dirty_worktree",
+                    "error": err_clean,
+                    "base_branch": base_branch,
+                }, indent=2, ensure_ascii=False))
+            else:
+                sys.stderr.write(f"Error: {err_clean}\n")
+            return 1
+
+        ok, err_sync, sync_meta = sync_base_branch(base_branch)
+        if not ok:
+            if args.json:
+                print(json.dumps({
+                    "status": sync_meta.get("status", "sync_failed"),
+                    "error": err_sync,
+                    "base_branch": base_branch,
+                    "sync": sync_meta,
+                }, indent=2, ensure_ascii=False))
+            else:
+                sys.stderr.write(f"Error: {err_sync}\n")
+            return 1
+
     branches = get_branches_info()
     candidates: List[str] = []
     skipped_current: List[str] = []
@@ -210,18 +331,23 @@ def main() -> int:
 
     # Caso: árbol limpio
     if not candidates and not skipped_current:
+        clean_res: Dict[str, Any] = {
+            "status": "clean",
+            "base_branch": base_branch,
+            "candidates": [],
+            "pruned": [],
+            "unmerged": [],
+            "failed": [],
+            "skipped_current": [],
+            "message": "Árbol de ramas locales limpio: no hay ramas con upstream zombi ([gone]).",
+        }
+        if sync_meta:
+            clean_res["sync"] = sync_meta
         if args.json:
-            print(json.dumps({
-                "status": "clean",
-                "base_branch": base_branch,
-                "candidates": [],
-                "pruned": [],
-                "unmerged": [],
-                "failed": [],
-                "skipped_current": [],
-                "message": "Árbol de ramas locales limpio: no hay ramas con upstream zombi ([gone]).",
-            }, indent=2, ensure_ascii=False))
+            print(json.dumps(clean_res, indent=2, ensure_ascii=False))
         else:
+            if args.sync:
+                print(f"Sincronización exitosa con 'origin' en rama base '{base_branch}'.")
             print("Árbol de ramas locales limpio: no hay ramas con upstream zombi ([gone]).")
         return 0
 
@@ -233,14 +359,19 @@ def main() -> int:
 
     # Caso: dry-run
     if args.dry_run:
+        dry_res: Dict[str, Any] = {
+            "status": "dry_run",
+            "base_branch": base_branch,
+            "candidates": classified_candidates,
+            "skipped_current": skipped_current,
+        }
+        if sync_meta:
+            dry_res["sync"] = sync_meta
         if args.json:
-            print(json.dumps({
-                "status": "dry_run",
-                "base_branch": base_branch,
-                "candidates": classified_candidates,
-                "skipped_current": skipped_current,
-            }, indent=2, ensure_ascii=False))
+            print(json.dumps(dry_res, indent=2, ensure_ascii=False))
         else:
+            if args.sync:
+                print(f"Sincronización exitosa con 'origin' en rama base '{base_branch}'.")
             if classified_candidates:
                 print(f"Ramas candidatas a poda ([gone]) contra base '{base_branch}':")
                 for item in classified_candidates:
@@ -326,8 +457,12 @@ def main() -> int:
             "failed": failed,
             "skipped_current": skipped_current,
         }
+        if sync_meta:
+            result["sync"] = sync_meta
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
+        if args.sync:
+            print(f"Sincronización exitosa con 'origin' en rama base '{base_branch}'.")
         if pruned:
             print(f"Ramas podadas exitosamente contra base '{base_branch}':")
             for p in pruned:
