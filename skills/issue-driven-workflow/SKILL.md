@@ -70,16 +70,16 @@ gh board-ready <owner>/<repo>
 Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](references/branch-lifecycle.md).
 
 - [ ] **1. Ingesta:** `gh issue view <id>` (sin llamadas a `gh project item-edit`).
-- [ ] **2. Higiene:** Sincronizar rama base (`git pull --prune --ff-only`), podar con `git-prune-gone` (soporte nativo para squash y salvaguarda de no integradas) y aislar en `feat/` o `fix/`.
+- [ ] **2. Higiene:** Aislamiento preferente en ≤ 2 llamadas (`git fetch --prune origin` y `git switch --no-track -c <rama> origin/<base>`); poda diferida a Fase 8.
 - [ ] **3. Plan/ADR:** `implementation_plan.md` con gate bloqueante; ADR nace con `status: proposed`.
 - [ ] **4. Desarrollo:** Promover ADR a `status: accepted` al iniciar desarrollo, I/O nativo y verificar con `./build.sh check`.
-- [ ] **5. Commit:** Staging explícito (`git add <rutas>` con `BypassSandbox: true`; prohibido `git add .`/`-A`), redactar en `.commit_msg`, `git commit -F .commit_msg` y borrar temporal.
+- [ ] **5. Commit:** Staging explícito (`git add <rutas>` con `BypassSandbox: true`; prohibido `git add .`/`-A`), redactar en `.commit_msg`, `git commit -F .commit_msg` y limpiar `.commit_msg` en paralelo con la siguiente llamada en el mismo turno.
 - [ ] **6. Push:** Publicar con `git push -u origin <rama>`.
-- [ ] **7. PR:** PR con `Closes #<id>` vía `.pr_body` (ADR viaja como `accepted`). La apertura del PR y la vinculación nativa activan el estado de revisión en GitHub (`👀 In Review / PR`).
+- [ ] **7. PR:** PR con `Closes #<id>` vía `.pr_body` (ADR viaja como `accepted`); limpiar `.pr_body` en paralelo con el reporte del turno. La apertura del PR y la vinculación nativa activan el estado de revisión en GitHub (`👀 In Review / PR`).
 - [ ] **8. Cierre & Higiene (Done):**
   - **Fusión Remota por CLI (Vía Preferente):** Ante orden ejecutiva en chat (*"aprobado, mergeá"*), el agente ejecuta `gh pr merge <id> --squash --delete-branch` (`BypassSandbox: true`). Prohibido el merge autónomo sin instrucción humana previa.
   - **Fusión Web (Vía Alternativa):** El usuario fusiona manualmente en la interfaz web de GitHub.
-  - **Higiene Atómica Post-Merge:** Retornar a rama base, sincronizar (`git pull --prune --ff-only`), podar ramas locales zombi con `git-prune-gone` (compatible con squash merge) y desmontar worktree si aplica (`BypassSandbox: true`). GitHub Built-in Workflows cierra la issue y avanza a `Done` automáticamente.
+  - **Higiene Atómica Post-Merge (≤ 2 llamadas):** En una sola invocación, `git-prune-gone --sync` (`BypassSandbox: true`) conmuta a la base (cubre `dev` en Categoría B), sincroniza (`pull --prune --ff-only`) y poda ramas locales zombi con detección de squash contra la base actualizada. Desmontar worktree si aplica. Built-in Workflows cierra la issue y avanza a `Done` automáticamente (`gh issue view` solo como fallback condicional).
 
 ---
 

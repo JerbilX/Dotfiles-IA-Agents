@@ -59,26 +59,39 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 8 fas
 2. La asignación e inicio de análisis sitúa la tarea operativamente en fase de planificación local (`📐 In Planning`), sin requerir mutaciones por CLI en GitHub Projects v2.
 
 ### Paso 2: Aislamiento e Higiene del Workspace
-1. Posicionarse en la rama base del repositorio (`main` por defecto, o `dev` en Categoría B) y sincronizar cambios podando referencias remotas obsoletas:
+
+#### 2.1 Camino Preferente de Aislamiento (≤ 2 llamadas con bypass)
+Para minimizar turnos de interacción y prompts de autorización, el aislamiento de una nueva tarea no requiere conmutar a la rama base local ni podar ramas en este paso (la poda se delega a la Fase 8 post-merge):
+
+1. **Sincronizar referencias remotas con poda sin conmutar a la base:**
    ```bash
-   git checkout <base_branch>
-   git pull --prune --ff-only
+   git fetch --prune origin
    ```
-   *(Ejecutados con `BypassSandbox: true` desde el primer intento).*
-   - **Mecánica de Transporte de Git:** Invocado sin argumentos posicionales de remoto o rama (`origin main`), `git pull --prune --ff-only` procesa el refspec estándar completo (`+refs/heads/*:refs/remotes/origin/*`), poda de forma automática las referencias zombi (`remotes/origin/*`) y avanza la rama base exclusivamente en modo fast-forward sin modales interactivos en Antigravity.
-   - **Prohibición Categórica de `git remote prune`:** Queda terminantemente prohibido ejecutar `git remote prune` (ej. `git remote prune origin`). Toda poda de tracking remoto debe canalizarse exclusivamente a través del transporte estándar de sincronización (`git pull --prune --ff-only` o `git fetch --prune origin`).
-2. Ejecutar la poda de higiene local en un único paso atómico mediante el CLI determinista de Nivel 1 `git-prune-gone`:
+   *(Ejecutado con `BypassSandbox: true` desde el primer intento).*
+   - **Mecánica:** Actualiza `remotes/origin/*` y poda referencias zombi en el transporte remoto sin modificar la rama de trabajo activa ni alterar el árbol local.
+   - **Prohibición Categórica de `git remote prune`:** Toda poda remota debe canalizarse exclusivamente vía `git fetch --prune origin` o `git pull --prune --ff-only`.
+2. **Crear y cambiar a la rama efímera desacoplada originada en `origin/<base_branch>`:**
    ```bash
-   git-prune-gone
+   git switch --no-track -c <nombre-de-rama> origin/<base_branch>
    ```
-   *(Ejecutado con `BypassSandbox: true` desde el primer intento debido al montaje `ro` de `.git/`).*
-   - **Compatibilidad con Squash Merge y Salvaguarda de Integridad:** `git-prune-gone` inspecciona ramas locales con tracking `[gone]` y las clasifica contra la rama base (`--base`, detectada automáticamente de `.repo-config.json` o `main`):
-     - `merged`: Ascendencia directa confirmada por merge tradicional (se poda de forma segura con `git branch -d`).
-     - `squash-merged`: Integración de árbol comprobada en memoria vía `git merge-tree --write-tree` (se poda de forma segura con `git branch -D` al estar verificada su integración total).
-     - `unmerged`: Cambios no integrados o en conflicto respecto a la base. Se preservan intactas y se reportan con código de salida 1; solo se eliminan si se explicita `--force` (`-f`).
-   - **Flags Operativos:** Soporta `--base <rama>` para repositorios de Categoría B (o ramas personalizadas), `--dry-run` para inspección pasiva sin borrado, `--json` para telemetría estructurada y `-f` / `--force` para forzar la eliminación de ramas descartadas.
-   - **Fallback Determinista:** Si el binario no está disponible en `$PATH`, invocar directamente `skills/issue-driven-workflow/bin/git-prune-gone`.
-3. Crear y cambiar a la rama descriptiva (`git checkout -b feat/issue-<id>-<slug>` o `fix/issue-<id>-<slug>`) con `BypassSandbox: true` desde el primer intento.
+   *(Ejecutado con `BypassSandbox: true` desde el primer intento).*
+   - **Mecánica de `--no-track`:** Impide que la nueva rama efímera configure tracking espurio contra `origin/<base_branch>`. La rama queda completamente desacoplada localmente hasta que en el Paso 6 se ejecute `git push -u origin <nombre-de-rama>`.
+   - **Delegación de Poda a Fase 8:** Al postergar la poda a la Fase 8 (donde `git-prune-gone --sync` higieniza el árbol tras el merge), el arranque de tarea se completa en exactamente 2 llamadas bypass.
+
+#### 2.2 Saneamiento Integral y Poda con `git-prune-gone --sync` (Vía Alternativa / Higiene Explícita)
+Si el repositorio presenta ramas zombi preexistentes o se desea sincronizar la base local antes de comenzar, se ejecuta:
+```bash
+git-prune-gone --sync
+```
+*(Ejecutado con `BypassSandbox: true` desde el primer intento).*
+- **Sincronización y Poda Atómica:** `git-prune-gone --sync` verifica que no existan cambios pendientes (`git status --porcelain`), conmuta automáticamente a `<base_branch>` (detectada de `--base`, `.repo-config.json` o `main`), ejecuta `git pull --prune --ff-only` y clasifica y poda ramas `[gone]`.
+- **Compatibilidad con Squash Merge y Salvaguarda de Integridad:** `git-prune-gone` clasifica ramas locales con tracking `[gone]` contra la rama base:
+  - `merged`: Ascendencia directa confirmada por merge tradicional (se poda de forma segura con `git branch -d`).
+  - `squash-merged`: Integración de árbol comprobada en memoria vía `git merge-tree --write-tree` contra la base ya sincronizada (se poda de forma segura con `git branch -D` al estar verificada su integración total).
+  - `unmerged`: Cambios no integrados o en conflicto respecto a la base. Se preservan intactas y se reportan con código de salida 1; solo se eliminan si se explicita `--force` (`-f`).
+- **Flags Operativos:** Soporta `--sync` para sincronización y poda en una sola invocación, `--base <rama>` para repositorios de Categoría B, `--dry-run` para inspección pasiva sin borrado, `--json` para telemetría estructurada y `-f` / `--force` para forzar la eliminación de ramas descartadas.
+- **Fallback Determinista:** Si el binario no está disponible en `$PATH`, invocar directamente `skills/issue-driven-workflow/bin/git-prune-gone`.
+- Tras la sincronización, crear y cambiar a la rama con `git checkout -b <nombre-de-rama>` (`BypassSandbox: true`).
 
 ### Paso 3: Planificación y Refinamiento (📐 In Planning)
 - **Blindaje del Planning Mode:** Toda tarea que implique diagnóstico de errores (bug fixing) o modificaciones arquitectónicas requiere obligatoriamente redactar `implementation_plan.md` con pausa bloqueante (`RequestFeedback: true`).
@@ -111,6 +124,7 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 8 fas
      ```bash
      rm -f .commit_msg
      ```
+     - **Emisión Concurrente (C7):** Para no consumir un turno exclusivo para la limpieza, emitir `rm -f .commit_msg` en paralelo dentro del mismo turno junto con la siguiente llamada independiente (`git push -u origin <nombre-de-rama>` con `BypassSandbox: true`), garantizando la higiene inmediata sin turnos ociosos.
 
 ### Paso 6: Publicación Remota
 - Subir la rama al repositorio remoto (`BypassSandbox: true`):
@@ -129,6 +143,7 @@ Cualquier tarea despachada debe cumplir secuencialmente con las siguientes 8 fas
    ```bash
    rm -f .pr_body
    ```
+   - **Emisión Concurrente (C7):** Emitir `rm -f .pr_body` en paralelo dentro del mismo turno junto con el reporte final al usuario o la siguiente acción independiente.
 
 ### Paso 8: Protocolo de Cierre e Higiene Post-Merge (Done)
 
@@ -145,43 +160,36 @@ Tras la apertura del PR y la revisión por el usuario, si este emite una **orden
    > [!IMPORTANT]
    > **Invariante Human-in-the-Loop:** Queda terminantemente prohibido que el agente invoque `gh pr merge` por iniciativa propia o de forma autónoma. La ejecución exige una orden ejecutiva explícita o confirmación humana en el chat.
    >
-   > **Comportamiento en Categoría B:** Al ejecutar `gh pr merge --delete-branch`, GitHub CLI elimina la rama local y posiciona automáticamente el workspace en la rama predeterminada del repositorio en GitHub (habitualmente `main`). Por ello, en proyectos de Categoría B (donde la integración continua ocurre en `dev`), es obligatorio conmutar explícitamente a `<base_branch>` (`git checkout dev`) antes de ejecutar la sincronización y la poda.
+   > **Comportamiento de `gh pr merge --delete-branch`:** GitHub CLI elimina la rama remota, borra la rama local seleccionada y deja el workspace en la rama predeterminada de GitHub (habitualmente `main`).
 
-2. **Encadenamiento Atómico de Higiene Post-Merge:**
-   Inmediatamente tras la confirmación exitosa del merge remoto, el agente ejecuta de forma secuencial y determinista:
-   a. Retornar a la rama base (`main` por defecto, o `dev` en Categoría B):
-      ```bash
-      git checkout <base_branch>
-      ```
-      *(BypassSandbox: true; obligatorio incluso si `gh pr merge` dejó el workspace en `main`).*
-   b. Sincronizar en fast-forward podando tracking remoto:
-      ```bash
-      git pull --prune --ff-only
-      ```
-      *(BypassSandbox: true).*
-   c. Podar ramas locales huérfanas:
-      ```bash
-      git-prune-gone
-      ```
-      *(BypassSandbox: true).*
-   d. **Desmontaje de Worktree (Entornos Aislados / Agent-Cockpit):** Si el desarrollo se ejecutó en un worktree efímero (patrón orquestadores multi-agente), desmontar y limpiar el directorio de trabajo con:
-      ```bash
-      git worktree remove .worktrees/issue-<id>
-      ```
-      *(BypassSandbox: true).*
+2. **Higiene Atómica Post-Merge con `git-prune-gone --sync` (≤ 2 llamadas totales de fase):**
+   Inmediatamente tras la confirmación exitosa del merge remoto, el agente ejecuta en un único paso determinista:
+   ```bash
+   git-prune-gone --sync
+   ```
+   *(BypassSandbox: true desde el primer intento).*
+   - **Sincronización y Poda Integrada:** Conmuta a la base del repositorio si no está seleccionada (cubriendo automáticamente `dev` en Categoría B), ejecuta `git pull --prune --ff-only` y clasifica y poda ramas `[gone]`.
+   - **Detección de Squash sobre Base Sincronizada:** Al actualizar la base con los commits remotos antes de evaluar los árboles, `git-prune-gone --sync` detecta con total fiabilidad la integración vía squash (`git merge-tree --write-tree`).
+   - **Desmontaje de Worktree (Entornos Aislados / Agent-Cockpit):** Si el desarrollo se ejecutó en un worktree efímero (patrón orquestadores multi-agente), desmontar y limpiar el directorio de trabajo con:
+     ```bash
+     git worktree remove .worktrees/issue-<id>
+     ```
+     *(BypassSandbox: true).*
 
-3. **Validación de Cierre y Reporte:**
-   Verificar que el merge haya cerrado automáticamente la issue vinculada (`gh issue view <id>`). Si permanece abierta por omisión en el PR body, cerrarla (`gh issue close <id>`). Las automatizaciones nativas de Projects v2 (*Item closed* / *Pull request merged*) transicionan automáticamente la tarjeta a `Done`. Confirmar en el chat el cierre exitoso y la higiene del workspace.
+3. **Cierre Automático y Verificación Condicional (C8):**
+   - Cuando el PR contiene directivas de cierre canónicas (`Closes #<id>` o `Fixes #<id>`) y `gh pr merge` reporta éxito (código 0), GitHub Built-in Workflows (*Pull request merged* e *Item closed*) cierran automáticamente la issue y avanzan la tarjeta a `Done` en Projects v2.
+   - **Fallback Condicional:** La verificación explícita con `gh issue view <id>` (o cierre con `gh issue close <id>`) queda reservada exclusivamente como fallback si el PR omitió la directiva de cierre o si el comando de merge arrojó error. Confirmar en el chat el cierre exitoso y la higiene del workspace.
 
 #### Vía B: Fusión Manual en GitHub Web (Vía Alternativa / Fallback)
 Si el usuario prefiere fusionar manualmente desde la interfaz web de GitHub (o ante conflictos/políticas de merge de ramas que requieran UI web):
 1. El usuario revisa, aprueba y fusiona el PR en la interfaz web de GitHub.
-2. Tras la fusión, ante la siguiente interacción o confirmación en chat, el agente ejecuta el encadenamiento atómico de higiene:
-   - `git checkout <base_branch>` (`BypassSandbox: true`)
-   - `git pull --prune --ff-only` (`BypassSandbox: true`)
-   - `git-prune-gone` (`BypassSandbox: true`)
-   - Si aplica worktree efímero: `git worktree remove .worktrees/issue-<id>` (`BypassSandbox: true`)
-3. Validar cierre de issue y tablero en `Done`.
+2. Tras la fusión, ante la siguiente interacción o confirmación en chat, el agente ejecuta la higiene atómica post-merge:
+   ```bash
+   git-prune-gone --sync
+   ```
+   *(BypassSandbox: true).*
+   - Si aplica worktree efímero: `git worktree remove .worktrees/issue-<id>` (`BypassSandbox: true`).
+3. El Built-in Workflow avanza la tarjeta a `Done` al detectarse el merge.
 
 - **Invariante de Higiene Proactiva:** Ante cualquier consulta o interacción subsiguiente del usuario (sea una pregunta exploratoria como *"¿con qué seguimos?"* o despacho de nueva tarea), si el agente detecta que la rama actual trackea un PR ya fusionado/cerrado o tracking `[gone]`, ejecuta inmediatamente este paso de higiene sin esperar una nueva orden de desarrollo.
 
