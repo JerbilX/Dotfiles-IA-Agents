@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: superseded by ADR-0035
 date: 2026-10-19
 decision-makers: [Usuario, Agente]
 supersedes: []
-superseded-by: []
+superseded-by: ["0035-unificacion-ingesta-review-y-resolucion-en-lote-gh-pr-review.md"]
 ---
 
 # 0022 - Protocolo de Resolución Autónoma de Code Review en Pull Requests

@@ -198,9 +198,9 @@ class TestGhPrReviewResolve(unittest.TestCase):
         success, err = gh_pr_review.resolve_single_thread("PRRT_1")
         self.assertFalse(success)
 
-    @patch.object(gh_pr_review, "resolve_single_thread")
-    def test_cmd_resolve_reports_failure(self, mock_resolve_single):
-        mock_resolve_single.return_value = (False, "La mutación no confirmó el estado resuelto")
+    @patch.object(gh_pr_review, "resolve_threads_batch")
+    def test_cmd_resolve_reports_failure(self, mock_resolve_batch):
+        mock_resolve_batch.return_value = ([], [{"threadId": "PRRT_FAIL", "error": "La mutación no confirmó el estado resuelto"}])
 
         args = argparse.Namespace(
             thread_ids=["PRRT_FAIL"],
@@ -385,6 +385,113 @@ class TestGhPrReviewPaginationAndTruncation(unittest.TestCase):
             self.assertFalse(t2["commentsTruncated"])
 
 
+class TestGhPrReviewBatchResolve(unittest.TestCase):
+    """Verifica resolución por lotes con alias GraphQL, particionamiento y tolerancia a fallos parciales."""
+
+    @patch.object(gh_pr_review, "run_gh_graphql")
+    def test_resolve_threads_batch_success(self, mock_graphql):
+        mock_graphql.return_value = {
+            "data": {
+                "t0": {"thread": {"id": "THREAD_1", "isResolved": True}},
+                "t1": {"thread": {"id": "THREAD_2", "isResolved": True}},
+                "t2": {"thread": {"id": "THREAD_3", "isResolved": True}},
+            }
+        }
+        resolved, errors = gh_pr_review.resolve_threads_batch(["THREAD_1", "THREAD_2", "THREAD_3"])
+        self.assertEqual(resolved, ["THREAD_1", "THREAD_2", "THREAD_3"])
+        self.assertEqual(errors, [])
+        mock_graphql.assert_called_once()
+        query, variables = mock_graphql.call_args[0]
+        self.assertIn("$t0: ID!, $t1: ID!, $t2: ID!", query)
+        self.assertIn("t0: resolveReviewThread(input: {threadId: $t0})", query)
+        self.assertIn("t1: resolveReviewThread(input: {threadId: $t1})", query)
+        self.assertIn("t2: resolveReviewThread(input: {threadId: $t2})", query)
+        self.assertEqual(variables, {"t0": "THREAD_1", "t1": "THREAD_2", "t2": "THREAD_3"})
+
+    @patch.object(gh_pr_review, "run_gh_graphql")
+    def test_resolve_threads_batch_partial_failure(self, mock_graphql):
+        # Simula respuesta con data para t0 y raw_errors para t1
+        mock_graphql.return_value = {
+            "data": {
+                "t0": {"thread": {"id": "THREAD_OK", "isResolved": True}},
+                "t1": None,
+            },
+            "error": "GraphQL Error: Could not resolve to a node with the global id of 'THREAD_BAD'",
+            "raw_errors": [
+                {
+                    "path": ["t1"],
+                    "message": "Could not resolve to a node with the global id of 'THREAD_BAD'",
+                }
+            ],
+        }
+        resolved, errors = gh_pr_review.resolve_threads_batch(["THREAD_OK", "THREAD_BAD"])
+        self.assertEqual(resolved, ["THREAD_OK"])
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0]["threadId"], "THREAD_BAD")
+        self.assertIn("Could not resolve to a node", errors[0]["error"])
+
+    @patch.object(gh_pr_review, "run_gh_graphql")
+    def test_resolve_threads_batch_unconfirmed_state(self, mock_graphql):
+        mock_graphql.return_value = {
+            "data": {
+                "t0": {"thread": {"id": "THREAD_1", "isResolved": False}},
+            }
+        }
+        resolved, errors = gh_pr_review.resolve_threads_batch(["THREAD_1"])
+        self.assertEqual(resolved, [])
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0]["threadId"], "THREAD_1")
+        self.assertIn("no confirmó el estado resuelto", errors[0]["error"])
+
+    @patch.object(gh_pr_review, "run_gh_graphql")
+    def test_resolve_threads_batch_total_failure(self, mock_graphql):
+        mock_graphql.return_value = {
+            "error": "Network timeout or rate limit exceeded",
+        }
+        resolved, errors = gh_pr_review.resolve_threads_batch(["T1", "T2"])
+        self.assertEqual(resolved, [])
+        self.assertEqual(len(errors), 2)
+        self.assertEqual(errors[0]["threadId"], "T1")
+        self.assertIn("Network timeout", errors[0]["error"])
+        self.assertEqual(errors[1]["threadId"], "T2")
+        self.assertIn("Network timeout", errors[1]["error"])
+
+    @patch.object(gh_pr_review, "run_gh_graphql")
+    def test_resolve_threads_batch_chunking(self, mock_graphql):
+        # 55 hilos deben generar 2 mutaciones (lote 1 de 50, lote 2 de 5)
+        threads = [f"THREAD_{i}" for i in range(55)]
+        chunk1_data = {f"t{i}": {"thread": {"id": f"THREAD_{i}", "isResolved": True}} for i in range(50)}
+        chunk2_data = {f"t{i}": {"thread": {"id": f"THREAD_{50+i}", "isResolved": True}} for i in range(5)}
+        mock_graphql.side_effect = [{"data": chunk1_data}, {"data": chunk2_data}]
+
+        resolved, errors = gh_pr_review.resolve_threads_batch(threads)
+        self.assertEqual(len(resolved), 55)
+        self.assertEqual(errors, [])
+        self.assertEqual(mock_graphql.call_count, 2)
+
+    @patch.object(gh_pr_review, "run_gh_graphql")
+    def test_cmd_resolve_batch_integration(self, mock_graphql):
+        mock_graphql.return_value = {
+            "data": {
+                "t0": {"thread": {"id": "T0", "isResolved": True}},
+                "t1": {"thread": {"id": "T1", "isResolved": True}},
+            }
+        }
+        args = argparse.Namespace(
+            thread_ids=["T0", "T1"],
+            all=None,
+            repo=None,
+        )
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            ret = gh_pr_review.cmd_resolve(args)
+            self.assertEqual(ret, 0)
+            data = json.loads(mock_stdout.getvalue())
+            self.assertTrue(data["success"])
+            self.assertEqual(data["resolvedCount"], 2)
+            self.assertEqual(data["resolvedThreads"], ["T0", "T1"])
+            self.assertEqual(data["errors"], [])
+
+
 class TestGhPrReviewFiltering(unittest.TestCase):
     """Verifica el filtrado de hilos por estado y vigencia (--exclude-outdated)."""
 
@@ -553,6 +660,198 @@ class TestGhPrReviewFiltering(unittest.TestCase):
                 parsed_args = mock_cmd.call_args[0][0]
                 self.assertTrue(parsed_args.exclude_outdated)
                 self.assertEqual(parsed_args.pr, 100)
+
+
+class TestGhPrReviewContextAndComments(unittest.TestCase):
+    """Verifica la ingesta extendida de reviews, comentarios y veredicto con soporte para --threads-only."""
+
+    @patch.object(gh_pr_review, "run_gh_graphql")
+    def test_cmd_comments_extended_context(self, mock_graphql):
+        mock_graphql.return_value = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "title": "PR Con Contexto",
+                        "url": "https://github.com/example/pr/101",
+                        "reviewDecision": "CHANGES_REQUESTED",
+                        "reviews": {
+                            "nodes": [
+                                {
+                                    "author": {"login": "lead_reviewer"},
+                                    "state": "CHANGES_REQUESTED",
+                                    "body": "Por favor corregir el manejo de errores.",
+                                    "submittedAt": "2026-10-24T10:00:00Z",
+                                }
+                            ]
+                        },
+                        "comments": {
+                            "nodes": [
+                                {
+                                    "author": {"login": "general_commenter"},
+                                    "body": "Excelente iniciativa.",
+                                    "createdAt": "2026-10-24T09:30:00Z",
+                                }
+                            ]
+                        },
+                        "reviewThreads": {
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                            "nodes": [
+                                {
+                                    "id": "T1",
+                                    "isResolved": False,
+                                    "path": "app.py",
+                                    "line": 42,
+                                    "originalLine": 40,
+                                    "diffSide": "RIGHT",
+                                    "comments": {
+                                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                                        "nodes": [
+                                            {
+                                                "id": "C1",
+                                                "databaseId": 101,
+                                                "body": "Ajustar aquí",
+                                                "author": {"login": "lead_reviewer"},
+                                                "createdAt": "2026-10-24T10:05:00Z",
+                                                "url": "https://...",
+                                            }
+                                        ],
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                }
+            }
+        }
+
+        args = argparse.Namespace(
+            pr=101,
+            repo="owner/repo",
+            all=False,
+            detailed=False,
+            threads_only=False,
+        )
+
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            ret = gh_pr_review.cmd_comments(args)
+            self.assertEqual(ret, 0)
+            data = json.loads(mock_stdout.getvalue())
+
+            self.assertEqual(data["prNumber"], 101)
+            self.assertEqual(data["reviewDecision"], "CHANGES_REQUESTED")
+            self.assertEqual(len(data["reviews"]), 1)
+            self.assertEqual(data["reviews"][0]["author"], "lead_reviewer")
+            self.assertEqual(data["reviews"][0]["state"], "CHANGES_REQUESTED")
+            self.assertEqual(data["reviews"][0]["body"], "Por favor corregir el manejo de errores.")
+            self.assertEqual(data["reviews"][0]["submittedAt"], "2026-10-24T10:00:00Z")
+
+            self.assertEqual(len(data["prComments"]), 1)
+            self.assertEqual(data["prComments"][0]["author"], "general_commenter")
+            self.assertEqual(data["prComments"][0]["body"], "Excelente iniciativa.")
+
+            self.assertEqual(len(data["threads"]), 1)
+            self.assertEqual(data["threads"][0]["threadId"], "T1")
+
+    @patch.object(gh_pr_review, "run_gh_graphql")
+    def test_cmd_comments_threads_only(self, mock_graphql):
+        mock_graphql.return_value = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "title": "PR Con Contexto",
+                        "url": "https://github.com/example/pr/101",
+                        "reviewDecision": "APPROVED",
+                        "reviews": {
+                            "nodes": [
+                                {
+                                    "author": {"login": "lead"},
+                                    "state": "APPROVED",
+                                    "body": "LGTM",
+                                    "submittedAt": "2026-10-24T10:00:00Z",
+                                }
+                            ]
+                        },
+                        "comments": {"nodes": []},
+                        "reviewThreads": {
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                            "nodes": [],
+                        },
+                    }
+                }
+            }
+        }
+
+        args = argparse.Namespace(
+            pr=101,
+            repo="owner/repo",
+            all=False,
+            detailed=False,
+            threads_only=True,
+        )
+
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            ret = gh_pr_review.cmd_comments(args)
+            self.assertEqual(ret, 0)
+            data = json.loads(mock_stdout.getvalue())
+
+            self.assertNotIn("reviewDecision", data)
+            self.assertNotIn("reviews", data)
+            self.assertNotIn("prComments", data)
+            self.assertIn("threads", data)
+            self.assertEqual(data["totalThreads"], 0)
+
+    @patch.object(gh_pr_review, "run_gh_graphql")
+    def test_cmd_comments_ghost_author(self, mock_graphql):
+        mock_graphql.return_value = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "title": "PR Ghost",
+                        "url": "https://github.com/example/pr/102",
+                        "reviewDecision": None,
+                        "reviews": {
+                            "nodes": [
+                                {
+                                    "author": None,
+                                    "state": "COMMENTED",
+                                    "body": "Ghost review",
+                                    "submittedAt": "2026-10-24T10:00:00Z",
+                                }
+                            ]
+                        },
+                        "comments": {
+                            "nodes": [
+                                {
+                                    "author": None,
+                                    "body": "Ghost comment",
+                                    "createdAt": "2026-10-24T10:00:00Z",
+                                }
+                            ]
+                        },
+                        "reviewThreads": {
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                            "nodes": [],
+                        },
+                    }
+                }
+            }
+        }
+
+        args = argparse.Namespace(
+            pr=102,
+            repo="owner/repo",
+            all=False,
+            detailed=False,
+            threads_only=False,
+        )
+
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            ret = gh_pr_review.cmd_comments(args)
+            self.assertEqual(ret, 0)
+            data = json.loads(mock_stdout.getvalue())
+
+            self.assertEqual(data["reviews"][0]["author"], "unknown")
+            self.assertEqual(data["prComments"][0]["author"], "unknown")
 
 
 if __name__ == "__main__":
