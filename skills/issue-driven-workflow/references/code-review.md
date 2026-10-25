@@ -46,9 +46,12 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
    ```json
    {
      "prNumber": 100,
+     "prTitle": "feat(workflow): incorporar resolucion multiple y por lotes de hilos",
+     "prUrl": "https://github.com/owner/repo/pull/100",
      "totalThreads": 3,
      "unresolvedCount": 1,
      "truncated": false,
+     "returnedThreads": 1,
      "threads": [
        {
          "threadId": "PRRT_kwDOU_2SzM4A...",
@@ -57,6 +60,7 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
          "originalLine": 40,
          "diffSide": "RIGHT",
          "isResolved": false,
+         "isOutdated": false,
          "commentCount": 2,
          "commentsTruncated": false,
          "rootComment": {
@@ -64,19 +68,22 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
            "databaseId": 12345678,
            "author": "TechLead",
            "body": "Ajustar redacción para clarificar el manejo de errores.",
-           "createdAt": "2026-10-20T00:00:00Z"
+           "createdAt": "2026-10-20T00:00:00Z",
+           "url": "https://github.com/owner/repo/pull/100#discussion_r12345678"
          },
          "latestFeedback": {
            "id": "PRRC_kw...",
            "databaseId": 12345679,
            "author": "TechLead",
            "body": "Por favor verificar que no rompa prefijos.",
-           "createdAt": "2026-10-20T00:05:00Z"
+           "createdAt": "2026-10-20T00:05:00Z",
+           "url": "https://github.com/owner/repo/pull/100#discussion_r12345679"
          }
        }
      ]
    }
    ```
+   - Si se requiere excluir hilos desactualizados en PRs con múltiples iteraciones (recomendado para optimizar el consumo de tokens de contexto): `gh-pr-review comments <pr_id> --exclude-outdated`.
    - Si se requiere incluir hilos históricos ya resueltos: `gh-pr-review comments <pr_id> --all`.
    - Si se requiere el historial completo de comentarios de cada hilo: `gh-pr-review comments <pr_id> --detailed`.
 
