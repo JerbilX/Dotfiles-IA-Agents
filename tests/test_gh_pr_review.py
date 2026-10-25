@@ -385,5 +385,175 @@ class TestGhPrReviewPaginationAndTruncation(unittest.TestCase):
             self.assertFalse(t2["commentsTruncated"])
 
 
+class TestGhPrReviewFiltering(unittest.TestCase):
+    """Verifica el filtrado de hilos por estado y vigencia (--exclude-outdated)."""
+
+    def _sample_threads_data(self):
+        return {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "title": "PR con hilos obsoletos",
+                        "url": "https://github.com/example/pr/100",
+                        "reviewThreads": {
+                            "pageInfo": {
+                                "hasNextPage": False,
+                                "endCursor": None,
+                            },
+                            "nodes": [
+                                {
+                                    "id": "T1_ACTIVE",
+                                    "isResolved": False,
+                                    "isOutdated": False,
+                                    "path": "file1.py",
+                                    "line": 10,
+                                    "originalLine": 10,
+                                    "diffSide": "RIGHT",
+                                    "comments": {
+                                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                                        "nodes": [
+                                            {
+                                                "id": "C1",
+                                                "databaseId": 1,
+                                                "body": "Comentario activo",
+                                                "author": {"login": "reviewer"},
+                                                "createdAt": "2026-10-25T00:00:00Z",
+                                                "url": "https://example.com/comment/1",
+                                            }
+                                        ],
+                                    },
+                                },
+                                {
+                                    "id": "T2_OUTDATED",
+                                    "isResolved": False,
+                                    "isOutdated": True,
+                                    "path": "file2.py",
+                                    "line": 20,
+                                    "originalLine": 20,
+                                    "diffSide": "RIGHT",
+                                    "comments": {
+                                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                                        "nodes": [
+                                            {
+                                                "id": "C2",
+                                                "databaseId": 2,
+                                                "body": "Comentario obsoleto",
+                                                "author": {"login": "reviewer"},
+                                                "createdAt": "2026-10-25T00:00:00Z",
+                                                "url": "https://example.com/comment/2",
+                                            }
+                                        ],
+                                    },
+                                },
+                                {
+                                    "id": "T3_RESOLVED_OUTDATED",
+                                    "isResolved": True,
+                                    "isOutdated": True,
+                                    "path": "file3.py",
+                                    "line": 30,
+                                    "originalLine": 30,
+                                    "diffSide": "RIGHT",
+                                    "comments": {
+                                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                                        "nodes": [
+                                            {
+                                                "id": "C3",
+                                                "databaseId": 3,
+                                                "body": "Resuelto y obsoleto",
+                                                "author": {"login": "reviewer"},
+                                                "createdAt": "2026-10-25T00:00:00Z",
+                                                "url": "https://example.com/comment/3",
+                                            }
+                                        ],
+                                    },
+                                },
+                            ],
+                        },
+                    }
+                }
+            }
+        }
+
+    @patch.object(gh_pr_review, "run_gh_graphql")
+    def test_cmd_comments_default_includes_outdated(self, mock_graphql):
+        mock_graphql.return_value = self._sample_threads_data()
+        args = argparse.Namespace(
+            pr=100,
+            repo="owner/repo",
+            all=False,
+            exclude_outdated=False,
+            detailed=False,
+        )
+
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            ret = gh_pr_review.cmd_comments(args)
+            self.assertEqual(ret, 0)
+            data = json.loads(mock_stdout.getvalue())
+
+            # Por defecto, incluye no resueltos (activos y obsoletos)
+            self.assertEqual(data["totalThreads"], 3)
+            self.assertEqual(data["unresolvedCount"], 2)
+            self.assertEqual(data["returnedThreads"], 2)
+            returned_ids = [t["threadId"] for t in data["threads"]]
+            self.assertEqual(returned_ids, ["T1_ACTIVE", "T2_OUTDATED"])
+
+    @patch.object(gh_pr_review, "run_gh_graphql")
+    def test_cmd_comments_exclude_outdated_filters_threads(self, mock_graphql):
+        mock_graphql.return_value = self._sample_threads_data()
+        args = argparse.Namespace(
+            pr=100,
+            repo="owner/repo",
+            all=False,
+            exclude_outdated=True,
+            detailed=False,
+        )
+
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            ret = gh_pr_review.cmd_comments(args)
+            self.assertEqual(ret, 0)
+            data = json.loads(mock_stdout.getvalue())
+
+            # Con --exclude-outdated, se descarta T2_OUTDATED
+            self.assertEqual(data["totalThreads"], 3)
+            self.assertEqual(data["unresolvedCount"], 2)
+            self.assertEqual(data["returnedThreads"], 1)
+            returned_ids = [t["threadId"] for t in data["threads"]]
+            self.assertEqual(returned_ids, ["T1_ACTIVE"])
+            self.assertFalse(data["threads"][0]["isOutdated"])
+
+    @patch.object(gh_pr_review, "run_gh_graphql")
+    def test_cmd_comments_exclude_outdated_with_all_flag(self, mock_graphql):
+        mock_graphql.return_value = self._sample_threads_data()
+        args = argparse.Namespace(
+            pr=100,
+            repo="owner/repo",
+            all=True,
+            exclude_outdated=True,
+            detailed=False,
+        )
+
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            ret = gh_pr_review.cmd_comments(args)
+            self.assertEqual(ret, 0)
+            data = json.loads(mock_stdout.getvalue())
+
+            # --all incluiría los 3, pero --exclude-outdated descarta T2 y T3
+            self.assertEqual(data["totalThreads"], 3)
+            self.assertEqual(data["returnedThreads"], 1)
+            returned_ids = [t["threadId"] for t in data["threads"]]
+            self.assertEqual(returned_ids, ["T1_ACTIVE"])
+
+    def test_argparse_exclude_outdated(self):
+        with patch("sys.argv", ["gh-pr-review", "comments", "100", "--exclude-outdated"]):
+            with patch.object(gh_pr_review, "cmd_comments") as mock_cmd:
+                mock_cmd.return_value = 0
+                ret = gh_pr_review.main()
+                self.assertEqual(ret, 0)
+                mock_cmd.assert_called_once()
+                parsed_args = mock_cmd.call_args[0][0]
+                self.assertTrue(parsed_args.exclude_outdated)
+                self.assertEqual(parsed_args.pr, 100)
+
+
 if __name__ == "__main__":
     unittest.main()

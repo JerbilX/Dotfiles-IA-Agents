@@ -147,6 +147,8 @@ query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
         is_resolved = node.get("isResolved", False)
         if not args.all and is_resolved:
             continue
+        if getattr(args, "exclude_outdated", False) and node.get("isOutdated", False):
+            continue
 
         comments_obj = node.get("comments") or {}
         comments_page_info = comments_obj.get("pageInfo") or {}
@@ -421,6 +423,11 @@ def main() -> int:
     p_comments.add_argument("pr", type=int, help="Número del Pull Request (ej. 100).")
     p_comments.add_argument("--repo", help="Repositorio en formato 'owner/repo' (opcional, por defecto contexto actual).")
     p_comments.add_argument("--all", action="store_true", help="Incluir hilos ya resueltos (por defecto solo no resueltos).")
+    p_comments.add_argument(
+        "--exclude-outdated",
+        action="store_true",
+        help="Excluir hilos de revisión desactualizados (isOutdated: true).",
+    )
     p_comments.add_argument("--detailed", action="store_true", help="Incluir historial completo de comentarios de cada hilo.")
     p_comments.set_defaults(func=cmd_comments)
 
