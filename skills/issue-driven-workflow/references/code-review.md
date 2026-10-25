@@ -28,26 +28,35 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
 
 ## 3. Fase 2: Ingesta Determinista de Feedback de Review (Tooling Nivel 1)
 
-1. **Inspección de Reseñas Generales y Veredicto:**
-   Consultar los comentarios globales y el estado de aprobación del Pull Request:
-   ```bash
-   gh pr view <pr_id> --comments
-   ```
-   *(Ejecutado con `BypassSandbox: true`).*
-
-2. **Ingesta Unificada de Hilos de Revisión en el Diff (`gh-pr-review`):**
-   Para obtener todos los hilos no resueltos en el diff del Pull Request sin riesgo de desborde de buffer ni pipes frágiles en terminal, invocar el CLI determinista de Nivel 1:
+1. **Ingesta Unificada de Contexto y Hilos de Revisión (`gh-pr-review`):**
+   Para obtener en una única invocación el veredicto del PR (`reviewDecision`), las revisiones generales (`reviews`), los comentarios a nivel de Pull Request (`prComments`) y todos los hilos del diff sin desborde de buffer ni tuberías frágiles en terminal, invocar el CLI determinista de Nivel 1:
    ```bash
    gh-pr-review comments <pr_id>
    ```
    *(O alternativamente vía subcomando de gh: `gh pr-review comments <pr_id>`, ejecutado con `BypassSandbox: true`).*
 
-   El comando retorna un JSON estructurado y compacto:
+   El comando retorna un JSON estructurado y consolidado:
    ```json
    {
      "prNumber": 100,
-     "prTitle": "feat(workflow): incorporar resolucion multiple y por lotes de hilos",
+     "prTitle": "feat(issue-driven-workflow): optimizar Feedback Loop de Code Review",
      "prUrl": "https://github.com/owner/repo/pull/100",
+     "reviewDecision": "CHANGES_REQUESTED",
+     "reviews": [
+       {
+         "author": "TechLead",
+         "state": "CHANGES_REQUESTED",
+         "body": "Revisar los siguientes hilos de revisión en el diff antes de proceder al merge.",
+         "submittedAt": "2026-10-24T10:00:00Z"
+       }
+     ],
+     "prComments": [
+       {
+         "author": "ProjectLead",
+         "body": "Buen progreso en esta rama, por favor atender las observaciones.",
+         "createdAt": "2026-10-24T09:30:00Z"
+       }
+     ],
      "totalThreads": 3,
      "unresolvedCount": 1,
      "truncated": false,
@@ -86,9 +95,10 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
    - Si se requiere excluir hilos desactualizados en PRs con múltiples iteraciones (recomendado para optimizar el consumo de tokens de contexto): `gh-pr-review comments <pr_id> --exclude-outdated`.
    - Si se requiere incluir hilos históricos ya resueltos: `gh-pr-review comments <pr_id> --all`.
    - Si se requiere el historial completo de comentarios de cada hilo: `gh-pr-review comments <pr_id> --detailed`.
+   - Si se desea omitir reviews y comentarios de nivel PR para consultar únicamente hilos: `gh-pr-review comments <pr_id> --threads-only`.
 
-3. **Prohibición Categórica de Scripts Envoltorios o Tuberías:**
-   Queda estrictamente prohibido crear scripts temporales (Python, Bash, Node, ej. `fetch_comments.py`) o encadenar tuberías con utilidades de terminal (`awk`, `sed`, `jq` externo). Todo el parseo y extracción de hilos debe canalizarse exclusivamente a través del CLI nativo `gh-pr-review`.
+2. **Prohibición Categórica de Ingesta Duplicada o Tuberías:**
+   Queda estrictamente prohibido invocar `gh pr view <pr_id> --comments` (ingesta duplicada en texto no estructurado), crear scripts temporales (Python, Bash, Node, ej. `fetch_comments.py`) o encadenar tuberías con utilidades de terminal (`awk`, `sed`, `jq` externo). Todo el contexto de revisión se extrae exclusivamente mediante `gh-pr-review comments <pr_id>`.
 
 ---
 
@@ -159,7 +169,7 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
      "errors": []
    }
    ```
-   Al usar `--all <pr_id>`, incluye además `prNumber` y `totalFound`. Si algún hilo falla, se reporta en `errors` con su respectivo `threadId` y mensaje sin interrumpir los demás.
+   Al usar `--all <pr_id>`, incluye además `prNumber` y `totalFound`. La resolución múltiple y `--all` opera internamente en lotes de hasta 50 hilos mediante una única mutación GraphQL con alias (`t0`, `t1`, ...), ejecutando $\lceil N/50 \rceil$ llamadas en lugar de $N$. Si algún hilo falla (ej. ID inválido o eliminado), se reporta en `errors` con su respectivo `threadId` y mensaje sin interrumpir la resolución de los demás hilos del lote.
 
 2. **Réplica Opcional a un Hilo de Revisión Específico:**
    Si se requiere dejar constancia explícita sobre un hilo puntual antes o después de resolverlo, redactar el texto en el archivo temporal `.reply_body` con `write_to_file` y enviarlo mediante `--body-file` para preservar el prefix matching en Antigravity:

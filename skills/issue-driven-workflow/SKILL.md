@@ -86,12 +86,12 @@ Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](refe
 Guía procedimental: [`references/code-review.md`](references/code-review.md).
 
 1. **Posicionamiento:** `gh pr checkout <pr_id>` (`BypassSandbox: true`).
-2. **Ingesta:** `gh-pr-review comments <pr_id>` (`BypassSandbox: true`).
+2. **Ingesta:** `gh-pr-review comments <pr_id>` (`BypassSandbox: true`; unifica veredicto, reviews, comentarios generales e hilos en una sola llamada).
 3. **Resolución:**
    - I/O nativo y validación con `./build.sh check` (`BypassSandbox: false`).
    - Commit `fix(<alcance>): atender feedback de code review en PR #<id>` vía `.commit_msg` y `git push`.
 4. **Cierre de Hilos:**
-   - Resolver: `gh-pr-review resolve <thread_id>` (o `--all <pr_id>`) (`BypassSandbox: true`).
+   - Resolver: `gh-pr-review resolve <thread_id>` (o `--all <pr_id>` en mutación por lotes) (`BypassSandbox: true`).
    - Comentar PR con `.pr_comment` y mantener en `👀 In Review / PR`.
 
 ---

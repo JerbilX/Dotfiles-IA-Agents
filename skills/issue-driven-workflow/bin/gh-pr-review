@@ -36,18 +36,25 @@ def run_gh_graphql(query: str, variables: Optional[Dict[str, Any]] = None) -> Di
         sys.stderr.write("Error: El comando 'gh' (GitHub CLI) no está instalado o no se encuentra en $PATH.\n")
         sys.exit(1)
 
-    if proc.returncode != 0:
-        err_msg = proc.stderr.strip() or proc.stdout.strip() or f"gh salió con código {proc.returncode}"
-        return {"error": err_msg}
-
     try:
-        data = json.loads(proc.stdout)
+        data = json.loads(proc.stdout) if proc.stdout.strip() else None
     except json.JSONDecodeError as e:
-        return {"error": f"Fallo al decodificar respuesta JSON de gh: {e}", "raw": proc.stdout}
+        data = None
+
+    if proc.returncode != 0:
+        if not (isinstance(data, dict) and ("data" in data or "errors" in data)):
+            err_msg = proc.stderr.strip() or proc.stdout.strip() or f"gh salió con código {proc.returncode}"
+            return {"error": err_msg}
+
+    if data is None:
+        return {"error": "Respuesta vacía o inválida de gh", "raw": proc.stdout}
 
     if "errors" in data:
         err_details = "; ".join(err.get("message", "Error desconocido") for err in data["errors"])
-        return {"error": f"GraphQL Error: {err_details}", "raw_errors": data["errors"]}
+        res: Dict[str, Any] = {"error": f"GraphQL Error: {err_details}", "raw_errors": data["errors"]}
+        if "data" in data and data["data"] is not None:
+            res["data"] = data["data"]
+        return res
 
     return data
 
@@ -56,6 +63,33 @@ def parse_repo_arg(repo_arg: Optional[str]) -> tuple[str, str]:
     if repo_arg and "/" in repo_arg:
         owner, repo = repo_arg.split("/", 1)
         return owner.strip(), repo.strip()
+
+    try:
+        proc = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            url = proc.stdout.strip()
+            if url.endswith(".git"):
+                url = url[:-4]
+            if ":" in url and "@" in url:
+                path = url.split(":", 1)[1]
+            elif "github.com/" in url:
+                path = url.split("github.com/", 1)[1]
+            else:
+                parts = url.rstrip("/").split("/")
+                path = "/".join(parts[-2:]) if len(parts) >= 2 else ""
+
+            if "/" in path:
+                p_parts = path.strip("/").split("/", 1)
+                return p_parts[0].strip(), p_parts[1].strip()
+    except Exception:
+        pass
+
     return ":owner", ":repo"
 
 
@@ -68,6 +102,26 @@ query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
       id
       title
       url
+      reviewDecision
+      reviews(first: 50) {
+        nodes {
+          author {
+            login
+          }
+          state
+          body
+          submittedAt
+        }
+      }
+      comments(first: 50) {
+        nodes {
+          author {
+            login
+          }
+          body
+          createdAt
+        }
+      }
       reviewThreads(first: 100, after: $cursor) {
         pageInfo {
           hasNextPage
@@ -118,7 +172,7 @@ query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
             variables["cursor"] = cursor
 
         result = run_gh_graphql(query, variables)
-        if "error" in result:
+        if "error" in result and not result.get("data"):
             sys.stderr.write(f"Error consultando hilos de revisión: {result['error']}\n")
             return 1
 
@@ -190,16 +244,45 @@ query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
 
         output_threads.append(thread_entry)
 
-    summary = {
+    summary: Dict[str, Any] = {
         "prNumber": args.pr,
         "prTitle": pr_data.get("title") if pr_data else None,
         "prUrl": pr_data.get("url") if pr_data else None,
+    }
+
+    if not getattr(args, "threads_only", False):
+        reviews_formatted: List[Dict[str, Any]] = []
+        pr_comments_formatted: List[Dict[str, Any]] = []
+
+        if pr_data:
+            raw_reviews = (pr_data.get("reviews") or {}).get("nodes") or []
+            for r in raw_reviews:
+                reviews_formatted.append({
+                    "author": (r.get("author") or {}).get("login", "unknown"),
+                    "state": r.get("state"),
+                    "body": r.get("body", ""),
+                    "submittedAt": r.get("submittedAt"),
+                })
+
+            raw_pr_comments = (pr_data.get("comments") or {}).get("nodes") or []
+            for c in raw_pr_comments:
+                pr_comments_formatted.append({
+                    "author": (c.get("author") or {}).get("login", "unknown"),
+                    "body": c.get("body", ""),
+                    "createdAt": c.get("createdAt"),
+                })
+
+        summary["reviewDecision"] = pr_data.get("reviewDecision") if pr_data else None
+        summary["reviews"] = reviews_formatted
+        summary["prComments"] = pr_comments_formatted
+
+    summary.update({
         "totalThreads": len(threads_nodes),
         "unresolvedCount": sum(1 for n in threads_nodes if not n.get("isResolved", False)),
         "truncated": has_truncated_comments,
         "returnedThreads": len(output_threads),
         "threads": output_threads,
-    }
+    })
 
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0
@@ -217,7 +300,7 @@ mutation($threadId: ID!) {
 }
 """
     result = run_gh_graphql(query, {"threadId": thread_id})
-    if "error" in result:
+    if "error" in result and not result.get("data"):
         return False, result["error"]
 
     data = result.get("data") or {}
@@ -226,7 +309,73 @@ mutation($threadId: ID!) {
 
     if thread_payload.get("isResolved") is True:
         return True, None
-    return False, "La mutación no confirmó el estado resuelto (isResolved is not True)"
+    return False, result.get("error") or "La mutación no confirmó el estado resuelto (isResolved is not True)"
+
+
+def resolve_threads_batch(thread_ids: List[str], batch_size: int = 50) -> tuple[List[str], List[Dict[str, str]]]:
+    """
+    Resuelve hilos de revisión en lotes agregados utilizando una única mutación GraphQL con alias por lote.
+    Mapea resultados individuales y fallos parciales por threadId.
+    """
+    if not thread_ids:
+        return [], []
+
+    resolved_threads: List[str] = []
+    errors: List[Dict[str, str]] = []
+
+    for chunk_start in range(0, len(thread_ids), batch_size):
+        batch = thread_ids[chunk_start : chunk_start + batch_size]
+        var_defs = ", ".join(f"$t{i}: ID!" for i in range(len(batch)))
+        fields = []
+        for i in range(len(batch)):
+            fields.append(f"""  t{i}: resolveReviewThread(input: {{threadId: $t{i}}}) {{
+    thread {{
+      id
+      isResolved
+    }}
+  }}""")
+        query = f"mutation({var_defs}) {{\n" + "\n".join(fields) + "\n}"
+        variables = {f"t{i}": tid for i, tid in enumerate(batch)}
+
+        result = run_gh_graphql(query, variables)
+        data = result.get("data")
+        raw_errors = result.get("raw_errors") or []
+
+        alias_to_error: Dict[str, str] = {}
+        general_errors: List[str] = []
+        for err in raw_errors:
+            path = err.get("path")
+            msg = err.get("message", "Error desconocido")
+            if path and isinstance(path, list) and len(path) > 0 and isinstance(path[0], str):
+                alias_to_error[path[0]] = msg
+            else:
+                general_errors.append(msg)
+
+        if not data or not isinstance(data, dict):
+            err_msg = result.get("error") or ("; ".join(general_errors) if general_errors else "Error desconocido ejecutando mutación GraphQL")
+            for tid in batch:
+                errors.append({"threadId": tid, "error": err_msg})
+            continue
+
+        for i, tid in enumerate(batch):
+            alias = f"t{i}"
+            alias_payload = data.get(alias)
+            if alias_payload and isinstance(alias_payload, dict):
+                thread_payload = alias_payload.get("thread") or {}
+                if thread_payload.get("isResolved") is True:
+                    resolved_threads.append(tid)
+                    continue
+
+            if alias in alias_to_error:
+                err_msg = alias_to_error[alias]
+            elif general_errors:
+                err_msg = "; ".join(general_errors)
+            else:
+                err_msg = "La mutación no confirmó el estado resuelto (isResolved is not True)"
+
+            errors.append({"threadId": tid, "error": err_msg})
+
+    return resolved_threads, errors
 
 
 def fetch_unresolved_threads(pr_number: int, repo_arg: Optional[str] = None) -> tuple[Optional[List[str]], Optional[str]]:
@@ -261,7 +410,7 @@ query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
         if cursor:
             variables["cursor"] = cursor
         result = run_gh_graphql(query, variables)
-        if "error" in result:
+        if "error" in result and not result.get("data"):
             return None, f"Error consultando hilos del PR #{pr_number}: {result['error']}"
 
         pr_data = (result.get("data") or {}).get("repository", {}).get("pullRequest")
@@ -305,15 +454,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         sys.stderr.write("Error: Debe especificar al menos un thread_id o usar --all <pr_id>.\n")
         return 1
 
-    resolved_threads: List[str] = []
-    errors: List[Dict[str, str]] = []
-
-    for tid in thread_ids:
-        success, err_msg = resolve_single_thread(tid)
-        if success:
-            resolved_threads.append(tid)
-        else:
-            errors.append({"threadId": tid, "error": err_msg or "Error desconocido"})
+    resolved_threads, errors = resolve_threads_batch(thread_ids)
 
     is_overall_success = len(errors) == 0
     output: Dict[str, Any] = {
@@ -429,6 +570,11 @@ def main() -> int:
         help="Excluir hilos de revisión desactualizados (isOutdated: true).",
     )
     p_comments.add_argument("--detailed", action="store_true", help="Incluir historial completo de comentarios de cada hilo.")
+    p_comments.add_argument(
+        "--threads-only",
+        action="store_true",
+        help="Omitir reviewDecision, reviews y prComments para obtener únicamente hilos de diff.",
+    )
     p_comments.set_defaults(func=cmd_comments)
 
     # Subcomando resolve
