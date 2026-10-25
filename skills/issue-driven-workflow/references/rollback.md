@@ -21,21 +21,18 @@ Para preservar la prohibición estricta de push directo o reescritura de histori
    git checkout <base_branch>
    git pull --prune --ff-only
    ```
-   *(Ejecutados con `BypassSandbox: true` desde el primer intento).*
 
 2. **Crear Rama de Reversión Dedicada:**
    Nomenclatura obligatoria: `fix/revert-pr-<id>-<slug>` (donde `<id>` corresponde al número del PR causante del fallo).
    ```bash
    git checkout -b fix/revert-pr-<id>-<slug>
    ```
-   *(Ejecutado con `BypassSandbox: true` desde el primer intento).*
 
 3. **Invocación Atómica y Desatendida de `git revert`:**
    Obtener el SHA del commit integrado en `<base_branch>` (`<commit_sha>`) y determinar su naturaleza inspeccionando sus ancestros directos:
    ```bash
    git rev-list --parents -n 1 <commit_sha>
    ```
-   *(Ejecutado con `BypassSandbox: true`).*
 
    - **Squash Commit (1 padre - Escenario Canónico):** Si la salida contiene 2 identificadores (`<commit_sha> <parent1>`), se trata de un commit de squash (estándar canónico del flujo). Revertir directamente sin especificar línea principal:
      ```bash
@@ -59,11 +56,11 @@ Para preservar la prohibición estricta de push directo o reescritura de histori
    Reverts PR #<pr_id> (<commit_sha>).
    Razón: <diagnóstico técnico conciso de la regresión o anomalía>.
    ```
-   Ejecutar el commit leyendo el archivo temporal (`BypassSandbox: true`):
+   Ejecutar el commit leyendo el archivo temporal:
    ```bash
    git commit -F .commit_msg
    ```
-   Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+   Limpiar el archivo temporal en el mismo turno:
    ```bash
    rm -f .commit_msg
    ```
@@ -72,7 +69,6 @@ Para preservar la prohibición estricta de push directo o reescritura de histori
    ```bash
    git push -u origin fix/revert-pr-<id>-<slug>
    ```
-   *(Ejecutado con `BypassSandbox: true`).*
 
 ---
 
@@ -92,13 +88,13 @@ Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes
 
    Reverts #<pr_id>
    ```
-   Publicar el PR apuntando a la rama troncal donde ocurrió la integración defectuosa (`<base_branch>`) mediante GitHub CLI (`BypassSandbox: true`):
+   Publicar el PR apuntando a la rama troncal donde ocurrió la integración defectuosa (`<base_branch>`) mediante GitHub CLI:
    ```bash
    gh pr create --base <base_branch> --title "fix(revert): revert PR #<pr_id> - <motivo>" --body-file .pr_body
    ```
    *(Donde `<base_branch>` se resuelve desde `.repo-config.json`, siendo `main` en Categoría A o `dev` en Categoría B).*
 
-   Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+   Limpiar el archivo temporal en el mismo turno:
    ```bash
    rm -f .pr_body
    ```
@@ -111,15 +107,13 @@ Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes
    ```bash
    gh issue reopen <id>
    ```
-   *(Ejecutado con `BypassSandbox: true`).*
 
 4. **Comentario Técnico y Reubicación en Backlog:**
    Redactar un comentario técnico en `.issue_comment` documentando la causa de la reversión y los requerimientos pendientes para su posterior reintento:
    ```bash
    gh issue comment <id> --body-file .issue_comment
    ```
-   *(Ejecutado con `BypassSandbox: true`).*
-   Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+   Limpiar el archivo temporal en el mismo turno:
    ```bash
    rm -f .issue_comment
    ```
@@ -132,7 +126,7 @@ Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes
 Si el Pull Request revertido introdujo un Architectural Decision Record en `docs/adr/` que había transicionado a `status: accepted`:
 
 1. **Deprecación Inmediata:**
-   - La historia arquitectónica no se borra ni se reescribe. Queda terminantemente prohibido eliminar el archivo ADR revertido.
+   - No eliminar el archivo ADR revertido; preservar la historia arquitectónica actualizando su estado.
    - Modificar exclusivamente el YAML frontmatter del ADR mediante `replace_file_content`:
      ```yaml
      status: deprecated

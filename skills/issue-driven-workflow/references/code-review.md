@@ -7,7 +7,7 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
 ## 1. Criterios de Activación y Ámbito
 
 - **Trigger Conversacional:** El agente activa este sub-protocolo cuando el usuario solicite atender, corregir o resolver observaciones de Code Review en un Pull Request activo (ej. *"resolvé los comentarios del PR #<id>"*, *"atendé el review del PR #<id>"*, *"revisá el feedback dejado en el diff de #<id>"*).
-- **Aislamiento en Rama Activa:** Todas las correcciones solicitadas en la revisión de código deben realizarse estrictamente sobre la rama activa del Pull Request. Queda **terminantemente prohibido** crear ramas secundarias o abrir nuevos issues para abordar observaciones del code review del PR activo.
+- **Aislamiento en Rama Activa:** Todas las correcciones solicitadas en la revisión de código deben realizarse sobre la rama activa del Pull Request. No crear ramas secundarias ni abrir nuevos issues para abordar observaciones del PR activo; trabajar sobre la rama existente.
 
 ---
 
@@ -22,7 +22,6 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
      ```bash
      gh pr checkout <pr_id>
      ```
-     *(Ejecutados con `BypassSandbox: true` obligatorio desde el primer intento).*
 
 ---
 
@@ -33,7 +32,7 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
    ```bash
    gh-pr-review comments <pr_id>
    ```
-   *(O alternativamente vía subcomando de gh: `gh pr-review comments <pr_id>`, ejecutado con `BypassSandbox: true`).*
+   *(O alternativamente vía subcomando de gh: `gh pr-review comments <pr_id>`).*
 
    El comando retorna un JSON estructurado y consolidado:
    ```json
@@ -97,8 +96,8 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
    - Si se requiere el historial completo de comentarios de cada hilo: `gh-pr-review comments <pr_id> --detailed`.
    - Si se desea omitir reviews y comentarios de nivel PR para consultar únicamente hilos: `gh-pr-review comments <pr_id> --threads-only`.
 
-2. **Prohibición Categórica de Ingesta Duplicada o Tuberías:**
-   Queda estrictamente prohibido invocar `gh pr view <pr_id> --comments` (ingesta duplicada en texto no estructurado), crear scripts temporales (Python, Bash, Node, ej. `fetch_comments.py`) o encadenar tuberías con utilidades de terminal (`awk`, `sed`, `jq` externo). Todo el contexto de revisión se extrae exclusivamente mediante `gh-pr-review comments <pr_id>`.
+2. **Prohibición de Ingesta Duplicada o Tuberías:**
+   Prohibido invocar `gh pr view <pr_id> --comments` (ingesta duplicada en texto no estructurado), crear scripts temporales (Python, Bash, Node, ej. `fetch_comments.py`) o encadenar tuberías con utilidades de terminal (`awk`, `sed`, `jq`). Todo el contexto de revisión se extrae a través de `gh-pr-review comments <pr_id>`.
 
 ---
 
@@ -108,27 +107,26 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
    - Inspeccionar el archivo afectado (`path`) y las líneas señaladas (`line` / `originalLine`) mediante la herramienta nativa `view_file`.
    - Contrastar la observación del revisor con el diseño del sistema y los invariantes del proyecto, identificando la solución con el menor radio de impacto posible (*Minimal Blast Radius*).
 2. **Aplicación de Parches:**
-   - Aplicar las correcciones solicitadas exclusivamente a través de las herramientas nativas de edición (`replace_file_content` o `write_to_file`). Prohibido usar comandos CLI de streaming (`sed`, `cat >`, `echo >>`) o scripts efímeros de parcheo.
+   - Aplicar las correcciones solicitadas exclusivamente a través de las herramientas nativas de edición (`replace_file_content` o `write_to_file`). No usar comandos de terminal para edición (`sed`, `cat >`, `echo >>`) ni scripts de parcheo.
 3. **Verificación Estática y Local (Shift-Left):**
    - Ejecutar la suite de pruebas del proyecto y linters locales:
      ```bash
      ./build.sh check
      ```
-     *(Ejecutado con `BypassSandbox: false` confinado).*
    - Validar que no existan errores (0 errores) y que el presupuesto de contexto se mantenga dentro de los umbrales definidos.
 4. **Commit Atómico de Corrección:**
    - Preparar exclusivamente los archivos corregidos mediante staging explícito con rutas directas:
      ```bash
      git add <ruta1> <ruta2> ...
      ```
-     *(Ejecutado con `BypassSandbox: true` desde el primer intento; prohibido usar `git add .` o `git add -A`).*
+     *(Indicar rutas explícitas; no usar `git add .` ni `git add -A`).*
    - Redactar el mensaje en el archivo temporal `.commit_msg` mediante `write_to_file` siguiendo el estándar convencional:
      `fix(<alcance>): atender feedback de code review en PR #<id>`
-   - Ejecutar el commit leyendo el archivo con `BypassSandbox: true`:
+   - Ejecutar el commit leyendo el archivo:
      ```bash
      git commit -F .commit_msg
      ```
-   - Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+   - Limpiar el archivo temporal en el mismo turno:
      ```bash
      rm -f .commit_msg
      ```
@@ -137,7 +135,6 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
      ```bash
      git push
      ```
-     *(Ejecutado con `BypassSandbox: true`).*
 
 ---
 
@@ -155,7 +152,6 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
    # Resolución total de todos los hilos pendientes de un Pull Request
    gh-pr-review resolve --all <pr_id>
    ```
-   *(Ejecutado con `BypassSandbox: true`).*
 
    Retorna una respuesta JSON estructurada y consolidada:
    ```json
@@ -176,16 +172,16 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
    ```bash
    gh-pr-review reply <thread_id> --body-file .reply_body
    ```
-   *(Ejecutado con `BypassSandbox: true`; limpiar inmediatamente el archivo temporal con `rm -f .reply_body` bajo `BypassSandbox: false`).*
+   *(Limpiar el archivo temporal con `rm -f .reply_body` en el mismo turno).*
 
 3. **Comentario Consolidado en el Pull Request:**
    Para notificar formalmente al revisor humano que todas las observaciones fueron atendidas:
    - Redactar el resumen en `.pr_comment` mediante `write_to_file`.
-   - Publicar el comentario en el PR (`BypassSandbox: true`):
+   - Publicar el comentario en el PR:
      ```bash
      gh pr comment <pr_id> --body-file .pr_comment
      ```
-   - Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+   - Limpiar el archivo temporal en el mismo turno:
      ```bash
      rm -f .pr_comment
      ```

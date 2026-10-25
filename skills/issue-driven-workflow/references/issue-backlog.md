@@ -4,10 +4,10 @@ Guía operativa exhaustiva para el registro, especificación técnica, jerarquí
 
 ---
 
-## 1. Prohibición Estricta de Backlogs Locales y Archivos Huérfanos
+## 1. Prohibición de Backlogs Locales y Archivos Huérfanos
 
-- **Queda terminantemente prohibido** crear, sincronizar o depender de archivos `TODO.md`, `backlog.md`, `NOTES.md` o bitácoras informales en cualquier nivel del proyecto.
-- **Queda terminantemente prohibido** volcar prompts, especificaciones de tareas o planes de ejecución en carpetas o archivos temporales huérfanos (ej. `tasks/`, `prompts/`).
+- No crear, sincronizar ni depender de archivos `TODO.md`, `backlog.md`, `NOTES.md` o bitácoras informales en cualquier nivel del proyecto.
+- No volcar prompts, especificaciones de tareas ni planes de ejecución en carpetas o archivos temporales huérfanos (ej. `tasks/`, `prompts/`).
 - Todo requerimiento pendiente, mejora, refactor o bug detectado debe formalizarse exclusiva y directamente como una **GitHub Issue**.
 
 ---
@@ -43,7 +43,7 @@ Al diseñar, planificar o registrar cualquier solución, el agente debe aplicar 
 | **3** | **Reglas Especializadas de Runtime** | Directivas acotadas al runtime activo en `runtimes/<runtime>/rules/*.md`. Impacto restringido a dicho entorno. | Especialización de sandbox para Antigravity (`rules/01-sandbox.md`). |
 | **4** | **Core Basal / System Prompt Universal** | Invariantes duros de gobernanza, seguridad universal y principios irrenunciables en `core/*.md`. Impacto permanente y universal en cada turno. | Prohibición de push directo a `main`, confinamiento de sandbox, zero complacencia. |
 
-- **Regla Invariante de Resolución:** Queda **terminantemente prohibido** proponer o ejecutar cambios en un nivel $N+1$ si el problema técnico o requerimiento operativo puede resolverse eficazmente en un nivel menor o igual a $N$.
+- **Regla de Resolución:** Resolver siempre en el nivel de abstracción más bajo posible; no proponer ni ejecutar cambios en un nivel $N+1$ si el requerimiento puede resolverse eficazmente en un nivel menor o igual a $N$.
 
 ---
 
@@ -55,14 +55,14 @@ Toda propuesta en la especificación de una issue (`.issue_body`) o plan de impl
 
 ## 5. Creación Determinista del Issue y Protección de Prefix Matching
 
-Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix matching* cuando se utilizan comillas complejas o cadenas multilínea en la terminal, el cuerpo debe transferirse obligatoriamente mediante archivo temporal:
+Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix matching* cuando se utilizan comillas complejas o cadenas multilínea en la terminal, el cuerpo debe transferirse mediante archivo temporal:
 
 1. Redactar la especificación técnica en `.issue_body` con `write_to_file`.
-2. Crear el issue mediante GitHub CLI (`BypassSandbox: true` obligatorio desde el primer intento por requerir acceso de red):
+2. Crear el issue mediante GitHub CLI:
    ```bash
    gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body
    ```
-3. Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
+3. Limpiar el archivo temporal en el mismo turno:
    ```bash
    rm -f .issue_body
    ```
@@ -141,8 +141,8 @@ Ante preguntas de consulta, estado o coordinación sobre tareas pendientes en el
    - **Respuesta Sintética y Asertiva:** En lugar de volcar listas exhaustivas o cortar ciegamente por índice posicional, emitir una respuesta concisa presentando el **Top 2 o 3** de tareas más convenientes para continuar, con una recomendación explícita y justificada de cuál tomar primero y cuál abordar después.
    - **Inventario Exhaustivo Solo Bajo Petición Expresa:** El volcado íntegro del inventario de tareas o la inclusión de ítems pertenecientes a otros repositorios del tablero queda restringido exclusivamente a cuando el usuario lo solicite de manera explícita (ej. *"mostrame todas las tareas del board sin filtrar"* o *"¿qué tareas hay en otros repositorios?"*).
 
-> [!CAUTION]
-> **Prohibición de Scripts Envoltorios Ad-hoc:** Queda terminantemente prohibido crear scripts intermediarios o efímeros (Python, Node, Bash, ej. `check_board.py`) para consultar, parsear o envolver llamadas a GitHub Projects. `gh` provee filtrado nativo (`--query`, `--field`, `-q / --jq`, `--limit`). Ejecutar scripts envoltorios con `BypassSandbox: true` viola la política de confinamiento de Antigravity (que reserva el bypass exclusivamente para la suite de `git` y `gh`), rompe el *prefix matching* y dispara solicitudes innecesarias de autorización interactiva.
+> [!WARNING]
+> **Uso de Filtrado Nativo en CLI:** No crear scripts intermediarios o efímeros (Python, Node, Bash, ej. `check_board.py`) para consultar, parsear o envolver llamadas a GitHub Projects. `gh` provee filtrado nativo (`--query`, `--field`, `-q / --jq`, `--limit`). Ejecutar scripts envoltorios con bypass viola la política de confinamiento, rompe el *prefix matching* y dispara solicitudes innecesarias de autorización interactiva.
 
 ---
 
@@ -172,4 +172,3 @@ Al consultar o interactuar con GitHub Projects v2 (`gh project item-list`, `gh p
 1. Verificar si existe `.repo-config.json` en la raíz del workspace activo mediante herramientas nativas de archivos (`view_file`).
 2. Extraer `project_number` y `project_owner` declarados.
 3. Si el archivo no existe o alguna de las claves está omitida, aplicar de forma automática e inmediata los valores por defecto (`project_number: 1`, `project_owner: "@me"`), garantizando completa compatibilidad hacia atrás y cero intervención manual del usuario.
-

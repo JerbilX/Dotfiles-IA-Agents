@@ -23,7 +23,6 @@ La estructura de ramas responde a la configuración raíz declarada en `.repo-co
   ```bash
   git checkout -b <nombre-de-rama>
   ```
-  *(Ejecutado con `BypassSandbox: true` desde el primer intento debido al montaje `ro` de `.git/`).*
 * **Compatibilidad con Worktrees (Orquestadores / Entornos Paralelos):** En flujos multi-agente u orquestados (ej. `Agent-Cockpit`), la rama puede aislarse en un worktree dedicado (`git worktree add .worktrees/issue-<id> -b <nombre-de-rama>`). Las reglas de ciclo e higiene aplican idénticamente, sumando el desmonte en el Paso 8.
 
 ---
@@ -41,31 +40,30 @@ Toda tarea despachada debe cumplir secuencialmente con las siguientes 8 fases:
    ```bash
    gh issue view <id>
    ```
-   *(BypassSandbox: true).*
 2. El análisis sitúa la tarea operativamente en fase de planificación local (`📐 In Planning`), sin mutaciones CLI en GitHub Projects v2.
 
 ### Paso 2: Aislamiento e Higiene del Workspace
 
-#### 2.1 Camino Preferente de Aislamiento (≤ 2 llamadas con bypass)
+#### 2.1 Camino Preferente de Aislamiento (≤ 2 llamadas)
 Para minimizar turnos y prompts interactivos, el arranque de una nueva tarea no requiere conmutar a la rama base local ni podar ramas (la poda se posterga a la Fase 8 post-merge):
 1. **Sincronizar referencias remotas con poda sin conmutar a la base:**
    ```bash
    git fetch --prune origin
    ```
-   *(BypassSandbox: true. Prohibido el uso de `git remote prune`; toda poda remota se canaliza vía fetch o pull con `--prune`).*
+   *(Canalizar toda poda remota vía fetch o pull con `--prune` en lugar de `git remote prune`).*
 2. **Crear y conmutar a la rama efímera desacoplada desde `origin/<base_branch>`:**
    ```bash
    git switch --no-track -c <nombre-de-rama> origin/<base_branch>
    ```
-   *(BypassSandbox: true. `--no-track` evita tracking espurio contra la base; la rama queda desacoplada hasta el push en el Paso 6).*
+   *(`--no-track` evita tracking espurio contra la base; la rama queda desacoplada hasta el push en el Paso 6).*
 
 #### 2.2 Saneamiento Integral y Poda con `git-prune-gone --sync` (Vía Alternativa / Higiene Explícita)
 Si el repositorio presenta ramas zombi preexistentes o se requiere sincronizar la base local antes de iniciar:
 ```bash
 git-prune-gone --sync
 ```
-*(BypassSandbox: true. Conmuta a `<base_branch>`, ejecuta `git pull --prune --ff-only` y clasifica y poda ramas `[gone]`. Soporta `--base <rama>` para Categoría B, `--dry-run`, `--json` y `-f` / `--force`).*
-* Tras sincronizar, crear y cambiar a la rama: `git checkout -b <nombre-de-rama>` (`BypassSandbox: true`).
+*(Conmuta a `<base_branch>`, ejecuta `git pull --prune --ff-only` y clasifica y poda ramas `[gone]`. Soporta `--base <rama>` para Categoría B, `--dry-run`, `--json` y `-f` / `--force`).*
+* Tras sincronizar, crear y cambiar a la rama: `git checkout -b <nombre-de-rama>`.
 * **Fallback Determinista:** Si no está en `$PATH`, invocar `skills/issue-driven-workflow/bin/git-prune-gone`.
 
 ### Paso 3: Planificación y Refinamiento (📐 In Planning)
@@ -77,7 +75,7 @@ git-prune-gone --sync
 ### Paso 4: Transición a Desarrollo y Verificación (⚙️ In Progress)
 * Al aprobarse el plan o entrar en fast-path, la tarea entra en desarrollo activo (`⚙️ In Progress`) en la rama local, sin mutaciones CLI en Projects v2.
 * Modificaciones de código exclusivamente mediante herramientas nativas de archivos (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido usar comandos de terminal para I/O (`cat`, `sed`, `awk`, `tee`).
-* Validar compilación, linters y suites de prueba locales (`./build.sh check` con `BypassSandbox: false`).
+* Validar compilación, linters y suites de prueba locales (`./build.sh check`).
 * **Promoción Atómica del ADR:** Al comenzar a codificar, actualizar el YAML frontmatter del ADR a `status: accepted` en la rama de trabajo para ratificación atómica al mergear.
 
 ### Paso 5: Commit Atómico
@@ -85,35 +83,34 @@ git-prune-gone --sync
    ```bash
    git add <ruta1> <ruta2>
    ```
-   *(BypassSandbox: true. Prohibido terminantemente usar `git add .`, `git add -A` o comodines globales).*
+   *(Indicar rutas explícitas; no usar `git add .` ni `git add -A`).*
 2. **Redacción y Commit Atómico:**
-   * Prohibido `git commit -m "..."` por anular el prefix matching con comillas.
-   * Redactar mensaje convencional en `.commit_msg` con `write_to_file`.
-   * Ejecutar commit con bypass:
+   * Evitar `git commit -m "..."` (anula el prefix matching de permisos al contener comillas). Redactar mensaje convencional en `.commit_msg` con `write_to_file`.
+   * Ejecutar el commit:
      ```bash
      git commit -F .commit_msg
      ```
-   * Limpiar inmediatamente el archivo temporal:
+   * Limpiar el archivo temporal:
      ```bash
      rm -f .commit_msg
      ```
-     *(Emitir `rm -f .commit_msg` con `BypassSandbox: false` concurrentemente en el mismo turno junto con la siguiente llamada para no consumir turnos ociosos).*
+     *(Emitir `rm -f .commit_msg` en paralelo con la siguiente llamada del turno).*
 
 ### Paso 6: Publicación Remota
-Subir la rama al repositorio remoto (`BypassSandbox: true`):
+Subir la rama al repositorio remoto:
 ```bash
 git push -u origin <nombre-de-rama>
 ```
 
 ### Paso 7: Apertura de Pull Request (👀 In Review / PR)
 1. Redactar el cuerpo del PR en `.pr_body` con `write_to_file`, incluyendo obligatoriamente `Closes #<id>` (o vinculación múltiple si aplica).
-2. Publicar mediante GitHub CLI (`BypassSandbox: true`):
+2. Publicar mediante GitHub CLI:
    ```bash
    gh pr create --base <base_branch> --title "<tipo>(<alcance>): <descripción>" --body-file .pr_body
    ```
    *(Si `<base_branch>` es la default del repositorio, `--base` puede omitirse; en Categoría B explicitar `--base dev`).*
 3. La vinculación `Closes #<id>` activa el workflow nativo `Pull request linked to issue` en Projects v2, transicionando la tarjeta a `👀 In Review / PR` sin llamadas manuales de CLI.
-4. Limpiar inmediatamente el archivo temporal (`rm -f .pr_body` con `BypassSandbox: false`, emitido concurrentemente en el reporte del turno).
+4. Limpiar el archivo temporal (`rm -f .pr_body`, emitido en paralelo con el reporte del turno).
 
 ### Paso 8: Protocolo de Cierre e Higiene Post-Merge (Done)
 
@@ -125,15 +122,15 @@ Tras la apertura del PR, si el usuario emite una **orden ejecutiva o aprobación
    ```bash
    gh pr merge <id> --squash --delete-branch
    ```
-   *(BypassSandbox: true. Incorporar `--auto` si existen checks de CI pendientes).*
+   *(Incorporar `--auto` si existen checks de CI pendientes).*
    > [!IMPORTANT]
    > **Invariante Human-in-the-Loop:** Prohibido invocar `gh pr merge` de forma autónoma. Exige orden ejecutiva explícita en el chat.
 2. **Higiene Atómica Post-Merge con `git-prune-gone --sync` (≤ 2 llamadas de fase):**
    ```bash
    git-prune-gone --sync
    ```
-   *(BypassSandbox: true. Conmuta a la base, ejecuta `git pull --prune --ff-only` y poda ramas zombi con detección de squash merge).*
-   * Si se usó worktree efímero, desmontarlo: `git worktree remove .worktrees/issue-<id>` (`BypassSandbox: true`).
+   *(Conmuta a la base, ejecuta `git pull --prune --ff-only` y poda ramas zombi con detección de squash merge).*
+   * Si se usó worktree efímero, desmontarlo: `git worktree remove .worktrees/issue-<id>`.
 3. **Cierre Automático y Verificación Condicional:**
    * La directiva `Closes #<id>` y el merge exitoso activan Built-in Workflows (*Pull request merged* e *Item closed*), cerrando la issue y avanzando la tarjeta a `Done` en Projects v2 de forma desatendida.
    * `gh issue view` o `gh issue close` queda reservado como fallback condicional ante errores de cierre remoto.
@@ -144,7 +141,6 @@ Tras la apertura del PR, si el usuario emite una **orden ejecutiva o aprobación
    ```bash
    git-prune-gone --sync
    ```
-   *(BypassSandbox: true).*
 3. Built-in Workflows avanza la tarjeta a `Done` automáticamente al detectarse el merge.
 
 * **Invariante de Higiene Proactiva:** Ante cualquier consulta o interacción subsiguiente, si el agente detecta que la rama actual trackea un PR ya fusionado/cerrado o tracking `[gone]`, ejecuta inmediatamente este paso de higiene sin esperar una nueva orden de desarrollo.
@@ -185,18 +181,17 @@ El ciclo de vida en Projects v2 se rige por transiciones desacopladas gobernadas
 ## 5. Protocolo Especial: Tareas de Investigación, Auditoría o Spikes (Cierre Autónomo sin PR)
 
 Cuando una tarea investigativa o spike concluya que **no se requieren cambios de código**:
-1. **Prohibición de Delegación Pasiva:** Prohibido finalizar recomendando el cierre pasivo al usuario; el agente debe cerrar la issue de forma autónoma.
+1. **Cierre Activo:** No delegar el cierre al usuario; cerrar la issue de forma autónoma.
 2. **Publicación del Informe Técnico:**
-   Redactar reporte en `.issue_comment` con `write_to_file` y publicar con GitHub CLI (`BypassSandbox: true`):
+   Redactar reporte en `.issue_comment` con `write_to_file` y publicar con GitHub CLI:
    ```bash
    gh issue comment <id> --body-file .issue_comment
    ```
-   Limpiar inmediatamente el temporal: `rm -f .issue_comment` (`BypassSandbox: false`).
+   Limpiar el temporal: `rm -f .issue_comment`.
 3. **Cierre Autónomo:**
    ```bash
    gh issue close <id>
    ```
-   *(BypassSandbox: true).*
 4. **Sincronización Automatizada:** El workflow nativo *Item closed* transiciona la tarjeta a `Done` automáticamente sin requerir `gh project item-edit`.
 5. **Reporte Final:** Reportar enlace al issue cerrado y confirmación del estado en `Done`.
 
