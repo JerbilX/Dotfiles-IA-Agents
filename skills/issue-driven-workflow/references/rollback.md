@@ -14,7 +14,7 @@ Protocolo operativo determinista para emergencias, regresiones críticas o rotur
 
 ## 2. Ciclo de Ramas y Git (Reversión Atómica)
 
-Para preservar la prohibición estricta de push directo o reescritura de historia (`git reset --hard`) en `<base_branch>` (resuelta desde `.repo-config.json` o `config.json`, siendo `main` por defecto o `dev` en Categoría B):
+Para preservar la prohibición estricta de push directo o reescritura de historia (`git reset --hard`) en `<base_branch>` (resuelta desde `.repo-config.json`, siendo `main` por defecto o `dev` en Categoría B):
 
 1. **Sincronizar `<base_branch>`:**
    ```bash
@@ -96,7 +96,7 @@ Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes
    ```bash
    gh pr create --base <base_branch> --title "fix(revert): revert PR #<pr_id> - <motivo>" --body-file .pr_body
    ```
-   *(Donde `<base_branch>` se resuelve desde `.repo-config.json` o `config.json`, siendo `main` en Categoría A o `dev` en Categoría B).*
+   *(Donde `<base_branch>` se resuelve desde `.repo-config.json`, siendo `main` en Categoría A o `dev` en Categoría B).*
 
    Limpiar inmediatamente el archivo temporal (`BypassSandbox: false` obligatorio, confinado en sandbox estándar):
    ```bash

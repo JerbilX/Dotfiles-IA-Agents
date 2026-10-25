@@ -46,7 +46,7 @@ Filtrar activos del repo (Top 2-3 con justificación):
 ```bash
 gh board <owner>/<repo>
 ```
-*(BypassSandbox: true; alias prefix-matchable. Fallback si el alias no está configurado: `gh project item-list 1 --owner @me --limit 100 --query "repo:<owner>/<repo> -status:Done" --format json --jq '.items[] | {number: .content.number, title: .content.title, status: .status}'`).*
+*(BypassSandbox: true; alias prefix-matchable. Fallback si el alias no está configurado: `gh project item-list <project_number> --owner <project_owner> --limit 100 --query "repo:<owner>/<repo> -status:Done" --format json --jq '.items[] | {number: .content.number, title: .content.title, status: .status}'`, donde `<project_number>` y `<project_owner>` se resuelven desde `.repo-config.json` o aplican `1` y `@me` por defecto).*
 
 ### 3.2 Despacho Vía A: Instrucción Directa (*"implementa la issue #<id>"*)
 1. Ingesta: `gh issue view <id>` (`BypassSandbox: true`).
@@ -57,7 +57,7 @@ gh board <owner>/<repo>
 ```bash
 gh board-ready <owner>/<repo>
 ```
-*(BypassSandbox: true; alias prefix-matchable. Fallback si el alias no está configurado: `gh project item-list 1 --owner @me --limit 100 --query 'repo:<owner>/<repo> status:"🎯 Ready for Dev"' --format json --jq '.items[] | {number: .content.number, title: .content.title, url: .content.url}'`).*
+*(BypassSandbox: true; alias prefix-matchable. Fallback si el alias no está configurado: `gh project item-list <project_number> --owner <project_owner> --limit 100 --query 'repo:<owner>/<repo> status:"🎯 Ready for Dev"' --format json --jq '.items[] | {number: .content.number, title: .content.title, url: .content.url}'`, donde `<project_number>` y `<project_owner>` se resuelven desde `.repo-config.json` o aplican `1` y `@me` por defecto).*
 2. Elegir ítem prioritario (Top 2-3) y proceder al ciclo E2E.
 
 ---

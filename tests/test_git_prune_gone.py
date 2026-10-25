@@ -234,7 +234,7 @@ class TestGitPruneGone(unittest.TestCase):
         self.assertTrue(self._branch_exists(b_unmerged))
 
     def test_custom_base_branch_and_config(self):
-        """Verifica la resolución de base_branch mediante flag --base y archivo .repo-config.json."""
+        """Verifica la resolución de base_branch mediante archivo .repo-config.json parametrizado."""
         self._git(["checkout", "-b", "dev"])
 
         branch = "feat/dev-feature"
@@ -250,9 +250,14 @@ class TestGitPruneGone(unittest.TestCase):
         self._git(["commit", "-m", "squash into dev"])
         self._create_gone_branch(branch)
 
-        # Crear .repo-config.json declarativo
+        # Crear .repo-config.json declarativo con esquema formal completo
         with open(os.path.join(self.test_dir, ".repo-config.json"), "w", encoding="utf-8") as f:
-            json.dump({"repository_type": "category_b", "base_branch": "dev"}, f)
+            json.dump({
+                "repository_type": "category_b",
+                "base_branch": "dev",
+                "project_number": 2,
+                "project_owner": "@me"
+            }, f)
 
         res = self._run_cli(["--json"])
         self.assertEqual(res.returncode, 0)
@@ -262,6 +267,17 @@ class TestGitPruneGone(unittest.TestCase):
         self.assertEqual(data["pruned"][0]["branch"], branch)
         self.assertEqual(data["pruned"][0]["classification"], "squash-merged")
         self.assertFalse(self._branch_exists(branch))
+
+    def test_config_json_ignored_no_fallback(self):
+        """Verifica que config.json sea ignorado y no haya fallback a él, resolviendo a 'main'."""
+        # Crear config.json espurio (que no debe ser leído)
+        with open(os.path.join(self.test_dir, "config.json"), "w", encoding="utf-8") as f:
+            json.dump({"base_branch": "dev", "repository_type": "category_b"}, f)
+
+        res = self._run_cli(["--json"])
+        self.assertEqual(res.returncode, 0)
+        data = json.loads(res.stdout)
+        self.assertEqual(data["base_branch"], "main")
 
     def _setup_local_remote(self):
         remote_dir = tempfile.mkdtemp(prefix="test_prune_remote_")

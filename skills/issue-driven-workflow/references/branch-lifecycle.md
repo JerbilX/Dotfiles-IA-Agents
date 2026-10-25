@@ -9,11 +9,11 @@ Guía procedimental canónica para el ciclo de vida completo de ramas de trabajo
 Todo desarrollo debe aislarse en una rama dedicada creada antes de modificar cualquier archivo de código del workspace.
 
 ### 1.1 Estrategia de Ramas Troncales (Categorías A y B)
-La estructura de ramas responde a la configuración raíz (`.repo-config.json` o `config.json`):
+La estructura de ramas responde a la configuración raíz declarada en `.repo-config.json`:
 * **Categoría A (Predeterminada - Repositorios Compactos / Tooling / Dotfiles / Librerías):** Troncal única `main`. Las ramas efímeras nacen de `main` y los Pull Requests apuntan directamente a `main`.
 * **Categoría B (Aplicaciones con Despliegue Físico):** Troncal de integración continua `dev` (staging) y troncal de producción `main`. Las ramas efímeras nacen de `dev`, los PRs apuntan a `dev` (`gh pr create --base dev`), y la promoción a `main` se formaliza exclusivamente mediante un *Release PR* con tag SemVer (`vX.Y.Z`).
 
-*(En ausencia de archivo de configuración o si no se explicita `repository_type`, se adopta por defecto Categoría A con `base_branch: "main"`).*
+*(En ausencia de `.repo-config.json` o si no se explicitan sus propiedades, se adopta por defecto Categoría A con `base_branch: "main"`, `project_number: 1` y `project_owner: "@me"`).*
 
 ### 1.2 Nomenclatura Canónica de Ramas Efímeras
 * **Nomenclatura Obligatoria:**
