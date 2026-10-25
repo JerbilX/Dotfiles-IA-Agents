@@ -67,6 +67,9 @@ Para ejecutar el aprovisionamiento completo de directivas, enlaces simbólicos, 
 5. **Configuración de Aliases de GitHub CLI:** Configura de forma idempotente los aliases `board` y `board-ready` en `gh` para consultas prefix-matchables al tablero de Projects v2 sin comillas.
 6. **Auditoría Estática:** Ejecuta automáticamente la suite de verificación (`check`) reportando el estado final de integridad.
 
+### 4.1 Configuración de GitHub Projects v2 (Built-in Workflows)
+Para tableros centrales de proyectos gestionados con GitHub Projects v2, las automatizaciones de transición de estado se configuran una única vez en la interfaz web siguiendo la [Guía de Configuración de Workflows Nativos](setup/projects-v2-workflows.md).
+
 ---
 
 ## 5. Verificación de Salud del Entorno
