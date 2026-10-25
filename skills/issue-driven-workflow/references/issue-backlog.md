@@ -81,10 +81,10 @@ gh project item-add 1 --owner @me --url <issue-url>
 
 ## 7. Taxonomía Canónica de Estados en Projects v2
 
-El campo `Status` del tablero central (Project 1 `Proyectos-IA-V3`) define 6 estados canónicos, cuya transición está desacoplada de la CLI del agente y gobernada por el ciclo nativo de Git/GitHub y los Built-in Workflows:
+El campo `Status` del tablero central (Project 1 `Proyectos-IA-V3`) define 6 estados canónicos, cuya transición está desacoplada de la CLI del agente y gobernada por el ciclo nativo de Git/GitHub y los Built-in Workflows (para la matriz completa de transiciones progresivas y regresivas, ver [`references/state-machine.md`](state-machine.md)):
 
 | Estado | Significado Operativo | Agente Activo | Acciones Permitidas |
-| :--- | :--- | :---: | :--- |
+| :--- | :--- | :--- | :--- |
 | `📥 Backlog` | Tarea registrada desde chats, requerimientos futuros o deuda técnica. Sin priorizar. | No | Consulta y edición de especificación. Prohibido codificar o crear ramas. |
 | `🎯 Ready for Dev` | Tarea priorizada por el usuario, con especificación completa y criterios de aceptación. Lista para ser tomada. | No | Seleccionable para despacho vía Vía B (Backlog). |
 | `📐 In Planning` | Tarea tomada por una sesión de agente. Fase activa de investigación técnica, exploración de dependencias y redacción de `implementation_plan.md` y/o borrador de ADR. | Sí | Lectura de código, tests locales no mutantes, redacción de plan/ADR. Prohibido mutar código de producción hasta aprobación humana (salvo fast-path). |
@@ -127,11 +127,7 @@ Ante preguntas de consulta, estado o coordinación sobre tareas pendientes en el
    ```
    *(Ejecutado con `BypassSandbox: true` obligatorio; sustituir `<owner>/<repo>` por la identificación del repositorio actual).*
 
-   - **Aprovisionamiento Canónico del Alias (vía `./build.sh link` o manual):**
-     ```bash
-     gh alias set --shell board 'gh project item-list 1 --owner @me --limit 100 --query "repo:$1 -status:Done" --format json --jq ".items[] | {number: .content.number, title: .content.title, status: .status}"' --clobber
-     gh alias set --shell board-ready 'gh project item-list 1 --owner @me --limit 100 --query "repo:$1 status:\"🎯 Ready for Dev\"" --format json --jq ".items[] | {number: .content.number, title: .content.title, url: .content.url}"' --clobber
-     ```
+   - **Aprovisionamiento Canónico:** Los aliases `board` y `board-ready` se configuran de forma idempotente mediante `./build.sh link` (ver [`docs/setup.md`](../../../docs/setup.md)).
    - **Fallback sin Alias Configurado:** Si el alias no existe aún en el host, ejecutar la consulta cruda explicitando `--limit 100` para evitar el truncado de 30 ítems:
      ```bash
      gh project item-list 1 --owner @me --limit 100 --query "repo:<owner>/<repo> -status:Done" --format json --jq '.items[] | {number: .content.number, title: .content.title, status: .status}'

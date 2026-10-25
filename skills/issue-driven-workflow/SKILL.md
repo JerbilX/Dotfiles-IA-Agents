@@ -29,7 +29,8 @@ Procedimientos detallados y plantillas en `references/`:
 | :--- | :--- | :--- |
 | **Backlog** | Criterios, Minimal Blast Radius (0-4), 6 estados y Projects v2. | [`references/issue-backlog.md`](references/issue-backlog.md) |
 | **Aprovisionamiento** | `git init`, gate de origin y repo privado en GitHub. | [`references/repo-provisioning.md`](references/repo-provisioning.md) |
-| **Ramas y PRs** | Cat. A/B, higiene, 8 fases E2E, máquina bidireccional y PRs. | [`references/branch-lifecycle.md`](references/branch-lifecycle.md) |
+| **Ramas y PRs** | Cat. A/B, higiene, 8 fases E2E, apertura de PRs y cierre post-merge. | [`references/branch-lifecycle.md`](references/branch-lifecycle.md) |
+| **Máquina de Estados** | Matriz de transiciones progresivas y regresivas (rework, bloqueos, rollback). | [`references/state-machine.md`](references/state-machine.md) |
 | **Code Review** | Ingesta `gh-pr-review`, parches y resolución de hilos. | [`references/code-review.md`](references/code-review.md) |
 | **Rollback** | Reversión con `git revert` y `build.sh rollback`. | [`references/rollback.md`](references/rollback.md) |
 
@@ -67,19 +68,16 @@ gh board-ready <owner>/<repo>
 [1. Ingesta] ──> [2. Higiene] ──> [3. Plan/ADR] ──> [4. Desarrollo] ──> [5. Commit] ──> [6. Push] ──> [7. PR] ──> [8. Cierre & Higiene]
 ```
 
-Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](references/branch-lifecycle.md).
+Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](references/branch-lifecycle.md) y [`references/state-machine.md`](references/state-machine.md).
 
-- [ ] **1. Ingesta:** `gh issue view <id>` (sin llamadas a `gh project item-edit`).
+- [ ] **1. Ingesta:** `gh issue view <id>` (`BypassSandbox: true`; sin llamadas a `gh project item-edit`).
 - [ ] **2. Higiene:** Aislamiento preferente en ≤ 2 llamadas (`git fetch --prune origin` y `git switch --no-track -c <rama> origin/<base>`); poda diferida a Fase 8.
 - [ ] **3. Plan/ADR:** `implementation_plan.md` con gate bloqueante; ADR nace con `status: proposed`.
 - [ ] **4. Desarrollo:** Promover ADR a `status: accepted` al iniciar desarrollo, I/O nativo y verificar con `./build.sh check`.
 - [ ] **5. Commit:** Staging explícito (`git add <rutas>` con `BypassSandbox: true`; prohibido `git add .`/`-A`), redactar en `.commit_msg`, `git commit -F .commit_msg` y limpiar `.commit_msg` en paralelo con la siguiente llamada en el mismo turno.
-- [ ] **6. Push:** Publicar con `git push -u origin <rama>`.
-- [ ] **7. PR:** PR con `Closes #<id>` vía `.pr_body` (ADR viaja como `accepted`); limpiar `.pr_body` en paralelo con el reporte del turno. La apertura del PR y la vinculación nativa activan el estado de revisión en GitHub (`👀 In Review / PR`).
-- [ ] **8. Cierre & Higiene (Done):**
-  - **Fusión Remota por CLI (Vía Preferente):** Ante orden ejecutiva en chat (*"aprobado, mergeá"*), el agente ejecuta `gh pr merge <id> --squash --delete-branch` (`BypassSandbox: true`). Prohibido el merge autónomo sin instrucción humana previa.
-  - **Fusión Web (Vía Alternativa):** El usuario fusiona manualmente en la interfaz web de GitHub.
-  - **Higiene Atómica Post-Merge (≤ 2 llamadas):** En una sola invocación, `git-prune-gone --sync` (`BypassSandbox: true`) conmuta a la base (cubre `dev` en Categoría B), sincroniza (`pull --prune --ff-only`) y poda ramas locales zombi con detección de squash contra la base actualizada. Desmontar worktree si aplica. Built-in Workflows cierra la issue y avanza a `Done` automáticamente (`gh issue view` solo como fallback condicional).
+- [ ] **6. Push:** Publicar con `git push -u origin <rama>` (`BypassSandbox: true`).
+- [ ] **7. PR:** PR con `Closes #<id>` vía `.pr_body` (ADR viaja como `accepted`); limpiar `.pr_body` en paralelo con el reporte del turno. Built-in Workflow avanza tarjeta a `👀 In Review / PR`.
+- [ ] **8. Cierre & Higiene (Done):** Fusión remota con `gh pr merge <id> --squash --delete-branch` (`BypassSandbox: true`; requiere orden humana en chat) o web; Built-in Workflows cierran issue y avanzan a `Done`. Higiene atómica post-merge en ≤ 2 llamadas con `git-prune-gone --sync` (`BypassSandbox: true`). Ver [`references/branch-lifecycle.md`](references/branch-lifecycle.md).
 
 ---
 
