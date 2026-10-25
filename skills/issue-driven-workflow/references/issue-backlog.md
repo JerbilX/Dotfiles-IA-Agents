@@ -73,9 +73,9 @@ Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix
 
 El workflow nativo `Auto-add to project` indexa automáticamente los issues de repositorios que coinciden con su filtro configurado. Para garantizar la indexación inmediata y agnóstica en repositorios fuera de dicho filtro (o como salvaguarda idempotente ante demoras del workflow):
 ```bash
-gh project item-add 1 --owner @me --url <issue-url>
+gh project item-add <project_number> --owner <project_owner> --url <issue-url>
 ```
-*(Ejecutado con `BypassSandbox: true` obligatorio desde el primer intento; `--owner @me` resuelve dinámicamente al usuario autenticado sin comillas).*
+*(Donde `<project_number>` y `<project_owner>` se resuelven desde `.repo-config.json`, aplicando `1` y `@me` por defecto cuando no estén declarados).*
 
 ---
 
@@ -106,7 +106,7 @@ Al completar la creación e indexación, el agente debe reportar al usuario:
 ## 9. Control de Alcance (Scope Creep) y Tareas Derivadas
 
 - El agente **no debe inflar** el objetivo del ticket original con refactors, mejoras o arreglos colaterales no contemplados en la especificación de la issue.
-- Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create --body-file .issue_body`), indexarla al tablero central (`gh project item-add 1 --owner @me --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
+- Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create --body-file .issue_body`), indexarla al tablero central (`gh project item-add <project_number> --owner <project_owner> --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
 - **Vinculación Múltiple en Tareas Derivadas:** Si una tarea de investigación, auditoría forense o spike genera una o más issues derivadas de corrección/implementación, cuando se resuelva la causa raíz y se abra el Pull Request respectivo, el cuerpo del PR (`.pr_body`) DEBE declarar explícitamente el cierre de todas las issues vinculadas:
   ```markdown
   Closes #<issue_derivada>
@@ -118,20 +118,21 @@ Al completar la creación e indexación, el agente debe reportar al usuario:
 
 ## 10. Consultas de Tablero y Coordinación (*"¿qué hay en el board?"*, *"¿con qué seguimos?"*)
 
-Ante preguntas de consulta, estado o coordinación sobre tareas pendientes en el tablero central (Project 1 `Proyectos-IA-V3`):
+Ante preguntas de consulta, estado o coordinación sobre tareas pendientes en el tablero central:
 
 1. **Comando CLI Simple y Filtrado Contextual por Repositorio:**
    Para prevenir la sobrecarga cognitiva y la dilución de contexto provocada por el volcado de inventarios masivos multi-proyecto, la consulta estándar ante preguntas sobre el board debe invocar el alias prefix-matchable `gh board` pasando únicamente el identificador `<owner>/<repo>`:
    ```bash
    gh board <owner>/<repo>
    ```
-   *(Ejecutado con `BypassSandbox: true` obligatorio; sustituir `<owner>/<repo>` por la identificación del repositorio actual).*
+   *(Sustituir `<owner>/<repo>` por la identificación del repositorio actual).*
 
    - **Aprovisionamiento Canónico:** Los aliases `board` y `board-ready` se configuran de forma idempotente mediante `./build.sh link` (ver [`docs/setup.md`](../../../docs/setup.md)).
    - **Fallback sin Alias Configurado:** Si el alias no existe aún en el host, ejecutar la consulta cruda explicitando `--limit 100` para evitar el truncado de 30 ítems:
      ```bash
-     gh project item-list 1 --owner @me --limit 100 --query "repo:<owner>/<repo> -status:Done" --format json --jq '.items[] | {number: .content.number, title: .content.title, status: .status}'
+     gh project item-list <project_number> --owner <project_owner> --limit 100 --query "repo:<owner>/<repo> -status:Done" --format json --jq '.items[] | {number: .content.number, title: .content.title, status: .status}'
      ```
+     *(Donde `<project_number>` y `<project_owner>` se resuelven desde `.repo-config.json` o aplican `1` y `@me` por defecto).*
 
 2. **Priorización Analítica y Recomendación (Top 2 a 3):**
    - **Evaluación Técnica:** El agente debe procesar el listado acotado del repositorio actual y evaluar la relevancia técnica de las tareas:
@@ -142,3 +143,33 @@ Ante preguntas de consulta, estado o coordinación sobre tareas pendientes en el
 
 > [!CAUTION]
 > **Prohibición de Scripts Envoltorios Ad-hoc:** Queda terminantemente prohibido crear scripts intermediarios o efímeros (Python, Node, Bash, ej. `check_board.py`) para consultar, parsear o envolver llamadas a GitHub Projects. `gh` provee filtrado nativo (`--query`, `--field`, `-q / --jq`, `--limit`). Ejecutar scripts envoltorios con `BypassSandbox: true` viola la política de confinamiento de Antigravity (que reserva el bypass exclusivamente para la suite de `git` y `gh`), rompe el *prefix matching* y dispara solicitudes innecesarias de autorización interactiva.
+
+---
+
+## 11. Manifiesto Canónico de Configuración de Repositorio (`.repo-config.json`)
+
+Para desacoplar el comportamiento del flujo de trabajo y la integración con GitHub Projects v2 de valores cableados o supuestos globales, todo repositorio puede definir en su raíz el archivo `.repo-config.json`. Queda formalmente descartado el uso de nombres genéricos como `config.json` para evitar colisiones con frameworks o herramientas del proyecto.
+
+### 11.1 Contrato y Esquema Formal
+
+```json
+{
+  "repository_type": "category_a",
+  "base_branch": "main",
+  "project_number": 1,
+  "project_owner": "@me"
+}
+```
+
+* **`repository_type`** *(string, opcional)*: Estrategia troncal del repositorio. Admite `"category_a"` (Trunk-Based / `main` única) o `"category_b"` (Git-Flow / `dev` -> `main`). Default: `"category_a"`.
+* **`base_branch`** *(string, opcional)*: Rama base de integración y verificación. Default: `"main"` (o `"dev"` en Categoría B).
+* **`project_number`** *(integer, opcional)*: Número del tablero en GitHub Projects v2 al que pertenece el repositorio. Default: `1`.
+* **`project_owner`** *(string, opcional)*: Identificador del propietario del tablero en GitHub Projects v2 (ej. `"@me"` para el usuario autenticado, o el nombre de una organización/usuario específico). Default: `"@me"`.
+
+### 11.2 Resolución Dinámica con Fallback Determinista
+
+Al consultar o interactuar con GitHub Projects v2 (`gh project item-list`, `gh project item-add`, `gh project link`), el agente debe:
+1. Verificar si existe `.repo-config.json` en la raíz del workspace activo mediante herramientas nativas de archivos (`view_file`).
+2. Extraer `project_number` y `project_owner` declarados.
+3. Si el archivo no existe o alguna de las claves está omitida, aplicar de forma automática e inmediata los valores por defecto (`project_number: 1`, `project_owner: "@me"`), garantizando completa compatibilidad hacia atrás y cero intervención manual del usuario.
+

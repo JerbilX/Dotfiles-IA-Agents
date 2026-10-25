@@ -32,22 +32,22 @@ def is_git_repository() -> bool:
 def resolve_base_branch(custom_base: Optional[str] = None) -> str:
     """
     Resuelve la rama base contra la cual verificar la integración.
-    Prioridad: argumento CLI -> .repo-config.json -> config.json -> 'main'.
+    Prioridad: argumento CLI -> .repo-config.json -> 'main'.
     """
     if custom_base:
         return custom_base.strip()
 
-    for cfg_name in [".repo-config.json", "config.json"]:
-        if os.path.isfile(cfg_name):
-            try:
-                with open(cfg_name, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, dict) and "base_branch" in data and isinstance(data["base_branch"], str):
-                        val = data["base_branch"].strip()
-                        if val:
-                            return val
-            except Exception:
-                pass
+    cfg_name = ".repo-config.json"
+    if os.path.isfile(cfg_name):
+        try:
+            with open(cfg_name, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict) and "base_branch" in data and isinstance(data["base_branch"], str):
+                    val = data["base_branch"].strip()
+                    if val:
+                        return val
+        except Exception:
+            pass
 
     return "main"
 
