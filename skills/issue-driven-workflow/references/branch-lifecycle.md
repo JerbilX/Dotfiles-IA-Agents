@@ -67,10 +67,10 @@ git-prune-gone --sync
 * **Fallback Determinista:** Si no está en `$PATH`, invocar `skills/issue-driven-workflow/bin/git-prune-gone`.
 
 ### Paso 3: Planificación y Refinamiento (📐 In Planning)
-* **Blindaje del Planning Mode:** Diagnóstico de errores (bug fixing) o cambios arquitectónicos requieren obligatoriamente `implementation_plan.md` con pausa bloqueante (`RequestFeedback: true`).
+* **Fast-Track por Defecto:** Para requerimientos con especificación técnica completa y criterios de aceptación claros en `🎯 Ready for Dev`, el agente no genera un `implementation_plan.md` bloqueante; avanza directamente al desarrollo activo (Paso 4), concentrando el control humano en el gate del Pull Request.
+* **Freno Obligatorio de Planificación (Stop & Plan):** Requieren obligatoriamente `implementation_plan.md` con pausa bloqueante (`RequestFeedback: true`) las tareas con ambigüedad de diseño, múltiples caminos técnicos posibles, cambios arquitectónicos que introduzcan o modifiquen un ADR (`docs/adr/`) con `status: proposed`, o diagnósticos donde la causa raíz aún no ha sido confirmada empíricamente.
 * **Evaluación de Minimal Blast Radius:** Registrar explícitamente el nivel de intervención más bajo posible (Nivel 0 a 4). Modificar directivas basales (`core/`) exige obligatoriamente la sección **"Justificación de Elevación Basal"**.
-* **Excepción de Fast-Path Ejecutivo:** Si la solución fue debatida y consensuada en el chat activo y el usuario emite orden ejecutiva directa (*"procedé"*, *"avanza"*, *"aplicalo"*), proceder de inmediato sin plan bloqueante.
-* **Registro de ADRs:** Cambios arquitectónicos o estructurales exigen registrar un ADR en `docs/adr/NNNN-titulo.md` con `status: proposed` vía skill `adr-manager`.
+* **Excepción de Fast-Path Ejecutivo:** Si la solución fue debatida y consensuada en el chat activo y el usuario emite orden ejecutiva directa (*"procedé"*, *"avanza"*, *"aplicalo"*), proceder de inmediato sin plan bloqueante redundante.
 
 ### Paso 4: Transición a Desarrollo y Verificación (⚙️ In Progress)
 * Al aprobarse el plan o entrar en fast-path, la tarea entra en desarrollo activo (`⚙️ In Progress`) en la rama local, sin mutaciones CLI en Projects v2.
@@ -114,17 +114,15 @@ git push -u origin <nombre-de-rama>
 
 ### Paso 8: Protocolo de Cierre e Higiene Post-Merge (Done)
 
-La resolución del Pull Request puede operar por dos vías de ejecución:
+La resolución del Pull Request puede operar por tres vías de ejecución:
 
-#### Vía A: Fusión Remota por CLI (Vía Preferente ante Orden Ejecutiva)
-Tras la apertura del PR, si el usuario emite una **orden ejecutiva o aprobación explícita en el chat** (*"aprobado, mergeá"*, *"mergealo"*, *"procede con el merge"*):
+#### Vía A1: Fusión Remota por CLI bajo Orden Ejecutiva (Riel 1 Default - Fast-Track)
+Tras la apertura del PR en el flujo estándar de 1 Gate, el agente reporta el PR y espera la revisión humana. Si el usuario emite una **orden ejecutiva o aprobación explícita en el chat** (*"aprobado, mergeá"*, *"mergealo"*, *"procede con el merge"*):
 1. **Fusión Remota por CLI (`gh pr merge`):**
    ```bash
    gh pr merge <id> --squash --delete-branch
    ```
    *(Incorporar `--auto` si existen checks de CI pendientes).*
-   > [!IMPORTANT]
-   > **Invariante Human-in-the-Loop:** Prohibido invocar `gh pr merge` de forma autónoma. Exige orden ejecutiva explícita en el chat.
 2. **Higiene Atómica Post-Merge con `git-prune-gone --sync` (≤ 2 llamadas de fase):**
    ```bash
    git-prune-gone --sync
@@ -134,6 +132,19 @@ Tras la apertura del PR, si el usuario emite una **orden ejecutiva o aprobación
 3. **Cierre Automático y Verificación Condicional:**
    * La directiva `Closes #<id>` y el merge exitoso activan Built-in Workflows (*Pull request merged* e *Item closed*), cerrando la issue y avanzando la tarjeta a `Done` en Projects v2 de forma desatendida.
    * `gh issue view` o `gh issue close` queda reservado como fallback condicional ante errores de cierre remoto.
+
+#### Vía A2: Auto-Merge Autónomo por CLI (Riel 2 Opt-in - 0 Gates)
+Si el issue cuenta con la etiqueta `automerge` en GitHub o la orden inicial del usuario en el chat lo declaró explícitamente (*"implementa y automergea el issue #<id>"*):
+1. **Evaluación de Circuit Breakers (Frenos de Seguridad):**
+   - El agente verifica el diff local y el blast radius.
+   - Si el cambio modifica directivas basales (`core/`), reglas de runtime (`runtimes/`) o introduce/modifica un ADR (`docs/adr/`) (Niveles 3 y 4 de blast radius), o si `./build.sh check`/tests arrojaron cualquier fallo o advertencia, **el auto-merge se cancela de inmediato**. El agente degrada a **Vía A1**, reportando el PR abierto y solicitando revisión humana con el motivo de la degradación.
+2. **Fusión Autónoma Inmediata:**
+   - Si se superan todos los circuit breakers y los tests locales están en verde, el agente invoca de forma inmediata tras abrir el PR:
+     ```bash
+     gh pr merge <id> --squash --delete-branch
+     ```
+3. **Higiene Atómica Post-Merge:**
+   - Ejecutar inmediatamente `git-prune-gone --sync` y reportar la culminación del ciclo E2E al usuario.
 
 #### Vía B: Fusión Manual en GitHub Web (Vía Alternativa / Fallback)
 1. El usuario revisa, aprueba y fusiona el PR en la interfaz web de GitHub.

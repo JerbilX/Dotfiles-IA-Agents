@@ -25,9 +25,9 @@ Flujo secuencial estándar de avance de una tarea:
 | :--- | :--- | :--- | :--- | :--- |
 | `📥 Backlog` | `🎯 Ready for Dev` | Priorización | Requerimiento maduro con especificación y criterios de aceptación. | Priorización humana (en UI) o asignación. |
 | `🎯 Ready for Dev` | `📐 In Planning` | Despacho de tarea | Sesión de agente asignada al ticket vía instrucción directa o backlog. | Ingesta técnica (`gh issue view`). Fase local de análisis. |
-| `📐 In Planning` | `⚙️ In Progress` | Aprobación de Plan | Aprobación humana explícita de `implementation_plan.md` o fast-path ejecutivo. | Promover ADR a `status: accepted`, iniciar codificación en rama efímera. |
+| `📐 In Planning` | `⚙️ In Progress` | Aprobación de Plan / Fast-Track | Criterios claros en `Ready for Dev` (Fast-Track), aprobación explícita de `implementation_plan.md` o fast-path ejecutivo. | Promover ADR a `status: accepted` (si aplica), iniciar codificación en rama efímera. |
 | `⚙️ In Progress` | `👀 In Review / PR` | Fin de desarrollo | Código probado con `./build.sh check`, commits atómicos y push remoto. | Crear PR con `Closes #<id>` (ADR viaja como `accepted`). Built-in Workflow avanza tarjeta a `👀 In Review / PR`. |
-| `👀 In Review / PR` | `Done` | Merge de PR | Orden ejecutiva en chat (*"aprobado, mergeá"*) o fusión manual en GitHub Web. | Fusión vía `gh pr merge <id> --squash --delete-branch` (o web); Built-in Workflow avanza a `Done`. Ejecutar encadenamiento atómico de higiene (`git-prune-gone --sync`). |
+| `👀 In Review / PR` | `Done` | Merge de PR | **Riel 1:** Orden ejecutiva en chat (*"aprobado, mergeá"*) o fusión web.<br>**Riel 2:** Auto-merge condicional autónomo (label `automerge` y circuit breakers superados). | Fusión vía `gh pr merge <id> --squash --delete-branch` (o web); Built-in Workflow avanza a `Done`. Ejecutar encadenamiento atómico de higiene (`git-prune-gone --sync`). |
 | `📐 In Planning` | `Done` | Conclusión de Spike | Tarea investigativa/auditoría sin cambios de código. | Informe técnico en `.issue_comment` y cierre con `gh issue close <id>`. Built-in Workflow avanza tarjeta a `Done`. |
 
 ---
