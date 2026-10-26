@@ -109,8 +109,14 @@ git push -u origin <nombre-de-rama>
    gh pr create --base <base_branch> --title "<tipo>(<alcance>): <descripción>" --body-file .pr_body
    ```
    *(Si `<base_branch>` es la default del repositorio, `--base` puede omitirse; en Categoría B explicitar `--base dev`).*
-3. La vinculación `Closes #<id>` activa el workflow nativo `Pull request linked to issue` en Projects v2, transicionando la tarjeta a `👀 In Review / PR` sin llamadas manuales de CLI.
-4. Limpiar el archivo temporal (`rm -f .pr_body`, emitido en paralelo con el reporte del turno).
+3. **Indexación de Salvaguarda en Projects v2:**
+   Para asegurar el ingreso inmediato del PR al tablero central en repositorios de Categoría B (donde la base `dev` no dispara el workflow nativo de indexación automática) o repositorios donde `Auto-add to project` carece de reglas globales, ejecutar inmediatamente la indexación determinista utilizando la URL devuelta por `gh pr create`:
+   ```bash
+   gh project item-add <project_number> --owner <project_owner> --url <pr_url>
+   ```
+   *(Donde `<project_number>` y `<project_owner>` se resuelven dinámicamente desde `.repo-config.json`, aplicando `1` y `@me` por defecto cuando no estén declarados).*
+4. La vinculación `Closes #<id>` activa el workflow nativo `Pull request linked to issue` en Projects v2, transicionando la tarjeta a `👀 In Review / PR` sin llamadas manuales de CLI.
+5. Limpiar el archivo temporal (`rm -f .pr_body`, emitido en paralelo con el reporte del turno).
 
 ### Paso 8: Protocolo de Cierre e Higiene Post-Merge (Done)
 
