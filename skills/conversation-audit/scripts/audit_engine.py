@@ -3,11 +3,13 @@
 Motor de cálculo, agregación de métricas y detección de antipatrones para conversation-audit.
 """
 
+import re
+import shlex
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from adapters.base import ConversationMetadata, NormalizedStep, NormalizedToolCall
 
@@ -74,6 +76,114 @@ class AuditEngine:
         "análisis impecable",
         "excelente observación",
     ]
+
+    TERMINAL_TOOL_NAMES = {
+        "run_command",
+        "bash",
+        "execute_command",
+        "terminal",
+        "sh",
+        "run_shell_command",
+    }
+
+    INTERPRETER_REGEX = re.compile(
+        r"^(python(?:\d+(?:\.\d+)?)?|node|nodejs|ruby|perl)(\.exe)?$",
+        re.IGNORECASE,
+    )
+
+    WRAPPERS = {"sudo", "env", "nohup", "time", "winpty"}
+
+    EVAL_FLAGS_BY_RUNTIME = {
+        "python": {"-c"},
+        "node": {"-e", "--eval"},
+        "nodejs": {"-e", "--eval"},
+        "ruby": {"-e"},
+        "perl": {"-e"},
+    }
+
+    NON_EVAL_COMMANDS = {
+        "echo", "cat", "grep", "git", "which", "curl", "wget", "sed", "awk",
+        "find", "rg", "head", "tail", "less", "more", "touch", "rm", "cp", "mv",
+        "ls", "pytest", "cargo", "npm", "yarn", "pnpm", "pip", "pip3", "docker",
+    }
+
+    FALLBACK_INLINE_EVAL_REGEX = re.compile(
+        r"""
+        (?:^|[\s;&|`$()])
+        (?:(?:/[^\s/]+/)*(?:sudo\s+|env\s+(?:\w+=\S+\s+)*)*)?
+        (?P<runtime>python(?:\d+(?:\.\d+)?)?|node|nodejs|ruby|perl)
+        (?:\.exe)?
+        \s+
+        (?:-[a-zA-Z0-9_\-]+\s+)*
+        (?P<flag>-c|-e|--eval)\b
+        """,
+        re.VERBOSE | re.IGNORECASE,
+    )
+
+    @classmethod
+    def check_inline_eval(cls, cmd: str) -> Tuple[bool, str]:
+        """Detecta si un comando invoca una evaluación en línea (REPL) en un intérprete soportado."""
+        cmd_str = cmd.strip()
+        if not cmd_str:
+            return False, ""
+
+        # Descarte rápido de comandos CLI no evaluadores
+        first_word = cmd_str.split()[0].lower()
+        first_word_clean = Path(first_word).name
+        if first_word_clean in cls.NON_EVAL_COMMANDS:
+            return False, ""
+
+        # 1. Análisis estructurado de tokens vía shlex
+        try:
+            tokens = shlex.split(cmd_str)
+        except Exception:
+            tokens = None
+
+        if tokens:
+            idx = 0
+            while idx < len(tokens):
+                tok = tokens[idx]
+                # Saltar asignaciones de variables de entorno (VAR=val)
+                if "=" in tok and not tok.startswith("-"):
+                    idx += 1
+                    continue
+                # Saltar ejecutables envoltorios comunes
+                if tok.lower() in cls.WRAPPERS:
+                    idx += 1
+                    continue
+                break
+
+            if idx < len(tokens):
+                candidate = Path(tokens[idx]).name.lower()
+                if candidate.endswith(".exe"):
+                    candidate = candidate[:-4]
+
+                m = cls.INTERPRETER_REGEX.match(candidate)
+                if m:
+                    runtime_family = "python" if candidate.startswith("python") else candidate
+                    valid_flags = cls.EVAL_FLAGS_BY_RUNTIME.get(runtime_family, {"-c", "-e", "--eval"})
+
+                    # Verificar tokens subsiguientes
+                    for arg in tokens[idx + 1:]:
+                        if arg in valid_flags:
+                            return True, candidate
+                        if not arg.startswith("-"):
+                            # Token no es flag: es el nombre de un archivo script (ej. python script.py -c ...)
+                            return False, ""
+                    return False, ""
+            return False, ""
+
+        # 2. Heurística fallback mediante regex
+        m = cls.FALLBACK_INLINE_EVAL_REGEX.search(cmd_str)
+        if m:
+            rt = m.group("runtime").lower()
+            flag = m.group("flag").lower()
+            rt_family = "python" if rt.startswith("python") else rt
+            valid_flags = cls.EVAL_FLAGS_BY_RUNTIME.get(rt_family, {"-c", "-e", "--eval"})
+            if flag in valid_flags:
+                return True, rt
+
+        return False, ""
 
     def __init__(self, latency_threshold_seconds: float = 60.0):
         self.latency_threshold = latency_threshold_seconds
@@ -311,6 +421,90 @@ class AuditEngine:
                             )
                         )
                         break
+
+        # G. Bucle REPL Iterativo en Terminal (TERMINAL_REPL_LOOP)
+        tool_events: List[Dict[str, Any]] = []
+        for s in steps:
+            for tc in s.tool_calls:
+                is_terminal = tc.name.lower() in self.TERMINAL_TOOL_NAMES
+                cmd = str(
+                    tc.args.get("CommandLine")
+                    or tc.args.get("command")
+                    or tc.args.get("cmd")
+                    or ""
+                ) if isinstance(tc.args, dict) else ""
+
+                is_eval = False
+                rt = ""
+                if is_terminal and cmd:
+                    is_eval, rt = self.check_inline_eval(cmd)
+
+                tool_events.append({
+                    "step_index": s.step_index,
+                    "tool_name": tc.name,
+                    "command": cmd,
+                    "is_eval": is_eval,
+                    "runtime": rt,
+                })
+
+        window_size = 5
+        min_density = 3
+        flagged_indices = set()
+        n_events = len(tool_events)
+
+        for i in range(n_events):
+            window = tool_events[i : i + window_size]
+            eval_indices = [i + offset for offset, ev in enumerate(window) if ev["is_eval"]]
+            if len(eval_indices) >= min_density:
+                flagged_indices.update(eval_indices)
+
+        if flagged_indices:
+            sorted_flagged = sorted(flagged_indices)
+            clusters: List[List[int]] = []
+            curr_cluster: List[int] = []
+
+            for idx in sorted_flagged:
+                if not curr_cluster:
+                    curr_cluster.append(idx)
+                else:
+                    if idx - curr_cluster[-1] <= window_size:
+                        curr_cluster.append(idx)
+                    else:
+                        clusters.append(curr_cluster)
+                        curr_cluster = [idx]
+            if curr_cluster:
+                clusters.append(curr_cluster)
+
+            for cluster in clusters:
+                cluster_events = [tool_events[idx] for idx in cluster]
+                count = len(cluster_events)
+                start_step = cluster_events[0]["step_index"]
+                end_step = cluster_events[-1]["step_index"]
+                runtimes = ", ".join(sorted(set(ev["runtime"] for ev in cluster_events if ev["runtime"]))) or "código en línea"
+
+                if start_step == end_step:
+                    step_desc = f"en el paso {start_step}"
+                else:
+                    step_desc = f"entre los pasos {start_step} y {end_step}"
+
+                antipatterns.append(
+                    DetectedAntipattern(
+                        severity="ALTA",
+                        code="TERMINAL_REPL_LOOP",
+                        title="Bucle REPL Iterativo en Terminal",
+                        step_index=end_step,
+                        description=(
+                            f"Se detectaron {count} ejecuciones de evaluación de código en línea ({runtimes}) "
+                            f"en terminal {step_desc}. Indican un patrón de micro-evaluación iterativa / REPL "
+                            f"costoso e ineficiente."
+                        ),
+                        recommendation=(
+                            "Desalentar el uso de terminal como REPL e indicar la refactorización hacia un script "
+                            "de prueba dedicado en scratch (<appDataDir>/brain/<conversation-id>/scratch/) "
+                            "o tests unitarios locales."
+                        ),
+                    )
+                )
 
         return antipatterns
 

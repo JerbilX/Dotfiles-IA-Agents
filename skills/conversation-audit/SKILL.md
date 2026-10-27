@@ -48,6 +48,7 @@ Guía metodológica, catálogo de métricas y protocolo operativo para la audito
 | `CONSECUTIVE_TOOL_ERRORS` | **CRÍTICA** | Errores Consecutivos en Herramientas | Dos o más fallos de ejecución de herramientas consecutivos. | Activar de inmediato el disyuntor de seguridad (Stop & Ask). Prohibido seguir probando variaciones sin hipótesis fundada. |
 | `HIGH_LATENCY_STEP` | **MEDIA** | Paso de Alta Latencia | Pasos con duración individual superior al umbral configurado (ej. > 60s). | Investigar llamadas bloqueantes de red, búsquedas sin filtro o procesamiento excesivo en terminal. |
 | `TERMINAL_PIPELINING` | **MEDIA** | Encadenamiento en Terminal | Uso de operadores (`&&`, `\|`, `;`, tuberías) en comandos de terminal (`run_command`), rompiendo el *prefix matching* de permisos. | Desacoplar en llamadas CLI atómicas o utilizar herramientas nativas de archivos (`write_to_file`, `replace_file_content`). |
+| `TERMINAL_REPL_LOOP` | **ALTA** | Bucle REPL Iterativo en Terminal | Secuencia o alta densidad de ejecuciones de evaluación en línea en terminal (`python3 -c`, `node -e`, etc.) para pruebas iterativas o exploratorias. | Desalentar el uso de terminal como REPL e indicar la refactorización hacia un script de prueba dedicado en scratch (`<appDataDir>/brain/<conversation-id>/scratch/`) o tests unitarios locales. |
 | `CONTEXT_TRUNCATION` | **ALTA** | Truncamiento de Contexto | Pasos con presencia de `truncated_fields`, reflejando lecturas desmedidas o volcados de logs masivos. | Reemplazar lecturas completas por búsquedas dirigidas (`grep_search`), flags compactos (`--jq`) o paginación. |
 | `COMPLACENCY_DETECTED` | **BAJA** | Complacencia o Adulación Vacía | Respuestas del modelo con frases serviles ("¡Gran idea!", "tienes toda la razón", "disculpa las molestias"). | Cumplir estrictamente `core/01-critical-feedback.md`. Mantener tono asertivo, objetivo y neutro. |
 
@@ -131,7 +132,7 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
 
 ### Paso 3: Evaluación de Hallazgos
 - Contrastar el desglose de herramientas: identificar si herramientas pesadas como `search_web` o `run_command` monopolizan el tiempo de ejecución.
-- Inspeccionar si existen antipatrones de `CONSECUTIVE_TOOL_ERRORS` o `REPETITIVE_TOOL_LOOP`.
+- Inspeccionar si existen antipatrones de `CONSECUTIVE_TOOL_ERRORS`, `REPETITIVE_TOOL_LOOP` o `TERMINAL_REPL_LOOP`.
 - Revisar los pasos de mayor latencia y contrastarlos con las operaciones realizadas.
 
 ### Paso 4: Registro y Retroalimentación
