@@ -7,7 +7,7 @@ RUNTIMES_BASE_DIR="${SCRIPT_DIR}/runtimes"
 SCHEMA_FILE="${RUNTIMES_BASE_DIR}/schema/runtime-config.schema.json"
 MCP_SCHEMA_FILE="${RUNTIMES_BASE_DIR}/schema/mcp-server.schema.json"
 SKILLS_DIR="${SCRIPT_DIR}/skills"
-MAX_CONTEXT_WORDS="${MAX_CONTEXT_WORDS:-4000}"
+MAX_CONTEXT_WORDS="${MAX_CONTEXT_WORDS:-800}"
 MAX_MODULE_WORDS="${MAX_MODULE_WORDS:-300}"
 MAX_README_WORDS="${MAX_README_WORDS:-600}"
 
@@ -575,7 +575,7 @@ compile_runtime_build() {
   AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
   Source repository: Dotfiles-IA-Agents
   Runtime: ${r}
-  Components: core/*.md, runtimes/${r}/rules/*.md
+  Components: core/00-router.md, core/01-objectivity.md, runtimes/${r}/rules/*.md
   =============================================================================
 -->
 
@@ -592,12 +592,13 @@ EOF
         done
     fi
 
+    local basal_core_rules=("00-router.md" "01-objectivity.md")
     local first=true
-    for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
-        local fname
-        fname="$(basename "$f")"
+    for fname in "${basal_core_rules[@]}"; do
+        local f="${CORE_DIR}/${fname}"
+        [ ! -f "$f" ] && continue
         if [ ${#suppressed_rules[@]} -gt 0 ] && is_rule_suppressed "${fname}" "${suppressed_rules[@]}"; then
-            echo "  [-] [${r}] Directiva core omitida por configuración de runtime: ${fname}"
+            echo "  [-] [${r}] Directiva core basal omitida por configuración de runtime: ${fname}"
             continue
         fi
         if [ "$first" = false ]; then
@@ -731,6 +732,13 @@ link_runtime() {
         echo "==> [link] [${r}] Creando symlink atómico: ${target_file} -> ${dist_file}..."
         ln -sfn "${dist_file}" "${target_file}"
         echo "==> [link] [${r}] Symlink establecido exitosamente."
+    fi
+
+    # Enlace de directivas modulares core hacia target_dir para soporte multi-workspace
+    local target_core_dir="${target_dir}/core"
+    if [ ! -e "${target_core_dir}" ] && [ ! -L "${target_core_dir}" ]; then
+        echo "==> [link] [${r}] Creando symlink de directivas modulares: ${target_core_dir} -> ${CORE_DIR}..."
+        ln -sfn "${CORE_DIR}" "${target_core_dir}"
     fi
 
     link_runtime_mcp "${r}"
@@ -1105,6 +1113,7 @@ CHECK_WARNINGS=0
 
 check_core_rules() {
     local seen_core_prefixes=()
+    local core_broken_links=0
     for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
         local fname
         fname="$(basename "$f")"
@@ -1128,7 +1137,55 @@ check_core_rules() {
             echo "  [!] Advertencia: core/${fname} supera el umbral modular (${w} > ${MAX_MODULE_WORDS} palabras). Evaluar extracción a skill (ADR-0013)" >&2
             CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
         fi
+
+        # Verificación de integridad de enlaces relativos en Markdown (ADR-0038)
+        if command -v python3 >/dev/null 2>&1; then
+            local broken_list
+            broken_list="$(python3 -c '
+import re, os, sys
+file_path, repo_root = sys.argv[1], sys.argv[2]
+with open(file_path, "r", encoding="utf-8") as fp:
+    content = fp.read()
+links = re.findall(r"\[.*?\]\(([^)\s#?]+)(?:[#?][^\s)]*)?\)", content)
+for l in links:
+    if not l.startswith(("http://", "https://", "mailto:", "#")):
+        target = os.path.join(repo_root, l)
+        if not os.path.exists(target):
+            print(l)
+' "$f" "${SCRIPT_DIR}")"
+            if [ -n "${broken_list}" ]; then
+                while IFS= read -r broken_target; do
+                    [ -z "${broken_target}" ] && continue
+                    echo "  [✗] Enlace roto en core/${fname}: ${broken_target}" >&2
+                    CHECK_ERRORS=$((CHECK_ERRORS + 1))
+                    core_broken_links=$((core_broken_links + 1))
+                done <<< "${broken_list}"
+            fi
+        fi
     done
+
+    if [ "${core_broken_links}" -eq 0 ]; then
+        echo "  [✓] Directivas Core: Enlaces relativos verificados"
+    fi
+
+    # Verificación de indexación de módulos en core/00-router.md (ADR-0038)
+    local router_file="${CORE_DIR}/00-router.md"
+    if [ -f "${router_file}" ]; then
+        local unindexed_modules=0
+        for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
+            local fname
+            fname="$(basename "$f")"
+            [[ "${fname}" == "00-router.md" || "${fname}" == "01-objectivity.md" ]] && continue
+            if ! grep -Fq "core/${fname}" "${router_file}"; then
+                echo "  [✗] Módulo core/${fname} no está indexado en core/00-router.md" >&2
+                CHECK_ERRORS=$((CHECK_ERRORS + 1))
+                unindexed_modules=$((unindexed_modules + 1))
+            fi
+        done
+        if [ "${unindexed_modules}" -eq 0 ]; then
+            echo "  [✓] Router de Progressive Disclosure: Todos los módulos core están indexados"
+        fi
+    fi
 }
 
 check_runtime() {
@@ -1400,6 +1457,30 @@ check_runtime() {
                 echo "  [!] Advertencia [${r}]: rules/${fname} supera el umbral modular (${w} > ${MAX_MODULE_WORDS} palabras). Evaluar extracción a skill (ADR-0013)" >&2
                 CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
             fi
+
+            # Verificación de integridad de enlaces relativos en Markdown (ADR-0038)
+            if command -v python3 >/dev/null 2>&1; then
+                local broken_rules_list
+                broken_rules_list="$(python3 -c '
+import re, os, sys
+file_path, repo_root = sys.argv[1], sys.argv[2]
+with open(file_path, "r", encoding="utf-8") as fp:
+    content = fp.read()
+links = re.findall(r"\[.*?\]\(([^)\s#?]+)(?:[#?][^\s)]*)?\)", content)
+for l in links:
+    if not l.startswith(("http://", "https://", "mailto:", "#")):
+        target = os.path.join(repo_root, l)
+        if not os.path.exists(target):
+            print(l)
+' "$f" "${SCRIPT_DIR}")"
+                if [ -n "${broken_rules_list}" ]; then
+                    while IFS= read -r broken_target; do
+                        [ -z "${broken_target}" ] && continue
+                        echo "  [✗] [${r}] Enlace roto en rules/${fname}: ${broken_target}" >&2
+                        CHECK_ERRORS=$((CHECK_ERRORS + 1))
+                    done <<< "${broken_rules_list}"
+                fi
+            fi
         done
     fi
 
@@ -1483,7 +1564,7 @@ check_runtime() {
     if [ -f "${dist_file}" ]; then
         local w
         w="$(wc -w < "${dist_file}" | tr -d ' ')"
-        local max_w="${MAX_CONTEXT_WORDS:-4000}"
+        local max_w="${MAX_CONTEXT_WORDS:-800}"
         local pct=$(( w * 100 / max_w ))
         if [ "${w}" -gt "${max_w}" ]; then
             echo "  [!] Advertencia [${r}]: Presupuesto de contexto superado: ${w} / ${max_w} palabras (${pct}%)" >&2
