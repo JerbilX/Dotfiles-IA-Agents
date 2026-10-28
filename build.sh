@@ -575,7 +575,7 @@ compile_runtime_build() {
   AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
   Source repository: Dotfiles-IA-Agents
   Runtime: ${r}
-  Components: core/*.md, runtimes/${r}/rules/*.md
+  Components: core/00-router.md, core/01-objectivity.md, runtimes/${r}/rules/*.md
   =============================================================================
 -->
 
@@ -592,12 +592,13 @@ EOF
         done
     fi
 
+    local basal_core_rules=("00-router.md" "01-objectivity.md")
     local first=true
-    for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
-        local fname
-        fname="$(basename "$f")"
+    for fname in "${basal_core_rules[@]}"; do
+        local f="${CORE_DIR}/${fname}"
+        [ ! -f "$f" ] && continue
         if [ ${#suppressed_rules[@]} -gt 0 ] && is_rule_suppressed "${fname}" "${suppressed_rules[@]}"; then
-            echo "  [-] [${r}] Directiva core omitida por configuración de runtime: ${fname}"
+            echo "  [-] [${r}] Directiva core basal omitida por configuración de runtime: ${fname}"
             continue
         fi
         if [ "$first" = false ]; then
@@ -731,6 +732,13 @@ link_runtime() {
         echo "==> [link] [${r}] Creando symlink atómico: ${target_file} -> ${dist_file}..."
         ln -sfn "${dist_file}" "${target_file}"
         echo "==> [link] [${r}] Symlink establecido exitosamente."
+    fi
+
+    # Enlace de directivas modulares core hacia target_dir para soporte multi-workspace
+    local target_core_dir="${target_dir}/core"
+    if [ ! -e "${target_core_dir}" ] && [ ! -L "${target_core_dir}" ]; then
+        echo "==> [link] [${r}] Creando symlink de directivas modulares: ${target_core_dir} -> ${CORE_DIR}..."
+        ln -sfn "${CORE_DIR}" "${target_core_dir}"
     fi
 
     link_runtime_mcp "${r}"
@@ -1158,6 +1166,25 @@ for l in links:
 
     if [ "${core_broken_links}" -eq 0 ]; then
         echo "  [✓] Directivas Core: Enlaces relativos verificados"
+    fi
+
+    # Verificación de indexación de módulos en core/00-router.md (ADR-0038)
+    local router_file="${CORE_DIR}/00-router.md"
+    if [ -f "${router_file}" ]; then
+        local unindexed_modules=0
+        for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
+            local fname
+            fname="$(basename "$f")"
+            [[ "${fname}" == "00-router.md" || "${fname}" == "01-objectivity.md" ]] && continue
+            if ! grep -Fq "core/${fname}" "${router_file}"; then
+                echo "  [✗] Módulo core/${fname} no está indexado en core/00-router.md" >&2
+                CHECK_ERRORS=$((CHECK_ERRORS + 1))
+                unindexed_modules=$((unindexed_modules + 1))
+            fi
+        done
+        if [ "${unindexed_modules}" -eq 0 ]; then
+            echo "  [✓] Router de Progressive Disclosure: Todos los módulos core están indexados"
+        fi
     fi
 }
 

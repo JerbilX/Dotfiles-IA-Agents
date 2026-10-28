@@ -17,83 +17,62 @@ Dado que el runtime de Antigravity inyecta este contenido de forma estática en 
 2. Degradación de la capacidad atencional del modelo (*context rot* y *lost in the middle*).
 3. Inyección innecesaria de guías procedimentales y flujos operativos detallados (como fases exhaustivas de PR, interacción con tableros o sintaxis de herramientas secundarias) que solo se requieren bajo demanda ante tareas específicas.
 
-El umbral histórico de 4.000 palabras fijado en [ADR-0008](0008-telemetria-de-presupuesto-de-contexto-y-subcomando-check.md) y la poda sustractiva previa de [ADR-0016](0016-poda-sustractiva-de-directivas-core-y-consolidacion-de-invariantes.md) resultan insuficientes para entornos multi-agente modernos que demandan máxima ligereza basal.
+Intentar resolver este sobrecosto mediante poda o acortamiento textual de los archivos en `core/` introduce riesgos inaceptables de regresión normativa, pérdida de precisión prescriptiva y ambigüedad. Se requiere una arquitectura de **Progressive Disclosure pura** que mantenga la separación modular ya implementada en `core/` sin alterar el contenido de las directivas operativas.
 
 ## Impulsores de la Decisión (Decision Drivers)
 
 * **Presupuesto Basal Ultracompacto:** Reducir el contenido inyectado en `AGENTS.md` a $\le 800$ palabras (reducción $> 55\%$).
-* **Arquitectura de Divulgación Progresiva (Progressive Disclosure):** Aprovechar las tres capas nativas de ejecución de Antigravity:
-  - *L1 Discovery:* Descubrimiento en prompt del catálogo de skills (~100 tokens por skill).
-  - *L2 Activation:* Activación explícita mediante lectura de `SKILL.md` bajo demanda.
-  - *L3 Execution:* Ejecución profunda consultando `references/`, scripts y binarios especializados.
-* **Preservación Inmutable de Invariantes Críticos:** Ningún principio de seguridad, confinamiento de sandbox, inmutabilidad de `main`, objetividad técnica o control de alucinaciones debe verse comprometido ni diluido.
-* **Trazabilidad Semántica Link-Driven:** Sustituir prosa procedimental extensa en `core/` por invariantes directos combinados con enlaces relativos navegables hacia skills y directivas especializadas.
-* **Validación Automatizada e Idempotente:** Garantizar que `./build.sh check` y la suite de tests unitarios verifiquen de forma estricta la nueva cuota basal ($\le 800$ palabras) y la integridad referencial de todos los enlaces relativos.
+* **Arquitectura de Divulgación Progresiva (Progressive Disclosure):** Aprovechar las tres capas de ejecución:
+  - *Capa 1 (Basal / Turno 0):* Inyectada en `AGENTS.md`, con invariantes irreductibles y el router de directivas.
+  - *Capa 2 (Modular / Bajo Demanda):* Archivos en `core/*.md` y `skills/*/SKILL.md`, consultados mediante `view_file` al activarse su disparador.
+  - *Capa 3 (Ejecución):* Referencias profundas en `skills/*/references/*.md`, binarios y scripts.
+* **Integridad Absoluta de Directivas:** Preservar al 100% el texto canónico de los módulos de ingeniería, git, backlog, PRs y entorno en `core/`, sin recortes ni mutilaciones.
+* **Trazabilidad Semántica Link-Driven:** Sintaxis determinista de disparadores en el router (`If [context], read [core/XX-....md](core/XX-....md) first.`).
+* **Soporte Multi-Workspace:** Garantizar que el directorio modular `core/` sea accesible tanto en el repositorio anfitrión como en workspaces secundarios enlazados.
+* **Validación Automatizada e Idempotente:** `./build.sh check` y la suite de tests unitarios verifican la cuota basal ($\le 800$ palabras), la cuota modular ($\le 300$ palabras), la integridad de enlaces relativos y la indexación exhaustiva de módulos.
 
 ## Opciones Consideradas
 
-* **Opción 1: Índice Link-Driven Puro.** Reducir `AGENTS.md` a una lista de enlaces Markdown hacia archivos en `docs/` o `skills/` sin texto normativo.  
-  *Descarte:* Degrada severamente la gobernanza de seguridad basal; los modelos pueden ignorar enlaces en turnos iniciales o cometer infracciones de sandbox/git antes de cargar un skill.
-* **Opción 2: Poda Textual sin Reestructuración Arquitectónica.** Abreviar palabras de forma telegráfica manteniendo todas las guías procedimentales en el core.  
-  *Descarte:* No escala; genera directivas crípticas y mantiene el acoplamiento procedimental en la base.
-* **Opción 3: Arquitectura Híbrida de Progressive Disclosure (Invariantes Basales + Indexación Semántica a Skills).**  
-  Conservar en `core/*.md` y `rules/` estrictamente los invariantes no negociables (objetividad, confinamiento, inmutabilidad de git, circuito de feedback y límites de sandbox) y delegar todos los procedimientos operativos detallados a sus respectivos skills (`issue-driven-workflow`, `adr-manager`, etc.) enlazados semánticamente.
+* **Opción 1: Índice Link-Driven Puro sin Invariantes.** Reducir `AGENTS.md` a enlaces sin texto normativo.  
+  *Descarte:* Degrada la gobernanza de seguridad basal; el modelo puede cometer infracciones de sandbox o complacencia en el Turno 0 antes de consultar enlaces.
+* **Opción 2: Poda Textual de Módulos (Compresión).** Abreviar párrafos dentro de `core/*.md` para que la concatenación quepa bajo 800 palabras.  
+  *Descarte:* Antipatrón destructivo; incrementa el riesgo de ambigüedad y despoja a las reglas de sus precisiones técnicas esenciales.
+* **Opción 3: Arquitectura de Progressive Disclosure con Enrutador Basal y Preservación Íntegra de `core/`.**  
+  Mantener los 10 módulos de `core/` en su estado canónico completo e implementar `core/00-router.md` junto con `core/01-objectivity.md` como la Capa Basal compilada en `AGENTS.md`. `build.sh` compila exclusivamente la base normativa y enlaza hacia `core/` bajo demanda.
 
 ## Decisión Adoptada
 
 Opción elegida: **Opción 3**, estructurada en los siguientes pilares:
 
-### 1. Invariantes Basales Irreductibles en `core/` y `rules/`
-Se condensan los 10 módulos de `core/` y la regla de runtime `01-sandbox.md` eliminando prosa procedimental redundante, manteniendo 100% activos los principios de:
-- Feedback crítico y objetividad técnica (cero complacencia, sin adulación).
-- Prohibición estricta de push/merge a `main` y gate humano para inicialización remota.
-- Aislamiento e inmunidad normativa frente a registros históricos; MADR en `docs/adr/`.
-- Disciplina de búsqueda local-first y circuit breakers estrictos (web máx 3, red máx 3-5).
-- Anti-rigidez, degradación elegante y continuidad operativa (*Actionable Fallback*).
-- Prevalencia del código de producción sobre arneses de test y *Minimal Blast Radius* (Niveles 0 a 4).
-- Cero tolerancia a la alucinación (Stop & Ask, Fast-Track vs Stop & Plan).
-- Prohibición de backlogs locales (`TODO.md`) y estructura canónica de 6 estados en Projects v2.
-- Inmutabilidad del workspace, tickets previos, ramas efímeras y flujo de PRs.
-- Confinamiento estricto al workspace, I/O exclusivo vía APIs nativas y prohibición de REPL interactivo.
-- Especialización de sandbox en Antigravity: `BypassSandbox: true` exclusivo para mutadores de `git`, `gh` y CLIs de soporte; commits atómicos con `.commit_msg`.
+### 1. Desacoplamiento Basal vs Modular en `core/`
+- **Capa Basal (Turno 0 en `AGENTS.md`):**
+  - `core/00-router.md`: Define los invariantes universales de confinamiento estricto a workspace, uso exclusivo de APIs nativas de I/O, e inmutabilidad de `main`, junto con el router condicional hacia todos los módulos.
+  - `core/01-objectivity.md`: Invariantes permanentes de feedback crítico y objetividad técnica (cero complacencia, cuestionar y proponer, cero adulación o disculpas).
+  - Reglas de runtime (`runtimes/*/rules/*.md`): Especializaciones duras (ej. bypass de sandbox obligatorio en mutadores `git` y `gh` para Antigravity).
+- **Capa Modular (Bajo Demanda en `core/`):**
+  - `core/02-git-lifecycle.md` a `core/10-environment-standards.md` permanecen íntegros en disco sin ninguna alteración textual.
 
-### 2. Punteros Condicionales Link-Driven y Delegación a Skills (L2/L3)
-A diferencia de una simple poda sustractiva (que busca acortar párrafos con el riesgo de diluir matices y alterar el rigor prescriptivo), el Progressive Disclosure desacopla el flujo en capas:
-- **Invariantes Basales en Turno 0:** Principios que no admiten fallback y rigen de forma permanente (seguridad, confinamiento, APIs nativas, inmutabilidad).
-- **Trigger Pointers Condicionales:** Las directivas de enlace adoptan una sintaxis imperativa determinista bajo la fórmula:
-  `Al [condición / acción], leer obligatoriamente [ruta](ruta) antes de [proceder / actuar].`
-- **Preservación Íntegra del Detalle en L2/L3:** Las especificaciones operativas completas, guías paso a paso, tablas de transición y plantillas CLI no se mutilan; residen íntegras en los skills (`skills/*/SKILL.md`) y sus guías de referencia (`skills/*/references/*.md`), siendo consultadas bajo demanda mediante `view_file` al activarse el disparador correspondiente.
+### 2. Disparadores Condicionales Deterministas
+El router `core/00-router.md` indexa cada módulo modular con la sintaxis estándar:
+`If [condición / tarea], read [core/XX-....md](core/XX-....md) first.`
+Los agentes leen el archivo correspondiente con `view_file` al iniciar una tarea que active la condición.
 
-### 3. Presupuesto Basal Compacto ($\le 800$ palabras)
-Se reconfigura el presupuesto basal del repositorio:
-- `MAX_CONTEXT_WORDS="${MAX_CONTEXT_WORDS:-800}"` en `build.sh`.
-- El System Prompt compilado final (`dist/antigravity/AGENTS.md`) debe mantenerse por debajo de las 800 palabras (con un objetivo real de ~700-750 palabras).
+### 3. Pipeline de Compilación y Enlace en `build.sh`
+- `compile_runtime_build()`: Compila exclusivamente `CORE_BASAL_RULES=("00-router.md" "01-objectivity.md")` y las reglas del runtime en `dist/<runtime>/AGENTS.md`.
+- `link_runtime()`: Crea symlink `${target_dir}/core -> ${CORE_DIR}` para asegurar la resolución de enlaces relativos en cualquier workspace del sistema anfitrión.
+- `check_core_rules()`: Verifica que ningún módulo supere `MAX_MODULE_WORDS=300`, que todos los enlaces relativos resuelvan, y que todo módulo `02`..`10` esté indexado en `00-router.md`.
 
-### 4. Verificación de Enlaces e Integridad en `build.sh check` y Suite de Pruebas
-- Se incorpora en `build.sh check` la verificación estática de enlaces relativos en `core/*.md` para prevenir enlaces rotos.
-- Se implementa `tests/test_progressive_disclosure.py` para asegurar que las cuotas de palabras, enlaces relativos y dominios normativos se validen en cada ejecución de la suite de tests.
+### 4. Presupuesto de Contexto y Telemetría
+- `MAX_CONTEXT_WORDS=800` en `build.sh`.
+- Resultado compilado real: ~709 palabras en Antigravity (88% del presupuesto) y ~410 palabras en Claude (51% del presupuesto).
 
 ## Consecuencias
 
 ### Positivas
-* **Ahorro Masivo de Tokens:** Reducción de ~1.966 a $\le 800$ palabras por turno de inferencia (ahorro $> 55\%$, ~1.500 tokens por turno), optimizando radicalmente la ventana de contexto y los costos de sesión.
-* **Prevención de Context Rot:** Se elimina la dilución atencional producida por reglas procedimentales secundarias durante turnos exploratorios o de codificación.
-* **Integridad Normativa Intacta:** Todas las salvaguardas de seguridad, permisos de sandbox y gobernanza permanecen activas en cada turno.
-* **Navegabilidad Link-Driven:** Los agentes disponen de rutas directas a las guías L2/L3 cuando requieren ejecutar tareas procedimentales.
+* **Ahorro Masivo de Tokens:** Reducción de ~1.966 a 709 palabras en Antigravity (~1.500 tokens ahorrados por turno), mitigando aceleradamente el *context rot*.
+* **Preservación Normativa al 100%:** Las directivas de ingeniería, backlog, workflow de issues y estándares de entorno conservan todo su rigor prescriptivo original.
+* **Integridad Referencial Garantizada:** La auditoría estática (`build.sh check`) y la suite unitaria aseguran que no existan módulos huérfanos ni enlaces rotos.
+* **Compatibilidad Multi-Workspace:** Symlink automático de `core/` en el anfitrión asegura funcionamiento transparente entre múltiples repositorios.
 
 ### Negativas / Trade-offs
-* Al condensar la prosa basal, los procedimientos detallados requieren que el agente active y lea el `SKILL.md` o las referencias correspondientes al comenzar una tarea (comportamiento ya estandarizado en el workflow).
-
-### Pros y Contras de las Opciones
-
-#### Opción 1: Índice Link-Driven Puro
-* **Pro:** Máxima brevedad basal (< 200 palabras).
-* **Contra:** Pérdida de enforcement inmediato de seguridad e invariantes basales en el turno 0.
-
-#### Opción 2: Poda Textual Simple
-* **Pro:** Mantiene toda la información en un solo documento.
-* **Contra:** Incapaz de alcanzar la meta de $\le 800$ palabras sin mutilar directivas operativas.
-
-#### Opción 3: Arquitectura Híbrida de Progressive Disclosure (Elegida)
-* **Pro:** Balance óptimo entre rigidez basal de seguridad e invariantes, y extensibilidad procedimental bajo demanda.
-* **Contra:** Exige mantener sincronizadas las referencias entre `core/` y `skills/`.
+* Tareas operativas especializadas requieren un turno de lectura (`view_file [core/XX-....md]`) previo a la ejecución si el agente no tiene la directiva en contexto. Esto se mitiga con la inyección basal de los invariantes críticos que impiden violaciones de seguridad o sandbox.

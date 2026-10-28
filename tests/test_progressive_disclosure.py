@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Unit tests for Progressive Disclosure architecture, basal word budget (<= 800 words),
-relative link integrity, and core invariants preservation (ADR-0038).
+modular word budget (<= 300 words), relative link integrity, and core invariants preservation (ADR-0038).
 """
 
 import glob
@@ -41,15 +41,15 @@ class TestProgressiveDisclosure(unittest.TestCase):
         )
 
     def test_core_rules_word_budget(self):
-        """Each core module must stay below 150 words for high density."""
+        """Each core module must stay below 300 words (ADR-0013 modular threshold)."""
         core_files = glob.glob(os.path.join(CORE_DIR, "*.md"))
         self.assertGreaterEqual(len(core_files), 10, "Expected at least 10 core rule files")
         for cf in core_files:
             with open(cf, "r", encoding="utf-8") as f:
                 words = len(f.read().split())
             self.assertLessEqual(
-                words, 150,
-                f"{os.path.basename(cf)} exceeds 150 words threshold: {words} words"
+                words, 300,
+                f"{os.path.basename(cf)} exceeds 300 words threshold: {words} words"
             )
 
     def test_relative_links_integrity(self):
@@ -75,7 +75,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
         )
 
     def test_core_invariants_preserved(self):
-        """All critical invariant domains must be explicitly preserved in core/."""
+        """All critical invariant domains must be explicitly preserved across core/."""
         all_core_content = ""
         for cf in sorted(glob.glob(os.path.join(CORE_DIR, "*.md"))):
             with open(cf, "r", encoding="utf-8") as f:
@@ -83,28 +83,58 @@ class TestProgressiveDisclosure(unittest.TestCase):
 
         required_invariants = [
             "Cero complacencia",
-            "Inicialización Proactiva",
-            "Gate Remoto",
+            "Inicialización Local Proactiva",
+            "Gate de Confirmación",
             "Fuente Canónica",
             "Inmunidad Normativa",
             "Local-First",
             "Circuit Breaker",
             "Frontera de Directivas",
             "Actionable Fallback",
-            "Prevalencia de Producción",
+            "Prevalencia del Código de Producción",
             "Minimal Blast Radius",
             "Inconsistencia Lógica",
             "Stop & Plan",
-            "Backlog Canónico",
+            "Prohibición de Backlogs Locales",
             "Inmutabilidad de Workspace",
-            "APIs Nativas",
-            "Confinamiento",
+            "Uso Exclusivo de",
+            "Límites de Workspace",
         ]
 
         for inv in required_invariants:
             self.assertIn(
                 inv, all_core_content,
                 f"Core invariant marker missing: '{inv}'"
+            )
+
+    def test_router_trigger_pointers_format(self):
+        """core/00-router.md must use standard progressive disclosure triggers ('If ..., read [...] first.')."""
+        router_path = os.path.join(CORE_DIR, "00-router.md")
+        self.assertTrue(os.path.isfile(router_path), f"Missing router: {router_path}")
+        with open(router_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        trigger_pattern = re.compile(r"If\s+[^,\n]+(?:,[^,\n]+)*,\s+read\s+\[.*?\]\(.*?\).*?\s+first\.", re.IGNORECASE)
+        matches = trigger_pattern.findall(content)
+        self.assertEqual(
+            len(matches), 9,
+            f"Expected exactly 9 trigger pointers in core/00-router.md, found: {len(matches)}"
+        )
+
+    def test_all_core_modules_indexed_in_router(self):
+        """Every core module from 02-*.md to 10-*.md must be referenced in core/00-router.md."""
+        router_path = os.path.join(CORE_DIR, "00-router.md")
+        self.assertTrue(os.path.isfile(router_path), f"Missing router: {router_path}")
+        with open(router_path, "r", encoding="utf-8") as f:
+            router_content = f.read()
+
+        for cf in sorted(glob.glob(os.path.join(CORE_DIR, "*.md"))):
+            fname = os.path.basename(cf)
+            if fname in ("00-router.md", "01-objectivity.md"):
+                continue
+            self.assertIn(
+                f"core/{fname}", router_content,
+                f"Core module '{fname}' is not indexed in core/00-router.md"
             )
 
     def test_adr_0038_metadata(self):
@@ -119,20 +149,6 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("status: accepted", content, "ADR-0038 must be accepted upon plan approval")
         self.assertIn("supersedes:", content, "ADR-0038 must specify supersedes")
         self.assertIn("Progressive Disclosure", content, "ADR-0038 title/content must describe Progressive Disclosure")
-
-    def test_trigger_pointers_format(self):
-        """Core modules that delegate procedures must use explicit trigger pointers ('Al ..., leer obligatoriamente [...] antes de ...')."""
-        all_core_content = ""
-        for cf in sorted(glob.glob(os.path.join(CORE_DIR, "*.md"))):
-            with open(cf, "r", encoding="utf-8") as f:
-                all_core_content += f.read() + "\n"
-
-        trigger_pattern = re.compile(r"Al\s+[^,]+,\s+leer obligatoriamente\s+\[.*?\]\(.*?\)", re.IGNORECASE)
-        matches = trigger_pattern.findall(all_core_content)
-        self.assertGreaterEqual(
-            len(matches), 5,
-            f"Expected at least 5 explicit trigger pointers in core rules, found: {len(matches)}"
-        )
 
 
 if __name__ == "__main__":
