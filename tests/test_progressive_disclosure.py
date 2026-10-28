@@ -120,6 +120,20 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("supersedes:", content, "ADR-0038 must specify supersedes")
         self.assertIn("Progressive Disclosure", content, "ADR-0038 title/content must describe Progressive Disclosure")
 
+    def test_trigger_pointers_format(self):
+        """Core modules that delegate procedures must use explicit trigger pointers ('Al ..., leer obligatoriamente [...] antes de ...')."""
+        all_core_content = ""
+        for cf in sorted(glob.glob(os.path.join(CORE_DIR, "*.md"))):
+            with open(cf, "r", encoding="utf-8") as f:
+                all_core_content += f.read() + "\n"
+
+        trigger_pattern = re.compile(r"Al\s+[^,]+,\s+leer obligatoriamente\s+\[.*?\]\(.*?\)", re.IGNORECASE)
+        matches = trigger_pattern.findall(all_core_content)
+        self.assertGreaterEqual(
+            len(matches), 5,
+            f"Expected at least 5 explicit trigger pointers in core rules, found: {len(matches)}"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

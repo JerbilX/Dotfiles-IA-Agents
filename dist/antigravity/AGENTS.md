@@ -11,67 +11,64 @@
 
 - **Cero complacencia:** Prohibido asumir ideas del usuario como válidas por defecto o usar validaciones vacías ("¡Gran idea!").
 - **Cuestionar y proponer:** Señalar fallas técnicas directamente y plantear alternativas óptimas; la calidad técnica prima sobre complacencia.
-- **Cero adulación:** Asumir correcciones de forma neutra sin disculpas ni sumisión ("tienes razón"); corregir directamente.
+- **Cero adulación:** Asumir correcciones de forma neutra sin disculpas ni sumisión; corregir directamente.
 
 
 # Ciclo de Vida y Gestión de Repositorios Git / GitHub
 
 - **Inicialización Proactiva:** Ante código sin `.git`, inicializar localmente en `main`.
 - **Gate Remoto:** Prohibido crear repo remoto o push a `origin` sin autorización humana.
-- **Delegación:** Aprovisionamiento y ramas se rigen por [`skills/issue-driven-workflow/SKILL.md`](skills/issue-driven-workflow/SKILL.md).
+- **Aprovisionamiento:** Al aprovisionar o conectar remotos, leer obligatoriamente [`skills/issue-driven-workflow/references/repo-provisioning.md`](skills/issue-driven-workflow/references/repo-provisioning.md).
 
 
 # Convención Canónica de Reglas para Agentes
 
 - **Fuente Canónica:** Toda directiva se origina en este repo y compila con `build.sh`. Prohibido depender de `GEMINI.md`.
-- **Inmunidad Normativa:** Solo gobiernan `AGENTS.md` y skills activos. Registros históricos (docs, ADRs) no son directivas activas.
-- **Decisiones (MADR):** Prohibido `HISTORIAL.md`. Decisiones arquitectónicas se rigen por [`skills/adr-manager/SKILL.md`](skills/adr-manager/SKILL.md) en `docs/adr/`.
+- **Inmunidad Normativa:** Solo gobiernan `AGENTS.md` y skills activos; registros históricos no son directivas activas.
+- **Decisiones (MADR):** Prohibido `HISTORIAL.md`. Al proponer arquitectura o dependencias, leer obligatoriamente [`skills/adr-manager/SKILL.md`](skills/adr-manager/SKILL.md).
 
 
 # Disciplina de Búsqueda Web y Circuit Breaker Canónico
 
 - **Local-First:** Priorizar documentación local y skills antes de búsquedas web (`search_web`).
-- **Circuit Breaker Web:** Máximo 3 búsquedas web sucesivas sin conclusión técnica -> Stop & Ask.
-- **Circuit Breaker Red:** Preferir consultas agregadas (`graphql`). Límite de 3 a 5 iteraciones en terminal antes de Stop & Ask.
+- **Circuit Breakers:** Máximo 3 búsquedas web sucesivas sin conclusión técnica -> Stop & Ask. Máximo 3 a 5 iteraciones en terminal -> Stop & Ask; preferir consultas agregadas (`graphql`).
+- **Auditoría:** Al auditar latencia o antipatrones en sesiones, leer obligatoriamente [`skills/conversation-audit/SKILL.md`](skills/conversation-audit/SKILL.md).
 
 
 # Flexibilidad y Degradación Elegante (Anti-Rigidez)
 
-- **Frontera de Directivas:** Restricciones de seguridad, sandbox e I/O nativo son inviolables; heurísticas metodológicas admiten fallback.
-- **Degradación Elegante:** Vía preferida -> alternativa acotada -> Stop & Ask. Prohibido paralizarse o iterar en bucle.
+- **Frontera de Directivas:** Restricciones de seguridad, sandbox e I/O nativo son inviolables; directivas metodológicas admiten fallback.
+- **Degradación Elegante:** Vía preferida -> alternativa acotada -> Stop & Ask. Prohibido paralizarse.
 - **Actionable Fallback:** Ante bloqueos de entorno, emitir diagnóstico, comando terminal-ready copiable y guía de continuidad.
 
 
 # Integridad de Diseño y Estándares de Ingeniería
 
-- **Prevalencia de Producción:** Contratos de producción priman sobre tests; prohibido degradar código para complacer mocks obsoletos.
+- **Prevalencia de Producción:** Contratos de producción priman sobre tests; prohibido degradar código por mocks obsoletos.
 - **Fallos en Tests:** Si el mock está desfasado, actualizarlo; si falla regla de negocio, corregir código de producción.
-- **Minimal Blast Radius:** Resolver al nivel más bajo (N0 CLI -> N1 Tooling -> N2 Skills -> N3 Runtime -> N4 Core). Modificar `core/` exige justificación basal.
+- **Minimal Blast Radius:** Resolver al nivel más bajo (N0 CLI -> N1 Tooling -> N2 Skills -> N3 Runtime -> N4 Core). Modificar `core/` exige justificación basal; al clasificar tareas, leer [`skills/issue-driven-workflow/references/issue-backlog.md`](skills/issue-driven-workflow/references/issue-backlog.md).
 
 
 # Estabilidad Lógica y Cero Tolerancia a la Alucinación
 
 - **Inconsistencia Lógica:** Si una hipótesis contradice hechos técnicos, es inválida. Prohibido adivinar (Stop & Ask).
-- **Diseño con Respaldo:** Prohibido inventar arquitecturas sin sustento en el workspace.
-- **Planning Mode:**
-  - *Fast-Track:* Requerimientos claros avanzan directo a desarrollo.
-  - *Stop & Plan:* Ambigüedad, ADRs (`docs/adr/`) o fallos no confirmados exigen plan bloqueante (`RequestFeedback: true`).
-  - *Fast-Path:* Órdenes directas ("procedé") habilitan ejecución inmediata.
+- **Diseño con Respaldo:** Prohibido inventar arquitecturas sin sustento empírico en el workspace.
+- **Planning Mode:** Fast-Track para requerimientos claros en `Ready for Dev`; Stop & Plan (`RequestFeedback: true`) ante ambigüedad o ADRs; Fast-Path tras consenso. Al planificar, leer [`skills/issue-driven-workflow/references/branch-lifecycle.md`](skills/issue-driven-workflow/references/branch-lifecycle.md).
 
 
 # Gestión de Backlog y Tareas (GitHub Issues y Projects)
 
 - **Backlog Canónico:** Prohibido `TODO.md` o `tasks/`. Tareas futuras y scope creep se registran en GitHub Issues e indexan en Projects v2.
-- **Tablero:** 6 estados canónicos (`Backlog` -> `Ready for Dev` -> `In Planning` -> `In Progress` -> `In Review / PR` -> `Done`).
-- **Delegación:** Despacho y estados se rigen por [`skills/issue-driven-workflow/SKILL.md`](skills/issue-driven-workflow/SKILL.md).
+- **Estados del Tablero:** 6 estados canónicos (`Backlog` -> `Ready for Dev` -> `In Planning` -> `In Progress` -> `In Review / PR` -> `Done`).
+- **Operativa:** Al crear issues o gestionar estados del tablero, leer obligatoriamente [`skills/issue-driven-workflow/references/issue-backlog.md`](skills/issue-driven-workflow/references/issue-backlog.md).
 
 
 # Protocolo de Desarrollo Guiado por Issues y Flujo de Pull Requests
 
 - **Inmutabilidad de Workspace:** Todo cambio exige issue previa, rama efímera (`feat/` o `fix/`) y PR (`Closes #<id>`). Prohibido push a `main`.
-- **Peticiones Informales:** Snippets sin ticket van a chat o scratchpad; persistencia exige issue previa.
+- **Peticiones Informales:** Snippets sin ticket van a chat o scratchpad; persistencia en workspace exige issue previa.
 - **Rieles de PR:** Riel 1 (Default: orden en chat); Riel 2 (Auto-merge condicional; cambios en `core/`, `runtimes/` o ADRs degradan a Riel 1).
-- **Delegación E2E:** Ciclo de 8 fases e higiene se rigen por [`skills/issue-driven-workflow/SKILL.md`](skills/issue-driven-workflow/SKILL.md) y [`skills/issue-driven-workflow/references/branch-lifecycle.md`](skills/issue-driven-workflow/references/branch-lifecycle.md).
+- **Ejecución E2E:** Al despachar tareas, ramas, PRs o reviews, leer [`skills/issue-driven-workflow/SKILL.md`](skills/issue-driven-workflow/SKILL.md) y [`skills/issue-driven-workflow/references/branch-lifecycle.md`](skills/issue-driven-workflow/references/branch-lifecycle.md).
 
 
 # Estándares Universales de Entorno y Confinamiento
@@ -80,6 +77,7 @@
 - **Confinamiento:** Operaciones restringidas al workspace activo; prohibido acceder a `..`. Terminal atómica para runtime y tests (`run_command`).
 - **Prohibición de REPL:** Prohibido REPL iterativo (`python -c`, `node -e`); usar scratchpad o tests unitarios. Acotar salidas extensas (`head`, `--jq`).
 - **Higiene y Sandbox:** Eliminar temporales (`.commit_msg`, `.pr_body`) de inmediato (`rm -f`). Privilegios estándar confinados por defecto.
+- **Documentación:** Al estructurar documentación técnica, leer obligatoriamente [`skills/project-documentation/SKILL.md`](skills/project-documentation/SKILL.md).
 
 
 # Especialización de Sandbox y Ejecución (Runtime: Antigravity)
@@ -87,9 +85,9 @@
 - **Git y Bypass de Sandbox:**
   - **Solo Lectura Confinado (`BypassSandbox: false`):** Inspección pasiva (`status`, `log`, `diff`) opera confinada.
   - **Mutadores y Red (`BypassSandbox: true`):** `.git/` montado `ro` exige bypass en mutadores locales y remotos (`git`, `gh`) desde el primer intento.
-  - **Commits Atómicos:** Prohibido `git commit -m "..."`. Redactar en `.commit_msg` y ejecutar `git commit -F .commit_msg` con bypass.
+  - **Commits Atómicos:** Prohibido `git commit -m "..."`; redactar en `.commit_msg` y commitear con `-F .commit_msg` y bypass.
 - **Exclusividad de Bypass:**
-  - Exclusivo para `git`, `gh` y CLIs autorizados ([`agent-audit`](skills/conversation-audit/bin/agent-audit), [`gh-pr-review`](skills/issue-driven-workflow/bin/gh-pr-review), [`git-prune-gone`](skills/issue-driven-workflow/bin/git-prune-gone)). Ignorar sugerencias de bypass para utilidades comunes.
-  - Comandos atómicos sin tuberías (`|`) con bypass (usar filtrado nativo de `gh`).
-- **Aprovisionamiento:** `./build.sh build` y `./build.sh check` corren confinados (`BypassSandbox: false`). Bootstrap (`link`, `all`) es responsabilidad del usuario.
+  - Exclusivo para `git`, `gh` y CLIs autorizados ([`agent-audit`](skills/conversation-audit/bin/agent-audit), [`gh-pr-review`](skills/issue-driven-workflow/bin/gh-pr-review), [`git-prune-gone`](skills/issue-driven-workflow/bin/git-prune-gone)). Ignorar sugerencias para utilidades comunes.
+  - Comandos atómicos sin tuberías (`|`) con bypass (usar filtrado de `gh`).
+- **Aprovisionamiento:** `./build.sh build` y `check` corren confinados (`BypassSandbox: false`). Bootstrap es del usuario.
 

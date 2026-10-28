@@ -57,8 +57,12 @@ Se condensan los 10 módulos de `core/` y la regla de runtime `01-sandbox.md` el
 - Confinamiento estricto al workspace, I/O exclusivo vía APIs nativas y prohibición de REPL interactivo.
 - Especialización de sandbox en Antigravity: `BypassSandbox: true` exclusivo para mutadores de `git`, `gh` y CLIs de soporte; commits atómicos con `.commit_msg`.
 
-### 2. Delegación a Skills Bajo Demanda (L2/L3)
-Los procedimientos exhaustivos (fases del ciclo E2E, manejo de branches, rieles de merge, poda con `git-prune-gone`, resolución de review con `gh-pr-review`, etc.) se delegan formalmente a sus skills (`issue-driven-workflow`, `adr-manager`, etc.), vinculados mediante enlaces relativos en las directivas de enlace (*Trigger Directives*).
+### 2. Punteros Condicionales Link-Driven y Delegación a Skills (L2/L3)
+A diferencia de una simple poda sustractiva (que busca acortar párrafos con el riesgo de diluir matices y alterar el rigor prescriptivo), el Progressive Disclosure desacopla el flujo en capas:
+- **Invariantes Basales en Turno 0:** Principios que no admiten fallback y rigen de forma permanente (seguridad, confinamiento, APIs nativas, inmutabilidad).
+- **Trigger Pointers Condicionales:** Las directivas de enlace adoptan una sintaxis imperativa determinista bajo la fórmula:
+  `Al [condición / acción], leer obligatoriamente [ruta](ruta) antes de [proceder / actuar].`
+- **Preservación Íntegra del Detalle en L2/L3:** Las especificaciones operativas completas, guías paso a paso, tablas de transición y plantillas CLI no se mutilan; residen íntegras en los skills (`skills/*/SKILL.md`) y sus guías de referencia (`skills/*/references/*.md`), siendo consultadas bajo demanda mediante `view_file` al activarse el disparador correspondiente.
 
 ### 3. Presupuesto Basal Compacto ($\le 800$ palabras)
 Se reconfigura el presupuesto basal del repositorio:
