@@ -6,7 +6,7 @@ Guía procedimental canónica para el ciclo de vida completo de ramas de trabajo
 
 ## 1. Convención Canónica de Ramas de Trabajo
 
-Todo desarrollo debe aislarse en una rama dedicada creada antes de modificar cualquier archivo de código del workspace.
+Todo desarrollo (código, scripts de entorno/tooling, lanzadores, configuraciones o documentación) debe aislarse en una rama dedicada creada antes de modificar o crear cualquier archivo en el workspace. Prohibido taxativamente escribir o mutar archivos directamente en `main` bajo el pretexto de utilidades auxiliares o conveniencia operativa.
 
 ### 1.1 Estrategia de Ramas Troncales (Categorías A y B)
 La estructura de ramas responde a la configuración raíz declarada en `.repo-config.json`:
