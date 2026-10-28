@@ -1,11 +1,6 @@
 # Estándares Universales de Entorno y Confinamiento
 
-- **Uso Exclusivo de Herramientas Nativas de Archivos:** Operaciones de archivo deben usar estrictamente las APIs nativas (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido usar comandos de terminal para I/O (`cat`, `sed`, `awk`, `tee`, `echo >>`) o generar scripts temporales de parcheo (`patch_*.py`).
-- **Higiene de Archivos Temporales:** Archivos auxiliares (`.commit_msg`, `.pr_body`, `.issue_body`) deben eliminarse inmediatamente tras su uso (`rm -f <archivo>`) y contemplarse en `.gitignore`.
-- **Límites de Workspace y Aislamiento:** Toda operación de lectura o escritura (sea vía herramientas nativas o terminal) se restringe estrictamente al workspace activo. Prohibido acceder o inspeccionar rutas externas o directorios superiores (`..`).
-- **Terminal Confinada y Determinista:** `run_command` se reserva para procesos de runtime, compilación, pruebas y utilidades de entorno, en formato atómico y sin subshells complejas.
-- **Higiene de Salida y Prevención de Truncamiento:** Obligatorio acotar la salida de comandos exploratorios de datos o archivos extensos mediante filtros de muestreo (ej. `head -n 20`, slices `[:20]`, paginación o `--jq`), evitando volcados masivos en stdout que desborden los buffers del runtime.
-- **Precedencia de Entornos Locales:** Verificar proactivamente entornos virtuales o dependencias locales (`.venv/bin/`, `node_modules/.bin/`, `vendor/bin/`) antes de invocar herramientas de prueba o linters globales a ciegas, priorizando el binario local del proyecto.
-- **Prohibición de REPL Iterativo en Terminal:** Prohibido utilizar la terminal para cadenas de micro-ejecuciones de intérpretes (`python -c`, `node -e`, etc.) como REPL interactivo de ensayo y error para expresiones regulares o lógica de parsing. Es mandatorio consolidar la exploración en un único script unificado en `<appDataDir>/brain/<conversation-id>/scratch/` o implementar directamente pruebas unitarias parametrizadas en la suite de tests local.
-- **Gobernanza de Sandbox:** Ejecutar bajo privilegios estándar confinados por defecto; la escalación de permisos o bypass se rige por las directivas de especialización del runtime.
-
+- **APIs Nativas:** I/O exclusivamente vía APIs nativas (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido I/O por terminal (`cat`, `sed`, `awk`, `tee`).
+- **Confinamiento:** Operaciones restringidas al workspace activo; prohibido acceder a `..`. Terminal atómica para runtime y tests (`run_command`).
+- **Prohibición de REPL:** Prohibido REPL iterativo (`python -c`, `node -e`); usar scratchpad o tests unitarios. Acotar salidas extensas (`head`, `--jq`).
+- **Higiene y Sandbox:** Eliminar temporales (`.commit_msg`, `.pr_body`) de inmediato (`rm -f`). Privilegios estándar confinados por defecto.
