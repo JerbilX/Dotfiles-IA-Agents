@@ -40,7 +40,10 @@ Toda tarea despachada debe cumplir secuencialmente con las siguientes 8 fases:
    ```bash
    gh issue view <id>
    ```
-2. El análisis sitúa la tarea operativamente en fase de planificación local (`📐 In Planning`), sin mutaciones CLI en GitHub Projects v2.
+2. **Protocolo de Investigación Exploratoria (Ahorro de Contexto):**
+   * **Lecturas Acotadas (≤ 3 archivos):** Si la tarea requiere inspección quirúrgica de 1 a 3 archivos conocidos, realizar lecturas directas en la sesión principal mediante `view_file` o `grep_search`.
+   * **Exploración Extensa (> 3 archivos o repositorios externos):** Prohibido saturar la sesión principal con lecturas masivas. Es obligatorio delegar el relevamiento al subagente nativo `research` (`Model: "flash"`, `Workspace: "inherit"`), quien devuelve un resumen ejecutivo consolidado. Ver [`references/exploratory-research.md`](exploratory-research.md).
+3. El análisis sitúa la tarea operativamente en fase de planificación local (`📐 In Planning`), sin mutaciones CLI en GitHub Projects v2.
 
 ### Paso 2: Aislamiento e Higiene del Workspace
 
