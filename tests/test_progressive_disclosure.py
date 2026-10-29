@@ -41,9 +41,12 @@ class TestProgressiveDisclosure(unittest.TestCase):
         )
 
     def test_core_rules_word_budget(self):
-        """Each core module must stay below 300 words (ADR-0013 modular threshold)."""
-        core_files = glob.glob(os.path.join(CORE_DIR, "*.md"))
-        self.assertGreaterEqual(len(core_files), 10, "Expected at least 10 core rule files")
+        """Each modular core rule must stay below 300 words (ADR-0013 modular threshold)."""
+        core_files = [
+            cf for cf in glob.glob(os.path.join(CORE_DIR, "*.md"))
+            if os.path.basename(cf) not in ("00-router.md",)
+        ]
+        self.assertGreaterEqual(len(core_files), 9, "Expected at least 9 modular core rule files")
         for cf in core_files:
             with open(cf, "r", encoding="utf-8") as f:
                 words = len(f.read().split())

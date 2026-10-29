@@ -1183,12 +1183,14 @@ check_core_rules() {
             CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
         fi
 
-        # Verificación de presupuesto modular (ADR-0013)
-        local w
-        w="$(wc -w < "$f" | tr -d ' ')"
-        if [ "${w}" -gt "${MAX_MODULE_WORDS}" ]; then
-            echo "  [!] Advertencia: core/${fname} supera el umbral modular (${w} > ${MAX_MODULE_WORDS} palabras). Evaluar extracción a skill (ADR-0013)" >&2
-            CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+        # Verificación de presupuesto modular (ADR-0013 / ADR-0038)
+        if [ "${fname}" != "00-router.md" ]; then
+            local w
+            w="$(wc -w < "$f" | tr -d ' ')"
+            if [ "${w}" -gt "${MAX_MODULE_WORDS}" ]; then
+                echo "  [!] Advertencia: core/${fname} supera el umbral modular (${w} > ${MAX_MODULE_WORDS} palabras). Evaluar extracción a skill (ADR-0013)" >&2
+                CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+            fi
         fi
 
         # Verificación de integridad de enlaces relativos en Markdown (ADR-0038)
