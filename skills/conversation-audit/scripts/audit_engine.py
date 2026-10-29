@@ -86,6 +86,21 @@ class AuditEngine:
         "run_shell_command",
     }
 
+    FILE_READ_TOOL_NAMES = {
+        "view_file",
+        "view",
+        "read_file",
+        "readfile",
+        "read_local_file",
+    }
+
+    BINARY_EXTENSIONS = {
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp", ".tiff",
+        ".mp3", ".wav", ".ogg", ".mp4", ".mkv", ".webm", ".avi",
+        ".pdf", ".bin", ".exe", ".zip", ".tar", ".gz", ".tgz", ".bz2", ".7z",
+        ".woff", ".woff2", ".ttf", ".eot",
+    }
+
     INTERPRETER_REGEX = re.compile(
         r"^(python(?:\d+(?:\.\d+)?)?|node|nodejs|ruby|perl)(\.exe)?$",
         re.IGNORECASE,
@@ -185,8 +200,61 @@ class AuditEngine:
 
         return False, ""
 
-    def __init__(self, latency_threshold_seconds: float = 60.0):
+    @classmethod
+    def is_file_read_tool(cls, tool_name: str) -> bool:
+        """Determina si una herramienta corresponde a operaciones de lectura de archivos."""
+        candidate = tool_name.split(":")[-1].lower()
+        return candidate in cls.FILE_READ_TOOL_NAMES
+
+    @classmethod
+    def extract_file_target(cls, args: Dict[str, Any]) -> str:
+        """Extrae la ruta del archivo objetivo desde los argumentos si está disponible."""
+        if not isinstance(args, dict):
+            return ""
+        for k in ("AbsolutePath", "TargetFile", "file_path", "filePath", "path", "filename", "file"):
+            if k in args and args[k]:
+                return str(args[k])
+        for k, v in args.items():
+            if k.lower().replace("_", "") in ("absolutepath", "targetfile", "filepath", "path", "file"):
+                if v:
+                    return str(v)
+        return ""
+
+    @classmethod
+    def extract_file_read_bounds(cls, args: Dict[str, Any]) -> Tuple[Optional[int], Optional[int]]:
+        """Extrae límites numéricos (StartLine, EndLine o view_range) de una llamada a lectura."""
+        if not isinstance(args, dict):
+            return None, None
+
+        # Formato de Claude Code: view_range: [start, end]
+        vr = args.get("view_range")
+        if isinstance(vr, (list, tuple)) and len(vr) >= 2:
+            try:
+                return int(vr[0]), int(vr[1])
+            except (ValueError, TypeError):
+                pass
+
+        start_line: Optional[int] = None
+        end_line: Optional[int] = None
+
+        for k, v in args.items():
+            k_clean = k.lower().replace("_", "")
+            if k_clean in ("startline", "start"):
+                try:
+                    start_line = int(v)
+                except (ValueError, TypeError):
+                    pass
+            elif k_clean in ("endline", "end"):
+                try:
+                    end_line = int(v)
+                except (ValueError, TypeError):
+                    pass
+
+        return start_line, end_line
+
+    def __init__(self, latency_threshold_seconds: float = 60.0, file_lines_threshold: int = 200):
         self.latency_threshold = latency_threshold_seconds
+        self.file_lines_threshold = int(file_lines_threshold) if file_lines_threshold is not None else 200
 
     def analyze(self, metadata: ConversationMetadata, steps: List[NormalizedStep]) -> AuditReport:
         """Calcula todas las métricas y detecta antipatrones a partir de los pasos."""
@@ -505,6 +573,67 @@ class AuditEngine:
                         ),
                     )
                 )
+
+        # H. Lectura No Paginada de Archivos (UNPAGINATED_FILE_READ)
+        for s in steps:
+            for tc in s.tool_calls:
+                if not self.is_file_read_tool(tc.name):
+                    continue
+
+                args = tc.args if isinstance(tc.args, dict) else {}
+                target_path = self.extract_file_target(args)
+                if target_path:
+                    ext = Path(target_path).suffix.lower()
+                    if ext in self.BINARY_EXTENSIONS:
+                        continue
+
+                start_line, end_line = self.extract_file_read_bounds(args)
+                target_info = f" en '{Path(target_path).name}'" if target_path else ""
+
+                if start_line is None or end_line is None:
+                    if start_line is None and end_line is None:
+                        bound_detail = "sin especificar delimitadores de paginación (StartLine / EndLine)"
+                    elif start_line is None:
+                        bound_detail = f"sin especificar StartLine (únicamente EndLine={end_line})"
+                    else:
+                        bound_detail = f"sin especificar EndLine (únicamente StartLine={start_line})"
+
+                    antipatterns.append(
+                        DetectedAntipattern(
+                            severity="ALTA",
+                            code="UNPAGINATED_FILE_READ",
+                            title="Lectura No Paginada de Archivo",
+                            step_index=s.step_index,
+                            description=(
+                                f"El paso {s.step_index} ejecutó lectura de archivo mediante '{tc.name}'{target_info} "
+                                f"{bound_detail} (lectura masiva no acotada)."
+                            ),
+                            recommendation=(
+                                f"Utilizar grep_search para localización previa y acotamiento de ventana mediante "
+                                f"StartLine y EndLine (máximo {self.file_lines_threshold} líneas)."
+                            ),
+                        )
+                    )
+                else:
+                    lines_diff = abs(end_line - start_line)
+                    if lines_diff > self.file_lines_threshold:
+                        antipatterns.append(
+                            DetectedAntipattern(
+                                severity="ALTA",
+                                code="UNPAGINATED_FILE_READ",
+                                title="Lectura No Paginada de Archivo",
+                                step_index=s.step_index,
+                                description=(
+                                    f"El paso {s.step_index} ejecutó lectura de archivo mediante '{tc.name}'{target_info} "
+                                    f"con un rango de {lines_diff} líneas (líneas {start_line} a {end_line}), "
+                                    f"superando el umbral configurable de {self.file_lines_threshold} líneas."
+                                ),
+                                recommendation=(
+                                    f"Utilizar grep_search para localización previa y acotamiento de ventana mediante "
+                                    f"StartLine y EndLine (máximo {self.file_lines_threshold} líneas)."
+                                ),
+                            )
+                        )
 
         return antipatterns
 

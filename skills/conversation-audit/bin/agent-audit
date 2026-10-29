@@ -67,6 +67,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Umbral de latencia en segundos para alertar pasos lentos (predeterminado: 60.0s).",
     )
     parser.add_argument(
+        "--threshold-file-lines",
+        type=int,
+        default=200,
+        help="Umbral de líneas para alertar lecturas masivas de archivos (predeterminado: 200).",
+    )
+    parser.add_argument(
         "--fail-on-antipattern",
         action="store_true",
         help="Retorna código de salida 2 si se detecta al menos un antipatrón de severidad CRÍTICA o ALTA.",
@@ -146,7 +152,10 @@ def main() -> int:
         sys.stderr.write(f"Advertencia: No se encontraron pasos válidos en la transcripción: {target_path}\n")
 
     metadata = adapter.extract_metadata(target_path, steps)
-    engine = AuditEngine(latency_threshold_seconds=args.threshold_latency)
+    engine = AuditEngine(
+        latency_threshold_seconds=args.threshold_latency,
+        file_lines_threshold=args.threshold_file_lines,
+    )
     report = engine.analyze(metadata, steps)
 
     if args.format == "json":

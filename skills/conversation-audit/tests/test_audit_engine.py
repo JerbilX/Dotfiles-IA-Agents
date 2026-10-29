@@ -277,6 +277,156 @@ class TestTerminalReplLoopAntipattern(unittest.TestCase):
         self.assertEqual(repl_loops[0].step_index, 3)
 
 
+class TestUnpaginatedFileReadAntipattern(unittest.TestCase):
+    """Pruebas para la detección del antipatrón UNPAGINATED_FILE_READ en AuditEngine."""
+
+    def setUp(self):
+        self.engine = AuditEngine()
+        self.metadata = ConversationMetadata(
+            session_id="test-session-178",
+            runtime="antigravity",
+            source_path="/tmp/transcript.jsonl",
+        )
+
+    def _make_step(self, step_index: int, tool_name: str, args: dict) -> NormalizedStep:
+        return NormalizedStep(
+            step_index=step_index,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            tool_calls=[
+                NormalizedToolCall(
+                    name=tool_name,
+                    args=args,
+                    status="DONE",
+                )
+            ],
+            status="DONE",
+        )
+
+    def test_unpaginated_view_file_without_delimiters(self):
+        """Detecta llamada a view_file sin delimitadores StartLine/EndLine."""
+        steps = [
+            self._make_step(1, "view_file", {"AbsolutePath": "/workspace/main.py"}),
+        ]
+        report = self.engine.analyze(self.metadata, steps)
+        unpaginated = [ap for ap in report.antipatterns if ap.code == "UNPAGINATED_FILE_READ"]
+        self.assertEqual(len(unpaginated), 1)
+        ap = unpaginated[0]
+        self.assertEqual(ap.severity, "ALTA")
+        self.assertEqual(ap.title, "Lectura No Paginada de Archivo")
+        self.assertEqual(ap.step_index, 1)
+        self.assertIn("sin especificar delimitadores de paginación", ap.description)
+        self.assertIn("grep_search", ap.recommendation)
+        self.assertIn("StartLine y EndLine", ap.recommendation)
+
+    def test_partial_delimiters_start_only(self):
+        """Detecta llamada a view_file con solo StartLine sin delimitar EndLine."""
+        steps = [
+            self._make_step(1, "view_file", {"AbsolutePath": "/workspace/main.py", "StartLine": 50}),
+        ]
+        report = self.engine.analyze(self.metadata, steps)
+        unpaginated = [ap for ap in report.antipatterns if ap.code == "UNPAGINATED_FILE_READ"]
+        self.assertEqual(len(unpaginated), 1)
+        ap = unpaginated[0]
+        self.assertIn("sin especificar EndLine", ap.description)
+
+    def test_partial_delimiters_end_only(self):
+        """Detecta llamada a view_file con solo EndLine sin delimitar StartLine."""
+        steps = [
+            self._make_step(1, "view_file", {"AbsolutePath": "/workspace/main.py", "EndLine": 300}),
+        ]
+        report = self.engine.analyze(self.metadata, steps)
+        unpaginated = [ap for ap in report.antipatterns if ap.code == "UNPAGINATED_FILE_READ"]
+        self.assertEqual(len(unpaginated), 1)
+        ap = unpaginated[0]
+        self.assertIn("sin especificar StartLine", ap.description)
+
+    def test_excessive_line_range_detected(self):
+        """Detecta rango de líneas que supera el umbral configurable (350 - 1 = 349 > 200)."""
+        steps = [
+            self._make_step(1, "view_file", {"AbsolutePath": "/workspace/main.py", "StartLine": 1, "EndLine": 350}),
+        ]
+        report = self.engine.analyze(self.metadata, steps)
+        unpaginated = [ap for ap in report.antipatterns if ap.code == "UNPAGINATED_FILE_READ"]
+        self.assertEqual(len(unpaginated), 1)
+        ap = unpaginated[0]
+        self.assertEqual(ap.severity, "ALTA")
+        self.assertIn("rango de 349 líneas", ap.description)
+        self.assertIn("superando el umbral configurable de 200 líneas", ap.description)
+
+    def test_acceptable_line_range_not_flagged(self):
+        """Lecturas dentro del umbral (<= 200 líneas) no disparan el antipatrón."""
+        steps = [
+            self._make_step(1, "view_file", {"AbsolutePath": "/workspace/main.py", "StartLine": 1, "EndLine": 200}),
+            self._make_step(2, "view_file", {"AbsolutePath": "/workspace/main.py", "StartLine": 50, "EndLine": 120}),
+        ]
+        report = self.engine.analyze(self.metadata, steps)
+        unpaginated = [ap for ap in report.antipatterns if ap.code == "UNPAGINATED_FILE_READ"]
+        self.assertEqual(len(unpaginated), 0)
+
+    def test_exact_threshold_boundary(self):
+        """Diferencia de exactamente 200 no dispara; 201 sí dispara."""
+        # StartLine=1, EndLine=201 -> diff = 200 <= 200 (OK)
+        steps_ok = [
+            self._make_step(1, "view_file", {"AbsolutePath": "/workspace/main.py", "StartLine": 1, "EndLine": 201}),
+        ]
+        report_ok = self.engine.analyze(self.metadata, steps_ok)
+        self.assertEqual(len([ap for ap in report_ok.antipatterns if ap.code == "UNPAGINATED_FILE_READ"]), 0)
+
+        # StartLine=1, EndLine=202 -> diff = 201 > 200 (Antipatrón)
+        steps_over = [
+            self._make_step(1, "view_file", {"AbsolutePath": "/workspace/main.py", "StartLine": 1, "EndLine": 202}),
+        ]
+        report_over = self.engine.analyze(self.metadata, steps_over)
+        self.assertEqual(len([ap for ap in report_over.antipatterns if ap.code == "UNPAGINATED_FILE_READ"]), 1)
+
+    def test_custom_configurable_threshold(self):
+        """Verifica que el umbral de líneas sea configurable a través de file_lines_threshold."""
+        custom_engine = AuditEngine(file_lines_threshold=50)
+        steps = [
+            self._make_step(1, "view_file", {"AbsolutePath": "/workspace/main.py", "StartLine": 1, "EndLine": 80}),
+        ]
+        report = custom_engine.analyze(self.metadata, steps)
+        unpaginated = [ap for ap in report.antipatterns if ap.code == "UNPAGINATED_FILE_READ"]
+        self.assertEqual(len(unpaginated), 1)
+        self.assertIn("superando el umbral configurable de 50 líneas", unpaginated[0].description)
+
+    def test_claude_adapter_view_range(self):
+        """Verifica compatibilidad con el formato view_range de Claude Code."""
+        steps_over = [
+            self._make_step(1, "View", {"file_path": "/workspace/main.ts", "view_range": [1, 500]}),
+        ]
+        report_over = self.engine.analyze(self.metadata, steps_over)
+        self.assertEqual(len([ap for ap in report_over.antipatterns if ap.code == "UNPAGINATED_FILE_READ"]), 1)
+
+        steps_ok = [
+            self._make_step(1, "View", {"file_path": "/workspace/main.ts", "view_range": [1, 100]}),
+        ]
+        report_ok = self.engine.analyze(self.metadata, steps_ok)
+        self.assertEqual(len([ap for ap in report_ok.antipatterns if ap.code == "UNPAGINATED_FILE_READ"]), 0)
+
+    def test_binary_files_ignored(self):
+        """Archivos binarios o imágenes (ej. .png, .jpg, .pdf) no requieren paginación y se ignoran."""
+        steps = [
+            self._make_step(1, "view_file", {"AbsolutePath": "/workspace/assets/logo.png"}),
+            self._make_step(2, "view_file", {"AbsolutePath": "/workspace/docs/manual.pdf"}),
+            self._make_step(3, "View", {"file_path": "/workspace/assets/photo.jpg"}),
+        ]
+        report = self.engine.analyze(self.metadata, steps)
+        unpaginated = [ap for ap in report.antipatterns if ap.code == "UNPAGINATED_FILE_READ"]
+        self.assertEqual(len(unpaginated), 0)
+
+    def test_non_read_tools_ignored(self):
+        """Otras herramientas sin función de lectura de archivos no son evaluadas."""
+        steps = [
+            self._make_step(1, "run_command", {"CommandLine": "ls -la"}),
+            self._make_step(2, "grep_search", {"Query": "pattern", "SearchPath": "/workspace"}),
+        ]
+        report = self.engine.analyze(self.metadata, steps)
+        unpaginated = [ap for ap in report.antipatterns if ap.code == "UNPAGINATED_FILE_READ"]
+        self.assertEqual(len(unpaginated), 0)
+
+
 class TestAgentAuditCli(unittest.TestCase):
     """Pruebas de integración E2E para el CLI agent-audit con TERMINAL_REPL_LOOP."""
 
@@ -327,6 +477,39 @@ class TestAgentAuditCli(unittest.TestCase):
                 code = self.agent_audit.main()
                 self.assertEqual(code, 2)
 
+    def test_cli_detects_unpaginated_file_read_and_threshold_flag(self):
+        """El CLI detecta UNPAGINATED_FILE_READ y respeta --threshold-file-lines."""
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            transcript_file = Path(tmpdir) / "transcript.jsonl"
+            lines = [
+                {"step_index": 0, "source": "USER", "type": "USER_INPUT", "content": "test"},
+                {
+                    "step_index": 1,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "tool_calls": [{"name": "view_file", "args": {"AbsolutePath": "/workspace/main.py", "StartLine": 1, "EndLine": 80}}],
+                },
+            ]
+            with open(transcript_file, "w", encoding="utf-8") as f:
+                for line in lines:
+                    f.write(json.dumps(line) + "\n")
+
+            # Con umbral default (200), 80 líneas no dispara fallo
+            test_argv_default = ["agent-audit", str(transcript_file), "--fail-on-antipattern"]
+            with patch("sys.argv", test_argv_default):
+                code = self.agent_audit.main()
+                self.assertEqual(code, 0)
+
+            # Con umbral --threshold-file-lines 50, 80 líneas dispara antipatrón ALTA -> código 2
+            test_argv_custom = ["agent-audit", str(transcript_file), "--threshold-file-lines", "50", "--fail-on-antipattern"]
+            with patch("sys.argv", test_argv_custom):
+                code = self.agent_audit.main()
+                self.assertEqual(code, 2)
+
 
 class TestSubagentPromptConsistency(unittest.TestCase):
     """Pruebas de consistencia para el modo de auditoría en background vía subagente."""
@@ -340,6 +523,7 @@ class TestSubagentPromptConsistency(unittest.TestCase):
         self.assertIn("REPETITIVE_TOOL_LOOP", content)
         self.assertIn("TERMINAL_REPL_LOOP", content)
         self.assertIn("CONTEXT_TRUNCATION", content)
+        self.assertIn("UNPAGINATED_FILE_READ", content)
         self.assertIn("Diagnóstico Ejecutivo Consolidado", content)
         self.assertIn("Veredicto de Antipatrones", content)
 

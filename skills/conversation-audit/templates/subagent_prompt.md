@@ -24,7 +24,7 @@ Auditar la sesión identificada por:
 2. **Análisis de Métricas y Detección de Antipatrones:**
    A partir de la salida generada por `agent-audit`:
    - Evalúa las métricas cardinales: Duración Wall-Clock, latencia promedio y máxima por paso, tasa de error de herramientas y volumen de pensamiento (`thinking`).
-   - Revisa la sección de **Antipatrones y Anomalías Detectadas**. Presta especial atención a incidencias de severidad **CRÍTICA** o **ALTA** (`CONSECUTIVE_TOOL_ERRORS`, `REPETITIVE_TOOL_LOOP`, `TERMINAL_REPL_LOOP`, `CONTEXT_TRUNCATION`).
+   - Revisa la sección de **Antipatrones y Anomalías Detectadas**. Presta especial atención a incidencias de severidad **CRÍTICA** o **ALTA** (`CONSECUTIVE_TOOL_ERRORS`, `REPETITIVE_TOOL_LOOP`, `TERMINAL_REPL_LOOP`, `CONTEXT_TRUNCATION`, `UNPAGINATED_FILE_READ`).
    - Identifica herramientas o pasos que generaron los mayores cuellos de botella en la ejecución.
 
 3. **Contrato de Salida y Consolidación:**
