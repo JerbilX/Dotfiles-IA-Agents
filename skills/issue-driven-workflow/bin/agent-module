@@ -1,0 +1,289 @@
+#!/usr/bin/env python3
+"""
+CLI determinista agent-module para aprovisionamiento, consulta y ciclo de vida
+de módulos de dominio especializado por workspace.
+Ref: docs/adr/0041-aislamiento-de-skills-de-dominio-por-workspace-y-optimizacion-del-catalogo-global.md
+"""
+
+import argparse
+import json
+import os
+import shutil
+import sys
+from typing import Any, Dict, List, Optional
+
+
+def resolve_dotfiles_dir() -> str:
+    """
+    Resuelve la raíz canónica de Dotfiles-IA-Agents siguiendo el enlace simbólico del script.
+    """
+    real_path = os.path.realpath(__file__)
+    # real_path: <DOTFILES>/skills/issue-driven-workflow/bin/agent-module
+    return os.path.abspath(os.path.join(os.path.dirname(real_path), "..", "..", ".."))
+
+
+def get_modules_dir(dotfiles_dir: str) -> str:
+    return os.path.join(dotfiles_dir, "modules")
+
+
+def get_skills_dir(dotfiles_dir: str) -> str:
+    return os.path.join(dotfiles_dir, "skills")
+
+
+def load_module_manifest(modules_dir: str, module_name: str) -> Optional[Dict[str, Any]]:
+    manifest_path = os.path.join(modules_dir, module_name, "module.json")
+    if not os.path.isfile(manifest_path):
+        return None
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        sys.stderr.write(f"Error al leer {manifest_path}: {e}\n")
+        return None
+
+
+def cmd_list(dotfiles_dir: str) -> int:
+    modules_dir = get_modules_dir(dotfiles_dir)
+    if not os.path.isdir(modules_dir):
+        print("No se encontró el directorio de módulos en dotfiles.")
+        return 0
+
+    print("Módulos de dominio disponibles:")
+    count = 0
+    for entry in sorted(os.listdir(modules_dir)):
+        mdir = os.path.join(modules_dir, entry)
+        if not os.path.isdir(mdir):
+            continue
+        manifest = load_module_manifest(modules_dir, entry)
+        if not manifest:
+            continue
+        count += 1
+        name = manifest.get("name", entry)
+        desc = manifest.get("description", "Sin descripción")
+        skills = ", ".join(manifest.get("skills", []))
+        mcps = ", ".join(manifest.get("mcp_servers", []))
+        print(f"  • {name}: {desc}")
+        if skills:
+            print(f"      Skills: {skills}")
+        if mcps:
+            print(f"      MCP:    {mcps}")
+
+    if count == 0:
+        print("  (Ningún módulo registrado)")
+    return 0
+
+
+def is_module_active(dotfiles_dir: str, module_name: str, target_dir: str) -> bool:
+    manifest = load_module_manifest(get_modules_dir(dotfiles_dir), module_name)
+    if not manifest:
+        return False
+    skills = manifest.get("skills", [])
+    if not skills:
+        return False
+
+    for skill in skills:
+        ag_link = os.path.join(target_dir, ".agents", "skills", skill)
+        cl_link = os.path.join(target_dir, ".claude", "skills", skill)
+        if not (os.path.lexists(ag_link) or os.path.lexists(cl_link)):
+            return False
+    return True
+
+
+def cmd_status(dotfiles_dir: str, target_dir: str) -> int:
+    target_abs = os.path.abspath(target_dir)
+    modules_dir = get_modules_dir(dotfiles_dir)
+    print(f"Estado de módulos en workspace: {target_abs}")
+
+    active_count = 0
+    if os.path.isdir(modules_dir):
+        for entry in sorted(os.listdir(modules_dir)):
+            mdir = os.path.join(modules_dir, entry)
+            if not os.path.isdir(mdir):
+                continue
+            manifest = load_module_manifest(modules_dir, entry)
+            if not manifest:
+                continue
+            name = manifest.get("name", entry)
+            if is_module_active(dotfiles_dir, name, target_abs):
+                active_count += 1
+                print(f"  [✓] {name} (ACTIVO)")
+            else:
+                print(f"  [-] {name} (inactivo)")
+
+    if active_count == 0:
+        print("\nNingún módulo de dominio activo en este workspace.")
+    else:
+        print(f"\n{active_count} módulo(s) de dominio activo(s).")
+    return 0
+
+
+def cmd_enable(dotfiles_dir: str, module_name: str, target_dir: str, runtime_filter: str) -> int:
+    target_abs = os.path.abspath(target_dir)
+    modules_dir = get_modules_dir(dotfiles_dir)
+    skills_dir = get_skills_dir(dotfiles_dir)
+
+    manifest = load_module_manifest(modules_dir, module_name)
+    if not manifest:
+        sys.stderr.write(f"Error: Módulo '{module_name}' no existe en {modules_dir}\n")
+        return 1
+
+    skills = manifest.get("skills", [])
+    template_dir = os.path.join(modules_dir, module_name, "template")
+
+    print(f"==> Habilitando módulo de dominio '{module_name}' en {target_abs}...")
+    os.makedirs(target_abs, exist_ok=True)
+
+    # 1. Antigravity (.agents/skills, .gemini/skills, .agents/plugins)
+    if runtime_filter != "claude":
+        ag_skills_dir = os.path.join(target_abs, ".agents", "skills")
+        gm_skills_dir = os.path.join(target_abs, ".gemini", "skills")
+        os.makedirs(ag_skills_dir, exist_ok=True)
+        os.makedirs(gm_skills_dir, exist_ok=True)
+
+        for skill in skills:
+            src = os.path.join(skills_dir, skill)
+            if not os.path.isdir(src):
+                sys.stderr.write(f"  [!] Advertencia: Skill '{skill}' no encontrada en {skills_dir}\n")
+                continue
+            dst_ag = os.path.join(ag_skills_dir, skill)
+            dst_gm = os.path.join(gm_skills_dir, skill)
+            if os.path.lexists(dst_ag):
+                os.remove(dst_ag)
+            if os.path.lexists(dst_gm):
+                os.remove(dst_gm)
+            os.symlink(src, dst_ag)
+            os.symlink(src, dst_gm)
+            print(f"  [+] [antigravity] Skill '{skill}' enlazada en .agents/skills/ y .gemini/skills/")
+
+        tmpl_agents = os.path.join(template_dir, ".agents")
+        if os.path.isdir(tmpl_agents):
+            target_agents = os.path.join(target_abs, ".agents")
+            os.makedirs(target_agents, exist_ok=True)
+            for root, dirs, files in os.walk(tmpl_agents):
+                rel_path = os.path.relpath(root, tmpl_agents)
+                dest_dir = os.path.join(target_agents, rel_path) if rel_path != "." else target_agents
+                os.makedirs(dest_dir, exist_ok=True)
+                for f in files:
+                    src_f = os.path.join(root, f)
+                    dest_f = os.path.join(dest_dir, f)
+                    if not os.path.exists(dest_f):
+                        shutil.copy2(src_f, dest_f)
+            print("  [+] [antigravity] Configuración de plugins MCP aprovisionada en .agents/plugins/")
+
+    # 2. Claude (.claude/skills, .mcp.json)
+    if runtime_filter != "antigravity":
+        cl_skills_dir = os.path.join(target_abs, ".claude", "skills")
+        os.makedirs(cl_skills_dir, exist_ok=True)
+
+        for skill in skills:
+            src = os.path.join(skills_dir, skill)
+            if not os.path.isdir(src):
+                continue
+            dst_cl = os.path.join(cl_skills_dir, skill)
+            if os.path.lexists(dst_cl):
+                os.remove(dst_cl)
+            os.symlink(src, dst_cl)
+            print(f"  [+] [claude] Skill '{skill}' enlazada en .claude/skills/")
+
+        tmpl_mcp = os.path.join(template_dir, ".mcp.json")
+        if os.path.isfile(tmpl_mcp):
+            dst_mcp = os.path.join(target_abs, ".mcp.json")
+            if not os.path.exists(dst_mcp):
+                shutil.copy2(tmpl_mcp, dst_mcp)
+                print("  [+] [claude] Configuración MCP aprovisionada en .mcp.json")
+            else:
+                print("  [-] [claude] .mcp.json ya existe en destino; se conserva archivo preexistente.")
+
+    print(f"==> [✓] Módulo '{module_name}' habilitado exitosamente en {target_abs}.")
+    return 0
+
+
+def cmd_disable(dotfiles_dir: str, module_name: str, target_dir: str, runtime_filter: str) -> int:
+    target_abs = os.path.abspath(target_dir)
+    modules_dir = get_modules_dir(dotfiles_dir)
+
+    manifest = load_module_manifest(modules_dir, module_name)
+    if not manifest:
+        sys.stderr.write(f"Error: Módulo '{module_name}' no existe en {modules_dir}\n")
+        return 1
+
+    skills = manifest.get("skills", [])
+    print(f"==> Deshabilitando módulo de dominio '{module_name}' en {target_abs}...")
+
+    # Remover symlinks de Antigravity
+    if runtime_filter != "claude":
+        for skill in skills:
+            for parent in [".agents/skills", ".gemini/skills"]:
+                link_path = os.path.join(target_abs, parent, skill)
+                if os.path.lexists(link_path):
+                    os.remove(link_path)
+                    print(f"  [-] [antigravity] Enlace removido: {parent}/{skill}")
+
+        # Limpiar plugin si coincide con el módulo
+        plugin_dir = os.path.join(target_abs, ".agents", "plugins", f"{module_name}-addon-suite")
+        if os.path.isdir(plugin_dir):
+            shutil.rmtree(plugin_dir)
+            print(f"  [-] [antigravity] Directorio de plugin removido: .agents/plugins/{module_name}-addon-suite")
+
+    # Remover symlinks de Claude
+    if runtime_filter != "antigravity":
+        for skill in skills:
+            link_path = os.path.join(target_abs, ".claude", "skills", skill)
+            if os.path.lexists(link_path):
+                os.remove(link_path)
+                print(f"  [-] [claude] Enlace removido: .claude/skills/{skill}")
+
+    print(f"==> [✓] Módulo '{module_name}' deshabilitado en {target_abs}.")
+    return 0
+
+
+def main() -> None:
+    dotfiles_dir = resolve_dotfiles_dir()
+
+    parser = argparse.ArgumentParser(
+        prog="agent-module",
+        description="Gestor determinista de módulos y skills de dominio especializado por workspace.",
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Comandos disponibles")
+
+    # Subcomando: list
+    subparsers.add_parser("list", help="Listar módulos de dominio disponibles en dotfiles")
+
+    # Subcomando: status
+    parser_status = subparsers.add_parser("status", help="Consultar estado de módulos en el workspace")
+    parser_status.add_argument("target", nargs="?", default=".", help="Ruta del workspace (por defecto: .)")
+
+    # Subcomando: enable
+    parser_enable = subparsers.add_parser("enable", help="Habilitar un módulo de dominio en el workspace")
+    parser_enable.add_argument("module", help="Nombre del módulo (ej. eso)")
+    parser_enable.add_argument("target", nargs="?", default=".", help="Ruta del workspace (por defecto: .)")
+    parser_enable.add_argument(
+        "--runtime", choices=["all", "antigravity", "claude"], default="all", help="Runtime a configurar"
+    )
+
+    # Subcomando: disable
+    parser_disable = subparsers.add_parser("disable", help="Deshabilitar un módulo de dominio en el workspace")
+    parser_disable.add_argument("module", help="Nombre del módulo (ej. eso)")
+    parser_disable.add_argument("target", nargs="?", default=".", help="Ruta del workspace (por defecto: .)")
+    parser_disable.add_argument(
+        "--runtime", choices=["all", "antigravity", "claude"], default="all", help="Runtime a desconfigurar"
+    )
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(0)
+
+    if args.command == "list":
+        sys.exit(cmd_list(dotfiles_dir))
+    elif args.command == "status":
+        sys.exit(cmd_status(dotfiles_dir, args.target))
+    elif args.command == "enable":
+        sys.exit(cmd_enable(dotfiles_dir, args.module, args.target, args.runtime))
+    elif args.command == "disable":
+        sys.exit(cmd_disable(dotfiles_dir, args.module, args.target, args.runtime))
+
+
+if __name__ == "__main__":
+    main()

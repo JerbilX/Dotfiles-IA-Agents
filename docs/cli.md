@@ -84,12 +84,15 @@ Ejecuta la reconciliación y ratificación determinista de Architecture Decision
 ```
 
 ### 9. `workspace`
-Aprovisiona de forma declarativa e idempotente las plantillas de configuración de suite de dominio (como `eso`) hacia un directorio de proyecto destino:
+Aprovisiona de forma declarativa e idempotente las skills locales (`.agents/skills/`, `.gemini/skills/`, `.claude/skills/`) y las configuraciones de suite de dominio (como `eso`) hacia un directorio de proyecto destino (o el directorio actual si se omite la ruta):
 ```bash
-./build.sh workspace <modulo> <ruta_destino> [runtime]
-./build.sh workspace eso /ruta/a/mi-addon             # Aprovisiona plantillas para Antigravity y Claude
-./build.sh workspace eso /ruta/a/mi-addon antigravity # Exclusivamente para Antigravity (.agents/)
+./build.sh workspace <modulo> [ruta_destino] [runtime]
+./build.sh workspace eso .              # Aprovisiona skills y MCP para Antigravity y Claude en $PWD
+./build.sh workspace eso /ruta/a/addon  # Aprovisiona en directorio específico
 ```
+> [!TIP]
+> Desde el workspace del proyecto también puedes utilizar directamente la herramienta CLI en `$PATH`: `agent-module enable <modulo>`, o solicitarlo conversacionalmente al agente (*"activa el soporte de eso en este proyecto"*).
+
 
 ### 10. `all`
 Flujo completo por defecto. Ejecuta secuencialmente `build`, `link`, `skills`, `status` y la verificación final `check`:

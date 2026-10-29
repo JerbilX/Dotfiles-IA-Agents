@@ -1,11 +1,11 @@
 ---
-status: accepted
+status: superseded by ADR-0041
 date: 2026-10-28
 decision-makers: [Usuario, Antigravity]
 consulted: []
 informed: []
 supersedes: []
-superseded-by: []
+superseded-by: ["0041-aislamiento-de-skills-de-dominio-por-workspace-y-optimizacion-del-catalogo-global.md"]
 ---
 
 # 0039 - Aislamiento de Servidores MCP de Dominio por Workspace y Conservación de Skills On-Demand

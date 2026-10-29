@@ -1,7 +1,6 @@
 {
   "$schema": "../schema/runtime-config.schema.json",
   "skills": [
-    "eso-addon-development",
     "adr-manager",
     "issue-driven-workflow",
     "autonomous-learning",
@@ -9,10 +8,10 @@
     "project-documentation"
   ],
   "binaries": {
-    "build_release": "eso-build",
     "agent-audit": "agent-audit",
     "gh-pr-review": "gh-pr-review",
-    "git-prune-gone": "git-prune-gone"
+    "git-prune-gone": "git-prune-gone",
+    "agent-module": "agent-module"
   },
   "mcp_servers": [],
   "status": "active",

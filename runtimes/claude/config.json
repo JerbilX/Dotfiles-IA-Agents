@@ -10,7 +10,8 @@
   "binaries": {
     "agent-audit": "agent-audit",
     "gh-pr-review": "gh-pr-review",
-    "git-prune-gone": "git-prune-gone"
+    "git-prune-gone": "git-prune-gone",
+    "agent-module": "agent-module"
   },
   "mcp_servers": [],
   "status": "on-demand",

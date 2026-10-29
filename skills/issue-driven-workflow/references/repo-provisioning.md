@@ -78,3 +78,24 @@ El agente interactúa con el ecosistema de repositorios según las necesidades d
 
 3. **Desacoplamiento en Fases de Diseño y Arquitectura:**
    - En tareas de arquitectura, diseño, RFCs o ADRs que contemplen integración multi-repo, los contratos y rutas deben diseñarse de forma agnóstica (vía configuración, parámetros o variables como `WORKSPACE_ROOT`), resolviendo la interacción mediante APIs o CLI sin requerir inspección física del host.
+
+---
+
+## 5. Aprovisionamiento de Módulos de Dominio Especializado (`agent-module`) (ADR-0041)
+
+Para optimizar el presupuesto basal de tokens en el prompt inicial de proyectos generales, los skills de dominio especializado y sus servidores MCP asociados están confinados fuera del catálogo global. Su activación se realiza a nivel de workspace con el CLI `agent-module`:
+
+1. **Activación Asistida On-Demand:**
+   - **Vía Pedido Explícito:** Si el usuario solicita habilitar un dominio (ej. *"activa el soporte de eso en este proyecto"*), el agente ejecuta en el workspace actual:
+     ```bash
+     agent-module enable eso
+     ```
+   - **Vía Detección Proactiva:** Si el agente detecta archivos indicadores de dominio (ej. `## APIVersion:` o archivos `.addon` en ESO) en un repositorio sin el módulo activo, ofrece su activación con un gate directo:
+     > *"He detectado que este proyecto es un addon de ESO. ¿Deseas que active el módulo de dominio `eso` para habilitar el skill `eso-addon-development` y el servidor MCP?"*
+     Tras confirmación afirmativa, ejecuta `agent-module enable eso`.
+
+2. **Operaciones del Ciclo de Vida:**
+   - Consultar módulos disponibles: `agent-module list`.
+   - Consultar estado local: `agent-module status`.
+   - Desactivar y podar: `agent-module disable <modulo>`.
+
