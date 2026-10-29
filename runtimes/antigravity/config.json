@@ -15,6 +15,7 @@
     "git-prune-gone": "git-prune-gone"
   },
   "mcp_servers": [],
+  "status": "active",
   "target": {
     "config_dir": "${HOME}/.gemini/config",
     "prompt_filename": "AGENTS.md",

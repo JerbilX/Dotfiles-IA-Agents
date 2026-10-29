@@ -90,6 +90,7 @@ La integridad de las configuraciones se valida automáticamente contra esquemas 
 
 ### Manifiesto de Runtime (`runtime-config.schema.json`)
 Gobierna la estructura de cada `runtimes/<runtime>/config.json`:
+- `status`: Estado operativo del runtime (`"active"`: procesado y auditado por defecto, `"on-demand"`: procesado exclusivamente bajo demanda o con `all`, `"disabled"`: desactivado). Permite desacoplar entornos secundarios (como Claude Code) para optimizar latencia, telemetría e I/O en el flujo de trabajo diario sin eliminarlos del ecosistema.
 - `skills`: Lista de nombres de carpetas en `skills/` que deben aprovisionarse para el runtime.
 - `binaries`: Diccionario de alias para exponer binarios o scripts en `~/.local/bin/`.
 - `mcp_servers`: Lista de nombres de servidores MCP definidos en `runtimes/<runtime>/mcp/`.

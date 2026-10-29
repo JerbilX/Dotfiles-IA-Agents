@@ -13,6 +13,7 @@
     "git-prune-gone": "git-prune-gone"
   },
   "mcp_servers": [],
+  "status": "on-demand",
   "target": {
     "config_dir": "${HOME}/.claude",
     "prompt_filename": "CLAUDE.md",
