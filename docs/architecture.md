@@ -34,7 +34,7 @@ Dotfiles-IA-Agents/
 │   ├── 03-agent-rules-convention.md     # Convención canónica de AGENTS.md y estándar MADR
 │   ├── 04-web-search-discipline.md      # Circuit breaker y disciplina de búsquedas web
 │   ├── 05-anti-rigidity.md              # Degradación elegante y protocolo de fallback
-│   ├── 06-engineering-standards.md      # Prevalencia de producción sobre tests e inmunidad normativa
+│   ├── 06-engineering-standards.md      # Prevalencia de producción, lectura quirúrgica y blast radius
 │   ├── 07-anti-hallucination.md         # Estabilidad lógica, Stop & Ask y blindaje de planes
 │   ├── 08-task-backlog-management.md    # Backlog en GitHub Projects/Issues y control de scope creep
 │   ├── 09-issue-driven-workflow.md      # Flujo guiado por issues, ramas y Pull Requests obligatorios
