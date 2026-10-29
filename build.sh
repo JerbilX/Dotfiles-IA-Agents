@@ -1337,6 +1337,7 @@ check_runtime() {
         [ -z "${bin_entry}" ] && continue
         local src_name="${bin_entry%%=*}"
         local found=false
+        local target_script=""
 
         for skill_name in "${enabled_skills[@]}"; do
             [ -z "${skill_name}" ] && continue
@@ -1344,15 +1345,23 @@ check_runtime() {
             skill_dir="$(resolve_skill_dir "${skill_name}")"
             local script_path="${skill_dir}/scripts/${src_name}.sh"
             local bin_path="${skill_dir}/bin/${src_name}"
-            if [ -f "${script_path}" ] || [ -f "${bin_path}" ]; then
+            if [ -f "${script_path}" ]; then
                 found=true
+                target_script="${script_path}"
+                break
+            elif [ -f "${bin_path}" ]; then
+                found=true
+                target_script="${bin_path}"
                 break
             fi
         done
 
         if [ "${found}" = false ]; then
-            echo "  [!] Advertencia [${r}]: Alias de binario '${src_name}' en config.json no coincide con ningún script o binario en los skills habilitados" >&2
-            CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+            echo "  [✗] [${r}] Binario declarado '${src_name}' en config.json no existe físicamente en las rutas de origen de skills habilitados" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        elif [ ! -x "${target_script}" ]; then
+            echo "  [✗] [${r}] Binario declarado '${src_name}' en '${target_script}' no tiene permisos de ejecución (+x)" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
         fi
     done
 
@@ -1389,9 +1398,20 @@ check_runtime() {
             fi
 
             local target_bin="${HOME}/.local/bin/${bin_name}"
-            if [ ! -e "${target_bin}" ] && [ ! -L "${target_bin}" ]; then
+            if [ -L "${target_bin}" ]; then
+                if [ ! -e "${target_bin}" ]; then
+                    echo "  [✗] [${r}] Symlink roto en ~/.local/bin/${bin_name} -> $(readlink "${target_bin}" || true)" >&2
+                    CHECK_ERRORS=$((CHECK_ERRORS + 1))
+                elif [ ! -x "${target_bin}" ]; then
+                    echo "  [✗] [${r}] Binario en ~/.local/bin/${bin_name} no tiene permisos de ejecución (+x)" >&2
+                    CHECK_ERRORS=$((CHECK_ERRORS + 1))
+                fi
+            elif [ ! -e "${target_bin}" ]; then
                 echo "  [!] Advertencia [${r}]: Binario de skill '${bin_name}' no está enlazado en ~/.local/bin/${bin_name} (ejecuta './build.sh skills ${r}')" >&2
                 CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+            elif [ ! -x "${target_bin}" ]; then
+                echo "  [✗] [${r}] Binario en ~/.local/bin/${bin_name} no tiene permisos de ejecución (+x)" >&2
+                CHECK_ERRORS=$((CHECK_ERRORS + 1))
             fi
         done
     done
@@ -1672,6 +1692,9 @@ check_local_bin_symlinks() {
                 if [[ "${link_target}" == "${SCRIPT_DIR}"* ]]; then
                     if [ ! -e "${item}" ]; then
                         echo "  [✗] Symlink roto en ~/.local/bin: ${item} -> ${link_target}" >&2
+                        CHECK_ERRORS=$((CHECK_ERRORS + 1))
+                    elif [ ! -x "${item}" ]; then
+                        echo "  [✗] Symlink en ~/.local/bin no tiene permisos de ejecución (+x): ${item} -> ${link_target}" >&2
                         CHECK_ERRORS=$((CHECK_ERRORS + 1))
                     fi
                 fi

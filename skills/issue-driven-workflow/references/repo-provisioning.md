@@ -94,7 +94,18 @@ Para optimizar el presupuesto basal de tokens en el prompt inicial de proyectos 
      > *"He detectado que este proyecto es un addon de ESO. ¿Deseas que active el módulo de dominio `eso` para habilitar el skill `eso-addon-development` y el servidor MCP?"*
      Tras confirmación afirmativa, ejecuta `agent-module enable eso`.
 
-2. **Operaciones del Ciclo de Vida:**
+2. **Jerarquía Determinista de Invocación y Fallback:**
+   Ante la activación de un módulo, seguir estrictamente la siguiente jerarquía de 3 niveles:
+   1. **Vía Canónica:** Invocación directa del CLI en `$PATH`:
+      ```bash
+      agent-module enable <modulo>
+      ```
+   2. **Vía Fallback:** Si no se encuentra en `$PATH`, invocar la ruta determinista del runtime activo:
+      - Antigravity: `python3 ~/.gemini/config/skills/issue-driven-workflow/bin/agent-module enable <modulo>`
+      - Claude Code: `python3 ~/.claude/skills/issue-driven-workflow/bin/agent-module enable <modulo>`
+   3. **Freno Obligatorio (Stop & Ask):** Prohibido taxativamente ejecutar barridos masivos o búsquedas en el anfitrión (`find /`, `find $HOME`, `grep`). Detenerse de inmediato y emitir comando terminal-ready (`cd <dotfiles> && ./build.sh all`) u ofrecer andamiaje estático directo mediante `write_to_file`.
+
+3. **Operaciones del Ciclo de Vida:**
    - Consultar módulos disponibles: `agent-module list`.
    - Consultar estado local: `agent-module status`.
    - Desactivar y podar: `agent-module disable <modulo>`.

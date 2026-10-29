@@ -1,11 +1,13 @@
 # Estándares Universales de Entorno y Confinamiento
 
-- **Uso Exclusivo de Herramientas Nativas de Archivos:** Operaciones de archivo exigen APIs nativas (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido usar comandos de terminal para I/O (`cat`, `sed`, `awk`, `tee`, `echo >>`) o scripts temporales de parcheo (`patch_*.py`).
-- **Higiene de Archivos Temporales:** Archivos auxiliares (`.commit_msg`, `.pr_body`, `.issue_body`) deben eliminarse tras su uso (`rm -f <archivo>`) e incluirse en `.gitignore`.
-- **Límites de Workspace y Aislamiento:** Toda lectura o escritura (vía herramientas nativas o terminal) se restringe estrictamente al workspace activo. Prohibido inspeccionar rutas externas o directorios superiores (`..`).
-- **Terminal Confinada y Determinista:** `run_command` se reserva para runtime, compilación, pruebas y utilidades de entorno, de forma atómica y sin subshells complejas.
-- **Higiene de Salida y Prevención de Truncamiento:** Acotar la salida de comandos exploratorios o lectura de archivos mediante filtros (`head -n 20`, slices `[:20]`, paginación o `--jq`) y delimitación de líneas (`StartLine`/`EndLine` en `view_file` tras `grep_search`), evitando volcados masivos que desborden los buffers del runtime o saturen el presupuesto de contexto.
-- **Precedencia de Entornos Locales:** Verificar entornos virtuales o dependencias locales (`.venv/bin/`, `node_modules/.bin/`, `vendor/bin/`) antes de invocar intérpretes (`python`, `node`), scripts, tareas de runtime, migraciones, pruebas o linters; priorizar siempre el binario local del proyecto frente a ejecutables globales del sistema.
-- **Prohibición de REPL Iterativo en Terminal:** Prohibido usar la terminal para micro-ejecuciones o evaluación en línea (`python -c`, `node -e`) como REPL ad-hoc, introspección, consultas de base de datos, modelos o lógica de negocio. Consolidar la exploración en scripts en `<appDataDir>/brain/<conversation-id>/scratch/`, comandos formales del CLI del proyecto o pruebas unitarias parametrizadas locales.
-- **Gobernanza de Sandbox:** Ejecutar bajo privilegios estándar confinados por defecto; la escalación de permisos o bypass se rige por las directivas de especialización del runtime.
+- **Uso Exclusivo de Herramientas Nativas de Archivos:** Operaciones de archivo exigen APIs nativas (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido usar terminal para I/O (`cat`, `sed`, `awk`, `tee`, `echo >>`) o scripts de parcheo.
+- **Higiene de Archivos Temporales:** Archivos auxiliares (`.commit_msg`, `.pr_body`) deben eliminarse tras su uso (`rm -f <archivo>`) e incluirse en `.gitignore`.
+- **Límites de Workspace y Aislamiento:** Toda operación se restringe estrictamente al workspace activo. Prohibido inspeccionar rutas externas o superiores (`..`).
+- **Blindaje Anti-Reconocimiento y Anti-Exfiltración:** Prohibido el reconocimiento ciego del anfitrión (`find /`, `find $HOME`, barridos masivos en el sistema o inspección de directorios `brain/` de otras sesiones). Prohibido exfiltrar recursos o repositorios locales vía red (`gh api`, `curl`) con bypass para evadir el confinamiento del sandbox local.
+- **Degradación Elegante ante Ausencias (Stop & Ask):** Ante la ausencia de un archivo o comando esperado, activar inmediatamente degradación elegante (Stop & Ask) sin exploración descontrolada.
+- **Terminal Confinada y Determinista:** `run_command` se reserva para runtime, compilación, pruebas y utilidades, de forma atómica y sin subshells complejas.
+- **Higiene de Salida y Prevención de Truncamiento:** Acotar salidas exploratorias (`head -n 20`, paginación, `--jq`) y líneas (`StartLine`/`EndLine` en `view_file`), evitando saturar buffers o presupuesto de contexto.
+- **Precedencia de Entornos Locales:** Verificar dependencias locales (`.venv/bin/`, `node_modules/.bin/`) antes de invocar intérpretes (`python`, `node`) o linters; priorizar binarios locales sobre globales.
+- **Prohibición de REPL Iterativo en Terminal:** Prohibido usar terminal para evaluación en línea (`python -c`, `node -e`) como REPL ad-hoc. Consolidar exploración en scripts bajo `scratch/`, CLI formal o pruebas locales.
+- **Gobernanza de Sandbox:** Ejecutar bajo privilegios estándar confinados por defecto; la escalación o bypass se rige por directivas de runtime.
 

@@ -17,7 +17,7 @@ Subordinado a directivas universales de `core/` y `rules/`:
 * **Backlog Canónico:** Prohibido `TODO.md` o `tasks/`; registro en Issues e indexación en Projects v2 (`core/08-task-backlog-management.md`).
 * **Inmutabilidad y PRs:** Inmutabilidad estricta de workspace (tooling y scripts constituyen desarrollo). Prohibido push directo a `main`. Ramas efímeras (`feat/` o `fix/`) y entrega vía PR (`core/09-issue-driven-workflow.md`).
 * **Higiene y Atomicidad:** I/O solo con herramientas nativas, commits vía `.commit_msg` y eliminación inmediata de temporales (`core/10-environment-standards.md`).
-* **Sandbox:** Subordinado a `runtimes/*/rules/01-sandbox.md`. Comandos de red, git mutadores (`init`, `checkout`, `switch`, `branch`, `add`, `commit`, `merge`, `push`, `pull`, `revert`), `gh` y tooling autorizado (`git-prune-gone`, `gh-pr-review`, `agent-audit`) operan con bypass (`BypassSandbox: true`). Validaciones locales, checks (`./build.sh check`), inspección git pasiva y remoción de archivos temporales (`rm -f`) operan en sandbox confinado (`BypassSandbox: false`).
+* **Sandbox:** Subordinado a `runtimes/*/rules/01-sandbox.md`. Comandos de red, git mutadores (`init`, `checkout`, `switch`, `branch`, `add`, `commit`, `merge`, `push`, `pull`, `revert`), `gh` y tooling autorizado (`agent-audit`, `agent-module`, `gh-pr-review`, `git-prune-gone`) operan con bypass (`BypassSandbox: true`). Validaciones locales, checks (`./build.sh check`), inspección git pasiva y remoción de archivos temporales (`rm -f`) operan en sandbox confinado (`BypassSandbox: false`).
 
 ---
 
