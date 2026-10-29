@@ -17,6 +17,32 @@ MAX_README_WORDS="${MAX_README_WORDS:-600}"
 # Descubrimiento y Resolución Dinámica de Runtimes
 # ------------------------------------------------------------------------------
 
+get_runtime_dir() { echo "${RUNTIMES_BASE_DIR}/$1"; }
+get_runtime_config_file() { echo "${RUNTIMES_BASE_DIR}/$1/config.json"; }
+get_runtime_rules_dir() { echo "${RUNTIMES_BASE_DIR}/$1/rules"; }
+get_runtime_mcp_dir() { echo "${RUNTIMES_BASE_DIR}/$1/mcp"; }
+get_runtime_dist_dir() { echo "${SCRIPT_DIR}/dist/$1"; }
+get_runtime_dist_prompt_file() { echo "${SCRIPT_DIR}/dist/$1/AGENTS.md"; }
+get_runtime_dist_mcp_file() { echo "${SCRIPT_DIR}/dist/$1/mcp_config.json"; }
+
+get_runtime_status() {
+    local r="$1"
+    local cfg
+    cfg="$(get_runtime_config_file "$r")"
+    local status=""
+    if [ -f "${cfg}" ]; then
+        if command -v jq >/dev/null 2>&1; then
+            status="$(jq -r '.status // empty' "${cfg}" 2>/dev/null || true)"
+        elif command -v python3 >/dev/null 2>&1; then
+            status="$(python3 -c "import json; print(json.load(open('${cfg}')).get('status', ''))" 2>/dev/null || true)"
+        fi
+    fi
+    if [ -z "${status}" ]; then
+        status="active"
+    fi
+    echo "${status}"
+}
+
 get_available_runtimes() {
     local runtimes=()
     for d in "${RUNTIMES_BASE_DIR}"/*; do
@@ -25,18 +51,40 @@ get_available_runtimes() {
         rname="$(basename "$d")"
         [ "$rname" = "schema" ] && continue
         if [ -f "$d/config.json" ]; then
-            runtimes+=("$rname")
+            local st
+            st="$(get_runtime_status "$rname")"
+            if [ "$st" != "disabled" ]; then
+                runtimes+=("$rname")
+            fi
+        fi
+    done
+    printf '%s\n' "${runtimes[@]}"
+}
+
+get_active_runtimes() {
+    local runtimes=()
+    for r in $(get_available_runtimes); do
+        local st
+        st="$(get_runtime_status "$r")"
+        if [ "$st" = "active" ]; then
+            runtimes+=("$r")
         fi
     done
     printf '%s\n' "${runtimes[@]}"
 }
 
 validate_runtime_arg() {
-    local target_arg="${1:-all}"
-    if [ -n "${target_arg}" ] && [ "${target_arg}" != "all" ]; then
+    local target_arg="${1:-}"
+    if [ -n "${target_arg}" ] && [ "${target_arg}" != "all" ] && [ "${target_arg}" != "default" ] && [ "${target_arg}" != "active" ]; then
         local config_path="${RUNTIMES_BASE_DIR}/${target_arg}/config.json"
         if [ ! -f "${config_path}" ]; then
             echo "Error: Runtime '${target_arg}' no encontrado en ${RUNTIMES_BASE_DIR}/ (falta config.json)" >&2
+            return 1
+        fi
+        local st
+        st="$(get_runtime_status "${target_arg}")"
+        if [ "${st}" = "disabled" ]; then
+            echo "Error: Runtime '${target_arg}' está deshabilitado ('status': 'disabled' en ${config_path})" >&2
             return 1
         fi
     fi
@@ -44,22 +92,16 @@ validate_runtime_arg() {
 }
 
 resolve_target_runtimes() {
-    local target_arg="${1:-all}"
+    local target_arg="${1:-}"
     validate_runtime_arg "${target_arg}" || return 1
-    if [ -z "${target_arg}" ] || [ "${target_arg}" = "all" ]; then
+    if [ -z "${target_arg}" ] || [ "${target_arg}" = "default" ] || [ "${target_arg}" = "active" ]; then
+        get_active_runtimes
+    elif [ "${target_arg}" = "all" ]; then
         get_available_runtimes
     else
         echo "${target_arg}"
     fi
 }
-
-get_runtime_dir() { echo "${RUNTIMES_BASE_DIR}/$1"; }
-get_runtime_config_file() { echo "${RUNTIMES_BASE_DIR}/$1/config.json"; }
-get_runtime_rules_dir() { echo "${RUNTIMES_BASE_DIR}/$1/rules"; }
-get_runtime_mcp_dir() { echo "${RUNTIMES_BASE_DIR}/$1/mcp"; }
-get_runtime_dist_dir() { echo "${SCRIPT_DIR}/dist/$1"; }
-get_runtime_dist_prompt_file() { echo "${SCRIPT_DIR}/dist/$1/AGENTS.md"; }
-get_runtime_dist_mcp_file() { echo "${SCRIPT_DIR}/dist/$1/mcp_config.json"; }
 
 expand_path() {
     local p="$1"
@@ -254,6 +296,11 @@ if "overrides" in config:
             print("Error de validación: Claves y valores de '\''overrides'\'' deben ser cadenas no vacías.", file=sys.stderr)
             sys.exit(1)
 
+if "status" in config:
+    if not isinstance(config["status"], str) or config["status"] not in ["active", "on-demand", "disabled"]:
+        print("Error de validación: '\''status'\'' debe ser '\''active'\'', '\''on-demand'\'' o '\''disabled'\''.", file=sys.stderr)
+        sys.exit(1)
+
 if "target" in config:
     if not isinstance(config["target"], dict):
         print("Error de validación: '\''target'\'' debe ser un objeto.", file=sys.stderr)
@@ -274,6 +321,10 @@ if "target" in config:
         has_skills=$(jq 'has("skills") and (.skills | type == "array")' "${config_file}")
         if [[ "${has_skills}" != "true" ]]; then
             echo "Error de validación: 'skills' es requerido y debe ser un array." >&2
+            return 1
+        fi
+        if jq -e 'has("status") and (.status != "active" and .status != "on-demand" and .status != "disabled")' "${config_file}" >/dev/null 2>&1; then
+            echo "Error de validación: 'status' debe ser 'active', 'on-demand' o 'disabled'." >&2
             return 1
         fi
         if jq -e 'has("disabled_core_rules") and (.disabled_core_rules | type != "array")' "${config_file}" >/dev/null 2>&1; then
@@ -643,7 +694,7 @@ EOF
 }
 
 cmd_build() {
-    local target_arg="${1:-all}"
+    local target_arg="${1:-}"
     validate_runtime_arg "${target_arg}" || return 1
     local target_runtimes=()
     mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
@@ -774,7 +825,7 @@ setup_gh_aliases() {
 }
 
 cmd_link() {
-    local target_arg="${1:-all}"
+    local target_arg="${1:-}"
     validate_runtime_arg "${target_arg}" || return 1
     local target_runtimes=()
     mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
@@ -854,7 +905,7 @@ rollback_runtime() {
 }
 
 cmd_rollback() {
-    local target_arg="${1:-all}"
+    local target_arg="${1:-}"
     validate_runtime_arg "${target_arg}" || return 1
     local target_runtimes=()
     mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
@@ -933,7 +984,7 @@ status_runtime() {
 }
 
 cmd_status() {
-    local target_arg="${1:-all}"
+    local target_arg="${1:-}"
     validate_runtime_arg "${target_arg}" || return 1
     local target_runtimes=()
     mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
@@ -1001,7 +1052,7 @@ sys.exit(1)
 }
 
 cmd_mcp() {
-    local target_arg="${1:-all}"
+    local target_arg="${1:-}"
     validate_runtime_arg "${target_arg}" || return 1
     local target_runtimes=()
     mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
@@ -1096,7 +1147,7 @@ skills_runtime() {
 }
 
 cmd_skills() {
-    local target_arg="${1:-all}"
+    local target_arg="${1:-}"
     validate_runtime_arg "${target_arg}" || return 1
     local target_runtimes=()
     mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
@@ -1946,7 +1997,7 @@ cmd_workspace() {
 }
 
 cmd_check() {
-    local target_arg="${1:-all}"
+    local target_arg="${1:-}"
     validate_runtime_arg "${target_arg}" || return 1
     local target_runtimes=()
     mapfile -t target_runtimes < <(resolve_target_runtimes "${target_arg}")
@@ -1969,6 +2020,30 @@ cmd_check() {
 
     # Verificación de suite de pruebas unitarias
     check_unit_tests
+
+    # Verificación de esquemas para runtimes registrados no incluidos en target_runtimes
+    for r_avail in $(get_available_runtimes); do
+        local is_in_target=false
+        for tr in "${target_runtimes[@]}"; do
+            if [ "$tr" = "$r_avail" ]; then
+                is_in_target=true
+                break
+            fi
+        done
+        if [ "$is_in_target" = false ]; then
+            local cfg_avail
+            cfg_avail="$(get_runtime_config_file "${r_avail}")"
+            if [ -f "${cfg_avail}" ]; then
+                echo "--- Auditoría de Esquema (bajo demanda): '${r_avail}' ---"
+                if ! validate_config "${cfg_avail}" "${SCHEMA_FILE}" "check"; then
+                    echo "  [✗] [${r_avail}] Fallo en la validación de ${cfg_avail}" >&2
+                    CHECK_ERRORS=$((CHECK_ERRORS + 1))
+                else
+                    echo "  [✓] [${r_avail}] Esquema y sintaxis válidos: ${cfg_avail}"
+                fi
+            fi
+        fi
+    done
 
     # Verificaciones por runtime
     for r in "${target_runtimes[@]}"; do
@@ -1997,7 +2072,7 @@ cmd_check() {
 # ------------------------------------------------------------------------------
 
 cmd_all() {
-    local target_arg="${1:-all}"
+    local target_arg="${1:-}"
     validate_runtime_arg "${target_arg}" || return 1
     cmd_build "${target_arg}"
     cmd_link "${target_arg}"
@@ -2013,7 +2088,7 @@ cmd_all() {
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     COMMAND="${1:-all}"
-    RUNTIME_ARG="${2:-all}"
+    RUNTIME_ARG="${2:-}"
 
     case "${COMMAND}" in
         build)
@@ -2047,7 +2122,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             cmd_all "${RUNTIME_ARG}"
             ;;
         *)
-            echo "Uso: $0 {build|link|skills|mcp|status|rollback|check|reconcile|workspace|all} [args...]" >&2
+            echo "Uso: $0 {build|link|skills|mcp|status|rollback|check|reconcile|workspace|all} [runtime|all]" >&2
             exit 1
             ;;
     esac

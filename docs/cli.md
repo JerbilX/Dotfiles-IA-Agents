@@ -12,7 +12,10 @@ Manual exhaustivo de subcomandos, variables de entorno, compuertas de auditoría
 
 ### Argumentos Generales
 - `<subcomando>`: Acción operativa requerida (`build`, `link`, `skills`, `mcp`, `status`, `rollback`, `check`, `reconcile`, `workspace`, `all`).
-- `[runtime]`: Parámetro opcional (`antigravity`, `claude` o `all`). Si se omite o se especifica `all`, la operación se aplica de forma unificada a todos los runtimes configurados en `runtimes/`.
+- `[runtime]`: Parámetro opcional (`antigravity`, `claude` o `all`).
+  - **Por defecto (omitido):** Procesa exclusivamente los runtimes con `status: "active"` (`antigravity`), eliminando overhead de I/O y procesamiento de agentes no utilizados en el día a día.
+  - **Específico (`<runtime>`):** Procesa bajo demanda (*on-demand*) el entorno indicado (ej. `claude`).
+  - **Masivo (`all`):** Procesa la totalidad de los runtimes registrados en `runtimes/` (activos y bajo demanda).
 
 ---
 
@@ -21,17 +24,17 @@ Manual exhaustivo de subcomandos, variables de entorno, compuertas de auditoría
 ### 1. `build`
 Concatena en orden determinista los módulos de `core/*.md` con las especializaciones de cada runtime en `runtimes/<runtime>/rules/*.md` para generar `dist/<runtime>/AGENTS.md`. Resuelve macros declarativas (`${WORKSPACE}`, `${HOME}`) en las definiciones modulares de MCP y genera `dist/<runtime>/mcp_config.json`.
 ```bash
-./build.sh build            # Compila todos los runtimes
-./build.sh build antigravity # Compila exclusivamente Antigravity
-./build.sh build claude      # Compila exclusivamente Claude Code
+./build.sh build            # Compila runtimes activos (antigravity)
+./build.sh build claude      # Compila bajo demanda el runtime Claude Code
+./build.sh build all         # Compila la totalidad de runtimes registrados
 ```
 
 ### 2. `link`
 Verifica la existencia del directorio destino declarado en `target.config_dir`, genera respaldos con timestamp (`.bak.YYYYMMDD_HHMMSS`) de cualquier archivo preexistente, crea enlaces simbólicos atómicos (`ln -sfn`) hacia las ubicaciones canónicas del host y configura los aliases prefix-matchables de GitHub CLI (`board` y `board-ready`):
 ```bash
-./build.sh link             # Enlaza todos los runtimes
-./build.sh link antigravity # Enlaza ~/.gemini/config/
-./build.sh link claude      # Enlaza ~/.claude/
+./build.sh link             # Enlaza runtimes activos (antigravity)
+./build.sh link claude      # Enlaza ~/.claude/ bajo demanda
+./build.sh link all         # Enlaza todos los runtimes registrados
 ```
 
 ### 3. `skills`
@@ -68,9 +71,9 @@ Inspecciona de forma determinista el directorio destino (`target.config_dir`) y 
 ### 7. `check`
 Ejecuta una auditoría estática de integridad de **solo lectura** (*read-only*), ideal para validaciones pre-commit y CI/CD:
 ```bash
-./build.sh check            # Audita todos los runtimes configurados
-./build.sh check antigravity # Audita exclusivamente Antigravity
-./build.sh check claude      # Audita exclusivamente Claude Code
+./build.sh check            # Audita runtimes activos (antigravity) y valida esquemas de secundarios
+./build.sh check claude      # Audita bajo demanda el runtime Claude Code
+./build.sh check all         # Audita la totalidad de los runtimes registrados
 ```
 Inspecciona esquemas JSON, sintaxis, presencia de binarios, aliases de GitHub CLI, colisiones de prefijos numéricos o títulos H1, comandos con bypass entrecomillados en skills, integridad de symlinks en el host, presupuesto de contexto (global y modular) e integridad de la documentación técnica.
 
@@ -91,8 +94,9 @@ Aprovisiona de forma declarativa e idempotente las plantillas de configuración 
 ### 10. `all`
 Flujo completo por defecto. Ejecuta secuencialmente `build`, `link`, `skills`, `status` y la verificación final `check`:
 ```bash
-./build.sh                  # Flujo completo para todos los runtimes
-./build.sh all antigravity  # Flujo completo exclusivamente para Antigravity
+./build.sh                  # Flujo completo para runtimes activos (antigravity por defecto)
+./build.sh all claude       # Flujo completo bajo demanda para Claude Code
+./build.sh all all          # Flujo completo para la totalidad de runtimes registrados
 ```
 
 ---

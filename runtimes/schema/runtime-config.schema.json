@@ -54,6 +54,16 @@
         "pattern": "^[0-9]{2}-[a-z0-9-]+(\\.[a-z0-9]+)?$"
       }
     },
+    "status": {
+      "type": "string",
+      "description": "Estado operativo del runtime: 'active' (procesado y auditado por defecto), 'on-demand' (procesado bajo demanda o con 'all') o 'disabled' (desactivado)",
+      "enum": [
+        "active",
+        "on-demand",
+        "disabled"
+      ],
+      "default": "active"
+    },
     "target": {
       "type": "object",
       "description": "Configuración de rutas de despliegue y enlace simbólico en el sistema anfitrión",
