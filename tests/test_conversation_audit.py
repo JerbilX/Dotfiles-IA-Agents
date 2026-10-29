@@ -15,6 +15,7 @@ if SKILL_TEST_DIR not in sys.path:
 from test_audit_engine import (
     TestAgentAuditCli,
     TestInlineEvalDetection,
+    TestStepInspectionAndFailedSteps,
     TestSubagentPromptConsistency,
     TestTerminalReplLoopAntipattern,
     TestUnpaginatedFileReadAntipattern,

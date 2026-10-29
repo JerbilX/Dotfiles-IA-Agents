@@ -123,6 +123,24 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
   ```bash
   agent-audit <target> --format json
   ```
+- Inspección detallada y acotada de un paso específico:
+  ```bash
+  agent-audit <target> --inspect-step <N>
+  ```
+- Inspección quirúrgica de paso en Markdown o JSON:
+  ```bash
+  agent-audit <target> --inspect-step <N> --format markdown
+  agent-audit <target> --inspect-step <N> --format json
+  ```
+- Listado exclusivo de pasos con errores o excepciones en herramientas:
+  ```bash
+  agent-audit <target> --failed-steps
+  ```
+- Listado de pasos con errores en Markdown o JSON:
+  ```bash
+  agent-audit <target> --failed-steps --format markdown
+  agent-audit <target> --failed-steps --format json
+  ```
 - Ajuste de umbral de latencia:
   ```bash
   agent-audit <target> --threshold-latency 45.0
@@ -167,9 +185,14 @@ La delegación al subagente se estructura con la herramienta nativa `invoke_suba
    - `Model`: `"flash"` (modelo ligero de alta velocidad y bajo costo, óptimo para parsear CLI, analizar antipatrones y sintetizar reportes).
    - `Workspace`: `"inherit"` (hereda el workspace sin branching ni duplicación de storage).
 
-2. **Contrato Operativo del Subagente:**
-   - **Invocación Determinista:** Ejecutar `agent-audit <target> --format markdown` (con fallback determinista `./skills/conversation-audit/bin/agent-audit <target> --format markdown` si no está en `$PATH`).
-   - **Evaluación de Hallazgos:** Parsear la salida markdown, evaluando tiempos wall-clock, latencia promedio/máxima, tasa de fallos de herramientas y la presencia de antipatrones (`CONSECUTIVE_TOOL_ERRORS`, `REPETITIVE_TOOL_LOOP`, `TERMINAL_REPL_LOOP`, `CONTEXT_TRUNCATION`, `UNPAGINATED_FILE_READ`, `HIGH_LATENCY_STEP`, etc.).
+2. **Contrato Operativo y Reglas de Blindaje:**
+   - **Restricción Estricta de Herramientas (Exclusividad de `agent-audit`):**
+     - Prohibido taxativamente al subagente ejecutar comandos de terminal ajenos a `agent-audit` (veto absoluto de `python3`, `python3 -c`, `node`, `ruby`, `cat`, `grep`, `bash`, scripts ad-hoc).
+     - Prohibido el uso de herramientas nativas de lectura o búsqueda (`view_file`, `grep_search`) sobre transcripciones externas. Toda la telemetría se extrae de forma 100% determinista mediante `agent-audit`.
+   - **Presupuesto Finito de Herramientas (Tool Budget):**
+     - Presupuesto máximo estricto de **2 a 3 invocaciones de herramientas** en toda la sesión: 1 ejecución global (`agent-audit <target> --format markdown`) y hasta 2 quirúrgicas opcionales (`agent-audit <target> --failed-steps` o `agent-audit <target> --inspect-step <N>`).
+   - **Disyuntor Autónomo de Seguridad (Circuit Breaker - Stop & Synthesize):**
+     - Si `agent-audit` arroja un error o si se alcanza el presupuesto de herramientas (3 llamadas), el subagente debe detenerse inmediatamente (Stop & Synthesize) y emitir su diagnóstico consolidado con los datos disponibles, sin reintentar ni entrar en bucles de evaluación.
    - **Contrato de Salida Limpia:** El subagente tiene estrictamente prohibido reenviar trazas crudas, transcripciones enteras o tablas intermedias excesivas. Emite únicamente un **Diagnóstico Ejecutivo Consolidado**.
    - **Canal de Emisión:** Envía el reporte consolidado directamente en su mensaje de respuesta de finalización o mediante `send_message` hacia la sesión principal.
 
@@ -183,7 +206,7 @@ La delegación al subagente se estructura con la herramienta nativa `invoke_suba
       "Role": "Session Performance Auditor",
       "Model": "flash",
       "Workspace": "inherit",
-      "Prompt": "Ejecuta 'agent-audit <target> --format markdown' con BypassSandbox: true. Evalúa las métricas clave y la presencia de antipatrones de severidad ALTA o CRÍTICA. Devuelve únicamente el Diagnóstico Ejecutivo Consolidado al hilo principal, sin volcar trazas crudas ni tablas intermedias. Ver directivas en skills/conversation-audit/templates/subagent_prompt.md."
+      "Prompt": "Ejecuta 'agent-audit <target> --format markdown' con BypassSandbox: true. Presupuesto estricto: máximo 3 tool calls (puedes usar --failed-steps o --inspect-step <N> si hay errores). Prohibido ejecutar comandos de terminal ajenos a agent-audit (vetado python3 -c, cat, grep, bash). Circuit breaker: si hay error o alcanzas 3 llamadas, Stop & Synthesize de inmediato. Devuelve únicamente el Diagnóstico Ejecutivo Consolidado al hilo principal. Ver directivas en skills/conversation-audit/templates/subagent_prompt.md."
     }
   ]
 }
