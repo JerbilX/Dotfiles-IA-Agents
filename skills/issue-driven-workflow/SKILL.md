@@ -32,6 +32,7 @@ Procedimientos detallados y plantillas en `references/`:
 | **Ramas y PRs** | Cat. A/B, higiene, 8 fases E2E, apertura de PRs y cierre post-merge. | [`references/branch-lifecycle.md`](references/branch-lifecycle.md) |
 | **Máquina de Estados** | Matriz de transiciones progresivas y regresivas (rework, bloqueos, rollback). | [`references/state-machine.md`](references/state-machine.md) |
 | **Code Review** | Ingesta `gh-pr-review`, parches y resolución de hilos. | [`references/code-review.md`](references/code-review.md) |
+| **Investigación Exploratoria** | Protocolo de delegación a subagente `research` (modelo `flash`, `inherit`), ahorro de tokens (> 3 archivos) y consolidación. | [`references/exploratory-research.md`](references/exploratory-research.md) |
 | **Rollback** | Reversión con `git revert` y `build.sh rollback`. | [`references/rollback.md`](references/rollback.md) |
 
 ---
@@ -60,6 +61,11 @@ gh board-ready <owner>/<repo>
 *(Alias prefix-matchable. Fallback si el alias no está configurado: `gh project item-list <project_number> --owner <project_owner> --limit 100 --query 'repo:<owner>/<repo> status:"🎯 Ready for Dev"' --format json --jq '.items[] | {number: .content.number, title: .content.title, url: .content.url}'`, donde `<project_number>` y `<project_owner>` se resuelven desde `.repo-config.json` o aplican `1` y `@me` por defecto).*
 2. Elegir ítem prioritario (Top 2-3) y proceder al ciclo E2E.
 
+### 3.4 Investigaciones Exploratorias y Ahorro de Tokens
+Para relevamientos técnicos que requieran inspeccionar más de 3 archivos o explorar bases de código externas/desconocidas:
+1. **Delegación Mandatoria:** Prohibido acumular lecturas masivas en la sesión principal. Invocar subagente nativo `research` (`TypeName: "research"`, `Model: "flash"`, `Workspace: "inherit"`).
+2. **Consolidación:** El subagente entrega un resumen ejecutivo consolidado al hilo principal, protegiendo el contexto de la sesión. Ver [`references/exploratory-research.md`](references/exploratory-research.md).
+
 ---
 
 ## 4. Ciclo de Vida E2E (Resumen Ejecutivo)
@@ -70,7 +76,7 @@ gh board-ready <owner>/<repo>
 
 Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](references/branch-lifecycle.md) y [`references/state-machine.md`](references/state-machine.md).
 
-- [ ] **1. Ingesta:** `gh issue view <id>` (sin llamadas a `gh project item-edit`).
+- [ ] **1. Ingesta:** `gh issue view <id>` (sin llamadas a `gh project item-edit`). Relevamientos exploratorios de > 3 archivos o repositorios externos se delegan obligatoriamente al subagente `research` (modelo `flash`, `Workspace: inherit`).
 - [ ] **2. Higiene:** Aislamiento preferente en ≤ 2 llamadas (`git fetch --prune origin` y `git switch --no-track -c <rama> origin/<base>`); poda diferida a Fase 8.
 - [ ] **3. Plan/ADR:** Fast-Track por defecto (sin pausa bloqueante en tickets con criterios claros en `Ready for Dev`); *Stop & Plan* con gate bloqueante ante ADRs nuevos/modificados, alternativas divergentes o diagnósticos inciertos.
 - [ ] **4. Desarrollo:** Promover ADR a `status: accepted` al iniciar desarrollo, I/O nativo y verificar con `./build.sh check`.
