@@ -1,7 +1,7 @@
 ---
 name: conversation-audit
 description: >-
-  Auditoría sistemática, análisis de rendimiento y detección de antipatrones en sesiones y transcripciones de agentes de IA (Antigravity y Claude Code). Provee directivas metodológicas, catálogo de métricas y el CLI agent-audit para evaluar tiempos wall-clock, latencia por turno, desglose de herramientas, fallos de ejecución y vicios de comportamiento sin sobrecargar tokens de contexto.
+  Auditoría sistemática, análisis de rendimiento y detección de antipatrones en sesiones y transcripciones de agentes de IA (Antigravity y Claude Code). Provee directivas metodológicas, catálogo de métricas, el CLI agent-audit y protocolo de delegación a subagente en background (modelo flash) para evaluar tiempos wall-clock, latencia por turno, desglose de herramientas, fallos de ejecución y vicios de comportamiento sin sobrecargar tokens de contexto.
 ---
 
 # Auditoría de Conversaciones y Análisis de Rendimiento de Agentes
@@ -15,6 +15,7 @@ Guía metodológica, catálogo de métricas y protocolo operativo para la audito
 1. **Ahorro de Presupuesto de Contexto (Context-Saving):**
    - Prohibido volcar transcripciones extensas (`transcript.jsonl`, JSON de sesiones) directamente al contexto del LLM mediante herramientas de lectura masiva (`view_file`, `cat`).
    - La ingesta y agregación de métricas debe delegarse de forma determinista al binario local `agent-audit`, ingresando al contexto del agente únicamente el informe procesado o resumen tabular.
+   - En auditorías extensas, históricas o en lote, la ejecución y análisis de `agent-audit` debe desacoplarse hacia un subagente en background (modelo `flash`), preservando el hilo de chat principal libre de trazas intermedias.
 2. **Agnosticismo de Runtime:**
    - La arquitectura separa el modelo de datos normalizado (`NormalizedStep`, `NormalizedToolCall`) de los formatos físicos de cada runtime mediante adaptadores (`AntigravityAdapter`, `ClaudeAdapter`), permitiendo auditar indistintamente sesiones de Antigravity o Claude Code.
 3. **Cero Dependencias Externas:**
@@ -137,3 +138,63 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
 
 ### Paso 4: Registro y Retroalimentación
 - Si la auditoría revela un problema estructural o una directiva faltante, registrar una nueva issue en el backlog canónico (`gh issue create --body-file .issue_body`) para consolidar la mejora.
+
+---
+
+## 5. Modo de Auditoría Desacoplada en Background vía Subagente
+
+Para auditorías de sesiones extensas, análisis por lotes de múltiples conversaciones históricas o evaluaciones periódicas de rendimiento:
+
+### 5.1 Umbral y Criterio de Activación (Preservación Extrema de Contexto)
+- **Auditoría Directa Confinada (Sesión Activa o Rápida):**
+  - Permitida en el hilo principal cuando se audita una única sesión reciente con consulta rápida (`--metadata-only`) o inspección acotada.
+- **Delegación Mandatoria a Subagente en Background:**
+  - Cuando se requiera auditar sesiones históricas o extensas (> 20 turnos).
+  - Cuando se evalúe rendimiento en lote (múltiples sesiones o diagnósticos comparativos).
+  - Cuando la conversación principal esté en fases activas de desarrollo o revisión y no deba ensuciarse con salidas extensas de CLI o cómputo intermedio de antipatrones.
+
+### 5.2 Especificación y Contrato del Subagente
+La delegación al subagente se estructura con la herramienta nativa `invoke_subagent`:
+
+1. **Parámetros de Configuración del Subagente:**
+   - `TypeName`: `"self"` (hereda el entorno y herramientas completas del agente para invocar `run_command` con `BypassSandbox: true`).
+   - `Role`: `"Session Performance Auditor"` o `"Session Auditor"`.
+   - `Model`: `"flash"` (modelo ligero de alta velocidad y bajo costo, óptimo para parsear CLI, analizar antipatrones y sintetizar reportes).
+   - `Workspace`: `"inherit"` (hereda el workspace sin branching ni duplicación de storage).
+
+2. **Contrato Operativo del Subagente:**
+   - **Invocación Determinista:** Ejecutar `agent-audit <target> --format markdown` (con fallback determinista `./skills/conversation-audit/bin/agent-audit <target> --format markdown` si no está en `$PATH`).
+   - **Evaluación de Hallazgos:** Parsear la salida markdown, evaluando tiempos wall-clock, latencia promedio/máxima, tasa de fallos de herramientas y la presencia de antipatrones (`CONSECUTIVE_TOOL_ERRORS`, `REPETITIVE_TOOL_LOOP`, `TERMINAL_REPL_LOOP`, `HIGH_LATENCY_STEP`, etc.).
+   - **Contrato de Salida Limpia:** El subagente tiene estrictamente prohibido reenviar trazas crudas, transcripciones enteras o tablas intermedias excesivas. Emite únicamente un **Diagnóstico Ejecutivo Consolidado**.
+   - **Canal de Emisión:** Envía el reporte consolidado directamente en su mensaje de respuesta de finalización o mediante `send_message` hacia la sesión principal.
+
+### 5.3 Estructura de Invocación (`invoke_subagent`)
+
+```json
+{
+  "Subagents": [
+    {
+      "TypeName": "self",
+      "Role": "Session Performance Auditor",
+      "Model": "flash",
+      "Workspace": "inherit",
+      "Prompt": "Ejecuta 'agent-audit <target> --format markdown' con BypassSandbox: true. Evalúa las métricas clave y la presencia de antipatrones de severidad ALTA o CRÍTICA. Devuelve únicamente el Diagnóstico Ejecutivo Consolidado al hilo principal, sin volcar trazas crudas ni tablas intermedias. Ver directivas en skills/conversation-audit/templates/subagent_prompt.md."
+    }
+  ]
+}
+```
+
+### 5.4 Plantilla y Directiva de Prompt para el Subagente
+Para garantizar resultados deterministas, consultar la plantilla canónica [`templates/subagent_prompt.md`](templates/subagent_prompt.md). El prompt debe delimitar:
+1. **Objetivo:** Identificador de la conversación objetivo (`<conversation-id>` o ruta de transcripción).
+2. **Ejecución:** Invocación de `agent-audit <target> --format markdown`.
+3. **Estructura de Retorno Exigida:**
+   - **Metadatos y Resumen:** Target, runtime, duración wall-clock, turnos totales, latencia media/máx, tasa de errores de herramientas y pasos con thinking.
+   - **Veredicto de Antipatrones:** Detalle de antipatrones detectados (código, severidad, paso y recomendación correctiva) o confirmación explícita de ausencia.
+   - **Cuellos de Botella:** Herramientas y pasos con mayor latencia acumulada.
+   - **Conclusiones y Próximos Pasos:** Recomendaciones técnicas sintéticas (ej. registrar issue si hay antipatrón estructural recurrente).
+
+### 5.5 Recepción Asíncrona y Consolidación en la Sesión Principal
+- **Espera Reactiva (Prohibición de Polling):** Tras invocar al subagente, el agente principal entra en espera reactiva sin ejecutar bucles de sondeo (`manage_subagents` status o comandos sleep). El runtime reactiva la ejecución automáticamente al recibir el reporte consolidado.
+- **Aislamiento de Contexto:** El hilo de chat principal solo incorpora el diagnóstico ejecutivo consolidado, preservando su presupuesto de tokens y manteniendo un historial limpio enfocado en la tarea principal.
+
