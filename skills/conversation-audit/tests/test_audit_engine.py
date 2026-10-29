@@ -511,6 +511,238 @@ class TestAgentAuditCli(unittest.TestCase):
                 self.assertEqual(code, 2)
 
 
+class TestStepInspectionAndFailedSteps(unittest.TestCase):
+    """Pruebas unitarias para las funcionalidades quirúrgicas --inspect-step y --failed-steps."""
+
+    def setUp(self):
+        self.step_with_error = NormalizedStep(
+            step_index=5,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            created_at=datetime(2026, 10, 29, 12, 0, 0),
+            duration_seconds=3.5,
+            thinking="Analizando si el comando existe...",
+            content="Voy a ejecutar el comando.",
+            tool_calls=[
+                NormalizedToolCall(
+                    name="run_command",
+                    args={"CommandLine": "git-prune-gone --sync"},
+                    tool_action="Pruning branches",
+                    tool_summary="Prune branches",
+                    status="ERROR",
+                    error="Command not found: git-prune-gone",
+                )
+            ],
+            status="ERROR",
+        )
+
+        self.step_ok = NormalizedStep(
+            step_index=1,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            created_at=datetime(2026, 10, 29, 11, 59, 0),
+            duration_seconds=1.2,
+            content="Lectura de estado completada.",
+            tool_calls=[
+                NormalizedToolCall(
+                    name="run_command",
+                    args={"CommandLine": "git status"},
+                    tool_action="Checking git status",
+                    status="DONE",
+                    raw_output="On branch main\nnothing to commit",
+                )
+            ],
+            status="DONE",
+        )
+
+    def test_format_step_text_markdown_json(self):
+        from audit_engine import format_json_step, format_markdown_step, format_text_step
+        import json
+
+        # Texto
+        text_out = format_text_step(self.step_with_error)
+        self.assertIn("DETALLE DE PASO 5", text_out)
+        self.assertIn("run_command", text_out)
+        self.assertIn("Command not found: git-prune-gone", text_out)
+        self.assertIn("PENSAMIENTO / THINKING:", text_out)
+
+        # Markdown
+        md_out = format_markdown_step(self.step_with_error)
+        self.assertIn("# Detalle del Paso `5`", md_out)
+        self.assertIn("`run_command`", md_out)
+        self.assertIn("Command not found: git-prune-gone", md_out)
+        self.assertIn("## Pensamiento (Thinking)", md_out)
+
+        # JSON
+        json_out = format_json_step(self.step_with_error)
+        data = json.loads(json_out)
+        self.assertEqual(data["step_index"], 5)
+        self.assertEqual(data["status"], "ERROR")
+        self.assertEqual(len(data["tool_calls"]), 1)
+        self.assertEqual(data["tool_calls"][0]["error"], "Command not found: git-prune-gone")
+
+    def test_format_step_truncates_large_fields(self):
+        from audit_engine import format_markdown_step, format_text_step
+
+        huge_step = NormalizedStep(
+            step_index=10,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            content="A" * 3000,
+            tool_calls=[
+                NormalizedToolCall(
+                    name="run_command",
+                    args={"CommandLine": "cat huge_file.log"},
+                    raw_output="B" * 5000,
+                    status="DONE",
+                )
+            ],
+            status="DONE",
+        )
+        text_out = format_text_step(huge_step, max_content_chars=500)
+        self.assertIn("[Salida truncada: se muestran 500 de 5000 caracteres]", text_out)
+        self.assertIn("[Salida truncada: se muestran 500 de 3000 caracteres]", text_out)
+
+        md_out = format_markdown_step(huge_step, max_content_chars=500)
+        self.assertIn("[Salida truncada: se muestran 500 de 5000 caracteres]", md_out)
+
+    def test_get_failed_steps_filtering_and_deduplication(self):
+        from audit_engine import get_failed_steps
+
+        # Paso 1: OK
+        # Paso 2: Tool call con ERROR
+        # Paso 3: GENERIC output step con el mismo error duplicado (Antigravity)
+        steps = [
+            self.step_ok,
+            self.step_with_error,
+            NormalizedStep(
+                step_index=6,
+                source="SYSTEM",
+                step_type="GENERIC",
+                content="Command not found: git-prune-gone",
+                status="ERROR",
+            ),
+        ]
+        failed = get_failed_steps(steps)
+        # Debe incluir solo el paso 5 (el tool call con error), deduplicando el paso 6
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(failed[0].step_index, 5)
+
+    def test_format_failed_steps_text_markdown_json(self):
+        from audit_engine import (
+            format_json_failed_steps,
+            format_markdown_failed_steps,
+            format_text_failed_steps,
+        )
+        import json
+
+        failed_steps = [self.step_with_error]
+
+        # Texto con fallos
+        txt_out = format_text_failed_steps(failed_steps)
+        self.assertIn("Total de pasos con errores: 1", txt_out)
+        self.assertIn("Paso 5", txt_out)
+        self.assertIn("Command not found: git-prune-gone", txt_out)
+
+        # Markdown con fallos
+        md_out = format_markdown_failed_steps(failed_steps)
+        self.assertIn("Total de pasos con errores detectados: **1**", md_out)
+        self.assertIn("`run_command`", md_out)
+
+        # JSON con fallos
+        json_out = format_json_failed_steps(failed_steps)
+        data = json.loads(json_out)
+        self.assertEqual(data["total_failed_steps"], 1)
+        self.assertEqual(len(data["failed_steps"]), 1)
+        self.assertEqual(data["failed_steps"][0]["failed_tools"][0]["name"], "run_command")
+
+        # Texto sin fallos
+        clean_txt = format_text_failed_steps([])
+        self.assertIn("No se registraron pasos con errores de herramientas", clean_txt)
+
+        # Markdown sin fallos
+        clean_md = format_markdown_failed_steps([])
+        self.assertIn("No se registraron pasos con errores de herramientas", clean_md)
+
+    def test_cli_inspect_step_flag(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+        import importlib.machinery
+        import importlib.util
+
+        cli_path = SKILL_ROOT / "bin" / "agent-audit"
+        loader = importlib.machinery.SourceFileLoader("agent_audit_cli_test", str(cli_path))
+        spec = importlib.util.spec_from_loader("agent_audit_cli_test", loader)
+        cli_mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(cli_mod)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            transcript_file = Path(tmpdir) / "transcript.jsonl"
+            lines = [
+                {"step_index": 0, "source": "USER", "type": "USER_INPUT", "content": "hola"},
+                {
+                    "step_index": 1,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "tool_calls": [{"name": "run_command", "args": {"CommandLine": "ls"}}],
+                },
+            ]
+            with open(transcript_file, "w", encoding="utf-8") as f:
+                for line in lines:
+                    f.write(json.dumps(line) + "\n")
+
+            # Paso existente (0 y 1)
+            with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-step", "1"]):
+                code = cli_mod.main()
+                self.assertEqual(code, 0)
+
+            # Paso inexistente (999) -> código 1
+            with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-step", "999"]):
+                code = cli_mod.main()
+                self.assertEqual(code, 1)
+
+    def test_cli_failed_steps_flag(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+        import importlib.machinery
+        import importlib.util
+
+        cli_path = SKILL_ROOT / "bin" / "agent-audit"
+        loader = importlib.machinery.SourceFileLoader("agent_audit_cli_test_failed", str(cli_path))
+        spec = importlib.util.spec_from_loader("agent_audit_cli_test_failed", loader)
+        cli_mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(cli_mod)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            transcript_file = Path(tmpdir) / "transcript.jsonl"
+            lines = [
+                {"step_index": 0, "source": "USER", "type": "USER_INPUT", "content": "hola"},
+                {
+                    "step_index": 1,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "status": "ERROR",
+                    "tool_calls": [{"name": "run_command", "args": {"CommandLine": "false"}}],
+                },
+                {
+                    "step_index": 2,
+                    "source": "SYSTEM",
+                    "type": "GENERIC",
+                    "status": "ERROR",
+                    "content": "The command exited with code 1",
+                },
+            ]
+            with open(transcript_file, "w", encoding="utf-8") as f:
+                for line in lines:
+                    f.write(json.dumps(line) + "\n")
+
+            with patch("sys.argv", ["agent-audit", str(transcript_file), "--failed-steps", "--format", "json"]):
+                code = cli_mod.main()
+                self.assertEqual(code, 0)
+
+
 class TestSubagentPromptConsistency(unittest.TestCase):
     """Pruebas de consistencia para el modo de auditoría en background vía subagente."""
 
@@ -527,13 +759,35 @@ class TestSubagentPromptConsistency(unittest.TestCase):
         self.assertIn("Diagnóstico Ejecutivo Consolidado", content)
         self.assertIn("Veredicto de Antipatrones", content)
 
-    def test_skill_docs_cover_subagent_mode(self):
+    def test_subagent_prompt_contains_strict_shielding_rules(self):
+        """Verifica que el prompt del subagente prohíba comandos ajenos y delimite presupuesto."""
+        template_file = SKILL_ROOT / "templates" / "subagent_prompt.md"
+        content = template_file.read_text(encoding="utf-8")
+        # Prohibición explícita de herramientas no autorizadas
+        self.assertIn("PROHIBIDO TAXATIVAMENTE", content)
+        self.assertIn("python3", content)
+        self.assertIn("bash", content)
+        self.assertIn("grep", content)
+        # Presupuesto acotado
+        self.assertIn("Tool Budget", content)
+        self.assertIn("2 a 3 invocaciones de herramientas", content)
+        self.assertIn("--failed-steps", content)
+        self.assertIn("--inspect-step", content)
+        # Disyuntor autónomo
+        self.assertIn("Stop & Synthesize", content)
+        self.assertIn("Circuit Breaker", content)
+
+    def test_skill_docs_cover_subagent_mode_and_shielding(self):
         skill_file = SKILL_ROOT / "SKILL.md"
         content = skill_file.read_text(encoding="utf-8")
         self.assertIn("## 5. Modo de Auditoría Desacoplada en Background vía Subagente", content)
         self.assertIn("templates/subagent_prompt.md", content)
         self.assertIn('"TypeName": "self"', content)
         self.assertIn('"Model": "flash"', content)
+        self.assertIn("--inspect-step <N>", content)
+        self.assertIn("--failed-steps", content)
+        self.assertIn("Stop & Synthesize", content)
+        self.assertIn("máximo 3 tool calls", content)
 
     def test_markdown_report_matches_subagent_expectations(self):
         from audit_engine import AuditReport, format_markdown_report
@@ -565,4 +819,5 @@ class TestSubagentPromptConsistency(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
 

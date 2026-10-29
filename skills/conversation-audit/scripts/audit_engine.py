@@ -830,3 +830,344 @@ def format_json_metadata(metadata: ConversationMetadata) -> str:
 
     return json.dumps({"metadata": asdict(metadata)}, indent=2, default=custom_serializer)
 
+
+def truncate_str(text: Optional[str], max_chars: int = 1500) -> Optional[str]:
+    """Acota cadenas largas para evitar desbordes de contexto en inspección de pasos."""
+    if text is None:
+        return None
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + f"\n... [Salida truncada: se muestran {max_chars} de {len(text)} caracteres]"
+
+
+def format_args(args: Any, max_chars: int = 1000) -> str:
+    """Formatea argumentos de herramientas en JSON o string acotado."""
+    import json
+    if not args:
+        return "{}"
+    if isinstance(args, dict):
+        try:
+            formatted = json.dumps(args, indent=2, ensure_ascii=False)
+        except Exception:
+            formatted = str(args)
+    else:
+        formatted = str(args)
+    if len(formatted) > max_chars:
+        return formatted[:max_chars] + f"\n... [Argumentos truncados: {max_chars}/{len(formatted)} caracteres]"
+    return formatted
+
+
+def get_failed_steps(steps: List[NormalizedStep]) -> List[NormalizedStep]:
+    """Filtra y devuelve exclusivamente los pasos que arrojaron errores o excepciones en herramientas."""
+    failed: List[NormalizedStep] = []
+    for s in steps:
+        has_tool_error = any(tc.status == "ERROR" or tc.error for tc in s.tool_calls)
+        if has_tool_error:
+            failed.append(s)
+        elif s.status == "ERROR":
+            # Si es un step de salida pura de herramienta (GENERIC/TOOL_OUTPUT),
+            # evitar duplicación si el paso inmediatamente anterior ya registró el error en sus tool_calls
+            if s.step_type in ("GENERIC", "TOOL_OUTPUT") and failed:
+                prev = failed[-1]
+                if prev.step_index == s.step_index - 1 and any(tc.error == s.content for tc in prev.tool_calls):
+                    continue
+            failed.append(s)
+    return failed
+
+
+def format_text_step(step: NormalizedStep, max_content_chars: int = 1500) -> str:
+    """Genera una salida tabular acotada para un paso específico."""
+    lines: List[str] = []
+    lines.append("=" * 72)
+    lines.append(f" DETALLE DE PASO {step.step_index} - AGENT-AUDIT")
+    lines.append("=" * 72)
+    lines.append(f"  Paso             : {step.step_index}")
+    lines.append(f"  Fuente           : {step.source}")
+    lines.append(f"  Tipo             : {step.step_type}")
+    lines.append(f"  Estado           : {step.status}")
+    if step.created_at:
+        lines.append(f"  Timestamp        : {step.created_at.isoformat()}")
+    if step.duration_seconds is not None:
+        lines.append(f"  Duración         : {step.duration_seconds:.2f} s")
+    if step.truncated_fields:
+        lines.append(f"  Campos Truncados : {', '.join(step.truncated_fields)}")
+    if step.tokens:
+        tok_str = ", ".join(f"{k}: {v}" for k, v in step.tokens.items() if v)
+        if tok_str:
+            lines.append(f"  Tokens           : {tok_str}")
+    lines.append("-" * 72)
+
+    if step.thinking:
+        lines.append(" PENSAMIENTO / THINKING:")
+        t_trunc = truncate_str(step.thinking, max_content_chars)
+        for t_line in (t_trunc or "").splitlines():
+            lines.append(f"  {t_line}")
+        lines.append("-" * 72)
+
+    if step.content:
+        lines.append(" CONTENIDO / TEXTO:")
+        c_trunc = truncate_str(step.content, max_content_chars)
+        for c_line in (c_trunc or "").splitlines():
+            lines.append(f"  {c_line}")
+        lines.append("-" * 72)
+
+    if step.tool_calls:
+        lines.append(f" LLAMADAS A HERRAMIENTAS ({len(step.tool_calls)}):")
+        for i, tc in enumerate(step.tool_calls, 1):
+            lines.append(f"  [{i}/{len(step.tool_calls)}] Herramienta: {tc.name} | Estado: {tc.status}")
+            if tc.call_id:
+                lines.append(f"      Call ID : {tc.call_id}")
+            if tc.tool_action:
+                lines.append(f"      Acción  : {tc.tool_action}")
+            if tc.tool_summary:
+                lines.append(f"      Resumen : {tc.tool_summary}")
+            if tc.args:
+                lines.append("      Argumentos:")
+                arg_str = format_args(tc.args, max_content_chars)
+                for a_line in arg_str.splitlines():
+                    lines.append(f"        {a_line}")
+            if tc.error:
+                lines.append("      ERROR:")
+                err_str = truncate_str(tc.error, max_content_chars)
+                for e_line in (err_str or "").splitlines():
+                    lines.append(f"        {e_line}")
+            elif tc.raw_output:
+                lines.append("      Salida:")
+                out_str = truncate_str(tc.raw_output, max_content_chars)
+                for o_line in (out_str or "").splitlines():
+                    lines.append(f"        {o_line}")
+        lines.append("-" * 72)
+    elif not step.thinking and not step.content:
+        lines.append("  (Paso sin contenido textual ni llamadas a herramientas)")
+        lines.append("-" * 72)
+
+    lines.append("=" * 72)
+    return "\n".join(lines)
+
+
+def format_markdown_step(step: NormalizedStep, max_content_chars: int = 1500) -> str:
+    """Genera informe Markdown acotado para un paso específico."""
+    lines: List[str] = []
+    lines.append(f"# Detalle del Paso `{step.step_index}`")
+    lines.append("")
+    lines.append(f"- **Paso:** `{step.step_index}`")
+    lines.append(f"- **Fuente:** `{step.source}`")
+    lines.append(f"- **Tipo:** `{step.step_type}`")
+    lines.append(f"- **Estado:** `{step.status}`")
+    if step.created_at:
+        lines.append(f"- **Timestamp:** `{step.created_at.isoformat()}`")
+    if step.duration_seconds is not None:
+        lines.append(f"- **Duración:** `{step.duration_seconds:.2f} s`")
+    if step.truncated_fields:
+        lines.append(f"- **Campos Truncados:** `{', '.join(step.truncated_fields)}`")
+    lines.append("")
+
+    if step.thinking:
+        lines.append("## Pensamiento (Thinking)")
+        lines.append("")
+        lines.append(f"```\n{truncate_str(step.thinking, max_content_chars)}\n```")
+        lines.append("")
+
+    if step.content:
+        lines.append("## Contenido")
+        lines.append("")
+        lines.append(f"```\n{truncate_str(step.content, max_content_chars)}\n```")
+        lines.append("")
+
+    if step.tool_calls:
+        lines.append(f"## Llamadas a Herramientas ({len(step.tool_calls)})")
+        lines.append("")
+        for i, tc in enumerate(step.tool_calls, 1):
+            lines.append(f"### {i}. `{tc.name}`")
+            lines.append(f"- **Estado:** `{tc.status}`")
+            if tc.call_id:
+                lines.append(f"- **Call ID:** `{tc.call_id}`")
+            if tc.tool_action:
+                lines.append(f"- **Acción:** {tc.tool_action}")
+            if tc.tool_summary:
+                lines.append(f"- **Resumen:** {tc.tool_summary}")
+            lines.append("")
+            if tc.args:
+                lines.append("#### Argumentos")
+                lines.append("```json")
+                lines.append(format_args(tc.args, max_content_chars))
+                lines.append("```")
+                lines.append("")
+            if tc.error:
+                lines.append("#### Error")
+                lines.append("```")
+                lines.append(truncate_str(tc.error, max_content_chars))
+                lines.append("```")
+                lines.append("")
+            elif tc.raw_output:
+                lines.append("#### Salida")
+                lines.append("```")
+                lines.append(truncate_str(tc.raw_output, max_content_chars))
+                lines.append("```")
+                lines.append("")
+
+    lines.append("---")
+    lines.append("*Inspección quirúrgica generada por `agent-audit --inspect-step`.*")
+    return "\n".join(lines)
+
+
+def format_json_step(step: NormalizedStep, max_content_chars: int = 2000) -> str:
+    """Genera JSON acotado para un paso específico."""
+    import json
+
+    def custom_serializer(obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if hasattr(obj, "__dict__"):
+            return asdict(obj)
+        return str(obj)
+
+    def clean_val(v):
+        if isinstance(v, str) and len(v) > max_content_chars:
+            return v[:max_content_chars] + f"... [Truncado: {max_content_chars}/{len(v)} chars]"
+        if isinstance(v, dict):
+            return {k: clean_val(val) for k, val in v.items()}
+        if isinstance(v, list):
+            return [clean_val(item) for item in v]
+        return v
+
+    step_data = {
+        "step_index": step.step_index,
+        "source": step.source,
+        "step_type": step.step_type,
+        "status": step.status,
+        "created_at": step.created_at.isoformat() if step.created_at else None,
+        "duration_seconds": step.duration_seconds,
+        "thinking": clean_val(step.thinking),
+        "content": clean_val(step.content),
+        "truncated_fields": step.truncated_fields,
+        "tokens": step.tokens,
+        "tool_calls": [
+            {
+                "name": tc.name,
+                "call_id": tc.call_id,
+                "tool_action": tc.tool_action,
+                "tool_summary": tc.tool_summary,
+                "status": tc.status,
+                "args": clean_val(tc.args),
+                "error": clean_val(tc.error),
+                "raw_output": clean_val(tc.raw_output),
+            }
+            for tc in step.tool_calls
+        ],
+    }
+    return json.dumps(step_data, indent=2, default=custom_serializer)
+
+
+def format_text_failed_steps(failed_steps: List[NormalizedStep], max_snippet_chars: int = 500) -> str:
+    """Genera una salida tabular de pasos con errores de herramientas."""
+    lines: List[str] = []
+    lines.append("=" * 72)
+    lines.append(" PASOS CON ERRORES DE HERRAMIENTAS - AGENT-AUDIT")
+    lines.append("=" * 72)
+    if not failed_steps:
+        lines.append("  [✓] No se registraron pasos con errores de herramientas en la sesión.")
+        lines.append("=" * 72)
+        return "\n".join(lines)
+
+    lines.append(f"  Total de pasos con errores: {len(failed_steps)}")
+    lines.append("-" * 72)
+    for s in failed_steps:
+        dur_str = f" ({s.duration_seconds:.1f}s)" if s.duration_seconds is not None else ""
+        lines.append(f"  Paso {s.step_index:<4} | {s.source:<6} | {s.step_type:<18} | Estado: {s.status}{dur_str}")
+        if s.tool_calls:
+            for tc in s.tool_calls:
+                err_mark = "[FALLÓ]" if (tc.status == "ERROR" or tc.error) else "[OK]"
+                cmd = str(tc.args.get("CommandLine") or tc.args.get("command") or "") if isinstance(tc.args, dict) else ""
+                act = tc.tool_action or tc.tool_summary or (cmd[:60] if cmd else "N/A")
+                lines.append(f"    - {err_mark} Tool: {tc.name} ({act})")
+                if tc.error:
+                    err_clean = truncate_str(tc.error.strip(), max_snippet_chars)
+                    for el in (err_clean or "").splitlines():
+                        lines.append(f"        Error: {el}")
+        elif s.content:
+            c_clean = truncate_str(s.content.strip(), max_snippet_chars)
+            for cl in (c_clean or "").splitlines():
+                lines.append(f"    Detalle: {cl}")
+        lines.append("-" * 72)
+    lines.append("=" * 72)
+    return "\n".join(lines)
+
+
+def format_markdown_failed_steps(failed_steps: List[NormalizedStep], max_snippet_chars: int = 500) -> str:
+    """Genera informe Markdown de pasos con errores de herramientas."""
+    lines: List[str] = []
+    lines.append("# Pasos con Errores de Herramientas")
+    lines.append("")
+    if not failed_steps:
+        lines.append("> [!TIP]")
+        lines.append("> No se registraron pasos con errores de herramientas en esta sesión.")
+        lines.append("")
+        lines.append("---")
+        lines.append("*Consulta quirúrgica generada por `agent-audit --failed-steps`.*")
+        return "\n".join(lines)
+
+    lines.append(f"Total de pasos con errores detectados: **{len(failed_steps)}**")
+    lines.append("")
+    lines.append("| Paso | Fuente / Tipo | Herramienta | Acción / Comando | Detalle del Error |")
+    lines.append("| :---: | :--- | :--- | :--- | :--- |")
+    for s in failed_steps:
+        if s.tool_calls:
+            for tc in s.tool_calls:
+                if tc.status == "ERROR" or tc.error:
+                    cmd = str(tc.args.get("CommandLine") or tc.args.get("command") or "") if isinstance(tc.args, dict) else ""
+                    act = tc.tool_action or tc.tool_summary or (f"`{cmd[:40]}...`" if cmd else "N/A")
+                    err_desc = (tc.error or "").replace("\n", " ").strip()
+                    if len(err_desc) > 80:
+                        err_desc = err_desc[:77] + "..."
+                    lines.append(f"| `{s.step_index}` | `{s.source}` / `{s.step_type}` | `{tc.name}` | {act} | {err_desc} |")
+        elif s.content:
+            err_desc = s.content.replace("\n", " ").strip()
+            if len(err_desc) > 80:
+                err_desc = err_desc[:77] + "..."
+            lines.append(f"| `{s.step_index}` | `{s.source}` / `{s.step_type}` | N/A | N/A | {err_desc} |")
+    lines.append("")
+    lines.append("---")
+    lines.append("*Consulta quirúrgica generada por `agent-audit --failed-steps`.*")
+    return "\n".join(lines)
+
+
+def format_json_failed_steps(failed_steps: List[NormalizedStep], max_snippet_chars: int = 500) -> str:
+    """Genera JSON de pasos con errores de herramientas."""
+    import json
+
+    def custom_serializer(obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if hasattr(obj, "__dict__"):
+            return asdict(obj)
+        return str(obj)
+
+    data = {
+        "total_failed_steps": len(failed_steps),
+        "failed_steps": [
+            {
+                "step_index": s.step_index,
+                "source": s.source,
+                "step_type": s.step_type,
+                "status": s.status,
+                "created_at": s.created_at.isoformat() if s.created_at else None,
+                "duration_seconds": s.duration_seconds,
+                "failed_tools": [
+                    {
+                        "name": tc.name,
+                        "action": tc.tool_action or tc.tool_summary,
+                        "command": tc.args.get("CommandLine") or tc.args.get("command") or "" if isinstance(tc.args, dict) else "",
+                        "error": truncate_str(tc.error, max_snippet_chars),
+                    }
+                    for tc in s.tool_calls
+                    if tc.status == "ERROR" or tc.error
+                ],
+                "error_snippet": truncate_str(s.content, max_snippet_chars) if not s.tool_calls else None,
+            }
+            for s in failed_steps
+        ],
+    }
+    return json.dumps(data, indent=2, default=custom_serializer)
+
+

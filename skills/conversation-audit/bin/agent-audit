@@ -19,12 +19,19 @@ try:
     from adapters import get_adapter
     from audit_engine import (
         AuditEngine,
+        format_json_failed_steps,
         format_json_metadata,
         format_json_report,
+        format_json_step,
+        format_markdown_failed_steps,
         format_markdown_metadata,
         format_markdown_report,
+        format_markdown_step,
+        format_text_failed_steps,
         format_text_metadata,
         format_text_report,
+        format_text_step,
+        get_failed_steps,
     )
 except ImportError as e:
     sys.stderr.write(f"Error al cargar dependencias internas de agent-audit: {e}\n")
@@ -77,10 +84,23 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="Retorna código de salida 2 si se detecta al menos un antipatrón de severidad CRÍTICA o ALTA.",
     )
-    parser.add_argument(
+    inspect_group = parser.add_mutually_exclusive_group()
+    inspect_group.add_argument(
         "--metadata-only",
         action="store_true",
         help="Consulta rápida de metadatos de sesión (ID, título, runtime, fechas) sin procesar el árbol completo de pasos.",
+    )
+    inspect_group.add_argument(
+        "--inspect-step",
+        type=int,
+        metavar="N",
+        default=None,
+        help="Muestra el contenido detallado de un paso específico (herramientas, argumentos, salida y errores) de forma acotada.",
+    )
+    inspect_group.add_argument(
+        "--failed-steps",
+        action="store_true",
+        help="Lista exclusivamente los pasos que arrojaron errores o excepciones en herramientas.",
     )
     parser.add_argument(
         "--verbose",
@@ -150,6 +170,58 @@ def main() -> int:
 
     if not steps:
         sys.stderr.write(f"Advertencia: No se encontraron pasos válidos en la transcripción: {target_path}\n")
+
+    if args.inspect_step is not None:
+        target_step = next((s for s in steps if s.step_index == args.inspect_step), None)
+        if target_step is None:
+            sys.stderr.write(f"Error: No se encontró el paso {args.inspect_step} en la transcripción: {target_path}\n")
+            return 1
+
+        if args.format == "json":
+            output_content = format_json_step(target_step)
+        elif args.format == "markdown":
+            output_content = format_markdown_step(target_step)
+        else:
+            output_content = format_text_step(target_step)
+
+        if args.output:
+            try:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                with open(args.output, "w", encoding="utf-8") as f:
+                    f.write(output_content)
+                    if not output_content.endswith("\n"):
+                        f.write("\n")
+                print(f"Detalle de paso guardado exitosamente en: {args.output}")
+            except Exception as e:
+                sys.stderr.write(f"Error al escribir detalle de paso en '{args.output}': {e}\n")
+                return 1
+        else:
+            print(output_content)
+        return 0
+
+    if args.failed_steps:
+        failed = get_failed_steps(steps)
+        if args.format == "json":
+            output_content = format_json_failed_steps(failed)
+        elif args.format == "markdown":
+            output_content = format_markdown_failed_steps(failed)
+        else:
+            output_content = format_text_failed_steps(failed)
+
+        if args.output:
+            try:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                with open(args.output, "w", encoding="utf-8") as f:
+                    f.write(output_content)
+                    if not output_content.endswith("\n"):
+                        f.write("\n")
+                print(f"Listado de pasos con errores guardado exitosamente en: {args.output}")
+            except Exception as e:
+                sys.stderr.write(f"Error al escribir pasos con errores en '{args.output}': {e}\n")
+                return 1
+        else:
+            print(output_content)
+        return 0
 
     metadata = adapter.extract_metadata(target_path, steps)
     engine = AuditEngine(
