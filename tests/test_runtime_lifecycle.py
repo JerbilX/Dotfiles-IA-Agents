@@ -91,6 +91,59 @@ class TestRuntimeLifecycle(unittest.TestCase):
         self.assertNotEqual(res.returncode, 0)
         self.assertIn("Error: Runtime 'non_existent_runtime_xyz' no encontrado", res.stderr)
 
+    def test_declared_binaries_physical_existence_and_executable_permissions(self):
+        """All declared binaries in runtime configs must exist in origin and be executable (+x) (Issue #184)."""
+        cfg_path = os.path.join(RUNTIMES_DIR, "antigravity", "config.json")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+
+        declared_binaries = cfg.get("binaries", {})
+        self.assertIn("agent-module", declared_binaries)
+        self.assertIn("agent-audit", declared_binaries)
+        self.assertIn("gh-pr-review", declared_binaries)
+        self.assertIn("git-prune-gone", declared_binaries)
+
+        skills_dir = os.path.join(REPO_ROOT, "skills")
+        for src_name in declared_binaries.keys():
+            found = False
+            for s_name in cfg.get("skills", []):
+                candidate_paths = [
+                    os.path.join(skills_dir, s_name, "bin", src_name),
+                    os.path.join(skills_dir, s_name, "scripts", f"{src_name}.sh"),
+                ]
+                for p in candidate_paths:
+                    if os.path.isfile(p):
+                        found = True
+                        self.assertTrue(
+                            os.access(p, os.X_OK),
+                            f"Declared binary {src_name} at {p} must have executable permissions (+x)"
+                        )
+                        break
+                if found:
+                    break
+            self.assertTrue(found, f"Declared binary {src_name} not found in enabled skills")
+
+    def test_anti_reconnaissance_and_anti_exfiltration_invariants(self):
+        """core/10-environment-standards.md must declare anti-reconnaissance and anti-exfiltration rules (Issue #184)."""
+        env_standards = os.path.join(REPO_ROOT, "core", "10-environment-standards.md")
+        with open(env_standards, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        self.assertIn("Blindaje Anti-Reconocimiento y Anti-Exfiltración", content)
+        self.assertIn("find /", content)
+        self.assertIn("find $HOME", content)
+        self.assertIn("gh api", content)
+        self.assertIn("Stop & Ask", content)
+
+    def test_antigravity_rules_authorize_agent_module_bypass(self):
+        """runtimes/antigravity/rules/01-sandbox.md must authorize agent-module for bypass (Issue #184)."""
+        sandbox_rule = os.path.join(RUNTIMES_DIR, "antigravity", "rules", "01-sandbox.md")
+        with open(sandbox_rule, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        self.assertIn("agent-module", content)
+        self.assertIn("BypassSandbox: true", content)
+
 
 if __name__ == "__main__":
     unittest.main()
