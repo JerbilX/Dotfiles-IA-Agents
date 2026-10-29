@@ -52,7 +52,8 @@ git clone https://github.com/JerbilX/Dotfiles-IA-Agents.git && cd Dotfiles-IA-Ag
 | `rollback` | Reversión atómica al último respaldo previo ante emergencias. | [docs/cli.md](docs/cli.md#6-rollback) |
 | `check` | Auditoría estática de integridad, esquemas y presupuestos. | [docs/cli.md](docs/cli.md#7-check) |
 | `reconcile` | Ratifica formalmente ADRs post-merge (`proposed` $\rightarrow$ `accepted`). | [docs/cli.md](docs/cli.md#8-reconcile) |
-| `all` | Pipeline completo por defecto (`build` $\rightarrow$ `link` $\rightarrow$ `skills` $\rightarrow$ `status` $\rightarrow$ `check`). | [docs/cli.md](docs/cli.md#9-all) |
+| `workspace` | Aprovisiona skills y configuraciones de suite de dominio en un proyecto. | [docs/cli.md](docs/cli.md#9-workspace) |
+| `all` | Pipeline completo por defecto (`build` $\rightarrow$ `link` $\rightarrow$ `skills` $\rightarrow$ `status` $\rightarrow$ `check`). | [docs/cli.md](docs/cli.md#10-all) |
 
 ---
 

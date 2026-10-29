@@ -1952,48 +1952,74 @@ if leak:
     fi
 }
 
-cmd_workspace() {
-    local module_name="${1:-}"
-    local target_dir="${2:-}"
-    local runtime_filter="${3:-all}"
-
-    if [ -z "${module_name}" ] || [ -z "${target_dir}" ]; then
-        echo "Uso: $0 workspace <nombre-modulo> <ruta-directorio-destino> [runtime]" >&2
-        echo "Ejemplo: $0 workspace eso /ruta/a/mi-addon" >&2
-        return 1
+check_global_skills_purity() {
+    if [ ! -d "${MODULES_DIR}" ]; then
+        return 0
     fi
+    if command -v python3 >/dev/null 2>&1; then
+        local leak
+        leak="$(python3 -c '
+import glob, json, os, sys
+modules_dir, runtimes_dir = sys.argv[1], sys.argv[2]
+domain_skills = set()
+domain_bins = set()
+for mf in glob.glob(os.path.join(modules_dir, "*", "module.json")):
+    try:
+        data = json.load(open(mf, "r", encoding="utf-8"))
+        domain_skills.update(data.get("skills", []))
+        domain_bins.update(data.get("binaries", {}).values())
+    except Exception:
+        pass
 
-    local module_dir="${MODULES_DIR}/${module_name}"
-    if [ ! -d "${module_dir}" ]; then
-        echo "Error: Módulo de dominio '${module_name}' no existe en ${MODULES_DIR}" >&2
-        return 1
-    fi
-
-    local template_dir="${module_dir}/template"
-    if [ ! -d "${template_dir}" ]; then
-        echo "Error: Módulo '${module_name}' no contiene directorio de plantillas en ${template_dir}" >&2
-        return 1
-    fi
-
-    mkdir -p "${target_dir}"
-    echo "==> [workspace] Aprovisionando módulo '${module_name}' en ${target_dir}..."
-
-    if [ -d "${template_dir}/.agents" ] && [ "${runtime_filter}" != "claude" ]; then
-        mkdir -p "${target_dir}/.agents"
-        cp -rn "${template_dir}/.agents/"* "${target_dir}/.agents/" 2>/dev/null || cp -r "${template_dir}/.agents/"* "${target_dir}/.agents/"
-        echo "  [+] [antigravity] Configuración de plugin copiada a ${target_dir}/.agents/plugins/"
-    fi
-
-    if [ -f "${template_dir}/.mcp.json" ] && [ "${runtime_filter}" != "antigravity" ]; then
-        if [ ! -f "${target_dir}/.mcp.json" ]; then
-            cp "${template_dir}/.mcp.json" "${target_dir}/.mcp.json"
-            echo "  [+] [claude] Configuración MCP copiada a ${target_dir}/.mcp.json"
+leaks = []
+for cf in glob.glob(os.path.join(runtimes_dir, "*", "config.json")):
+    rname = os.path.basename(os.path.dirname(cf))
+    if rname == "schema":
+        continue
+    try:
+        cfg = json.load(open(cf, "r", encoding="utf-8"))
+        r_skills = set(cfg.get("skills", []))
+        r_bins = set(cfg.get("binaries", {}).values())
+        sk_leak = r_skills.intersection(domain_skills)
+        bin_leak = r_bins.intersection(domain_bins)
+        if sk_leak:
+            leaks.append(f"[{rname}] skills de dominio: {list(sk_leak)}")
+        if bin_leak:
+            leaks.append(f"[{rname}] binarios de dominio: {list(bin_leak)}")
+    except Exception:
+        pass
+if leaks:
+    print("; ".join(leaks))
+' "${MODULES_DIR}" "${RUNTIMES_BASE_DIR}")"
+        if [ -n "${leak}" ]; then
+            echo "  [✗] Skill(s) o binario(s) de dominio detectados en perfil global: ${leak}" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
         else
-            echo "  [-] [claude] .mcp.json ya existe en destino; se conserva archivo preexistente."
+            echo "  [✓] Pureza de perfil global: runtimes no contienen skills ni binarios de dominio"
         fi
     fi
+}
 
-    echo "==> [workspace] Aprovisionamiento completado con éxito en ${target_dir}."
+cmd_workspace() {
+    local module_name="${1:-}"
+    local target_dir="${2:-.}"
+    local runtime_filter="${3:-all}"
+
+    if [ -z "${module_name}" ]; then
+        echo "Uso: $0 workspace <nombre-modulo> [ruta-directorio-destino] [runtime]" >&2
+        echo "Ejemplo: $0 workspace eso . all" >&2
+        echo "Nota: Si se omite la ruta destino, se asume el directorio actual (.)." >&2
+        return 1
+    fi
+
+    local agent_module_cli="${SCRIPT_DIR}/skills/issue-driven-workflow/bin/agent-module"
+    if [ -x "${agent_module_cli}" ]; then
+        python3 "${agent_module_cli}" enable "${module_name}" "${target_dir}" --runtime "${runtime_filter}"
+        return $?
+    else
+        echo "Error: CLI de aprovisionamiento no encontrado en ${agent_module_cli}" >&2
+        return 1
+    fi
 }
 
 cmd_check() {
@@ -2009,8 +2035,9 @@ cmd_check() {
     # Verificaciones comunes de directivas core
     check_core_rules
 
-    # Verificación de pureza de perfil global
+    # Verificación de pureza de perfil global (MCP y Skills)
     check_global_mcp_purity
+    check_global_skills_purity
 
     # Verificación de módulos de dominio y plantillas de workspace
     check_domain_modules

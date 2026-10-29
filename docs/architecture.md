@@ -64,12 +64,12 @@ Dotfiles-IA-Agents/
 │       ├── mcp/                         # Catálogo modular de servidores MCP
 │       └── config.json                  # Manifiesto estructurado del runtime
 ├── skills/                              # Catálogo canónico y autocontenido de skills
-│   ├── adr-manager/                     # Gestión de Architecture Decision Records (MADR)
-│   ├── autonomous-learning/             # Aprendizaje autónomo y consulta de precedentes
-│   ├── conversation-audit/              # Auditoría sistemática de transcripciones de agentes
-│   ├── eso-addon-development/           # Estándares y utilidades para addons de ESO
-│   ├── issue-driven-workflow/           # Orquestación de desarrollo guiado por issues y PRs
-│   └── project-documentation/           # Estandarización Diátaxis y modularización documental
+│   ├── adr-manager/                     # [Basal] Gestión de Architecture Decision Records (MADR)
+│   ├── autonomous-learning/             # [Basal] Aprendizaje autónomo y consulta de precedentes
+│   ├── conversation-audit/              # [Basal] Auditoría sistemática de transcripciones de agentes
+│   ├── eso-addon-development/           # [Dominio] Estándares y utilidades para addons de ESO (workspace-bound)
+│   ├── issue-driven-workflow/           # [Basal] Orquestación de desarrollo guiado por issues, PRs y CLI agent-module
+│   └── project-documentation/           # [Basal] Estandarización Diátaxis y modularización documental
 ├── dist/                                # Artefactos compilados para distribución
 │   ├── antigravity/
 │   │   ├── AGENTS.md                    # Versión consolidada de directivas
@@ -110,8 +110,9 @@ Gobierna los manifiestos de dominio en `modules/<nombre>/module.json`:
 - `binaries`: Alias de scripts/binarios para ejecución.
 - `mcp_servers`: Servidores MCP aislados para el dominio.
 
-### Aislamiento de Dominio por Workspace (ADR-0039)
-Para evitar la sobrecarga masiva de tokens en proyectos genéricos, los servidores MCP especializados (como `eso-mcp-server`) se desacoplan del perfil global y se confinan a los repositorios pertinentes mediante plantillas declarativas (`modules/<dominio>/template/`). Los skills de dominio (como `eso-addon-development`) se preservan de forma global bajo Progressive Disclosure, actuando como orquestadores on-demand para guiar el andamiaje del workspace.
+### Aislamiento de Dominio por Workspace y Activación On-Demand (ADR-0041)
+Para evitar la sobrecarga basal de tokens en el prompt inicial de proyectos genéricos, tanto los servidores MCP especializados como las skills de dominio (como `eso-addon-development`) se desacoplan del catálogo global y se confinan exclusivamente a los repositorios pertinentes mediante plantillas declarativas (`modules/<dominio>/template/`).
+La activación en el workspace activo se realiza on-demand sin fricción mediante el CLI `agent-module` (`agent-module enable <modulo>`), ya sea por orden explícita del usuario en el chat o por confirmación ante detección proactiva de marcadores de dominio por parte del agente. El comando `agent-module disable <modulo>` permite la poda y reversibilidad inmediata.
 
 ---
 
