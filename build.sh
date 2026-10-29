@@ -6,6 +6,8 @@ CORE_DIR="${SCRIPT_DIR}/core"
 RUNTIMES_BASE_DIR="${SCRIPT_DIR}/runtimes"
 SCHEMA_FILE="${RUNTIMES_BASE_DIR}/schema/runtime-config.schema.json"
 MCP_SCHEMA_FILE="${RUNTIMES_BASE_DIR}/schema/mcp-server.schema.json"
+MODULE_SCHEMA_FILE="${RUNTIMES_BASE_DIR}/schema/module-config.schema.json"
+MODULES_DIR="${SCRIPT_DIR}/modules"
 SKILLS_DIR="${SCRIPT_DIR}/skills"
 MAX_CONTEXT_WORDS="${MAX_CONTEXT_WORDS:-800}"
 MAX_MODULE_WORDS="${MAX_MODULE_WORDS:-300}"
@@ -1817,6 +1819,132 @@ sys.exit(0)
     fi
 }
 
+check_domain_modules() {
+    if [ ! -d "${MODULES_DIR}" ]; then
+        return 0
+    fi
+
+    echo "==> [check] Verificando módulos de dominio y plantillas (modules/)..."
+    local count_modules=0
+    for mdir in "${MODULES_DIR}"/*; do
+        [ ! -d "${mdir}" ] && continue
+        local mname
+        mname="$(basename "${mdir}")"
+        local mconfig="${mdir}/module.json"
+        if [ ! -f "${mconfig}" ]; then
+            echo "  [✗] Módulo '${mname}' no contiene module.json" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
+            continue
+        fi
+
+        count_modules=$((count_modules + 1))
+        if command -v python3 >/dev/null 2>&1; then
+            local mod_err
+            if ! mod_err=$(python3 -c '
+import json, sys
+mpath, spath = sys.argv[1], sys.argv[2]
+try:
+    with open(mpath, "r", encoding="utf-8") as f:
+        mod = json.load(f)
+    with open(spath, "r", encoding="utf-8") as f:
+        schema = json.load(f)
+except Exception as e:
+    print(f"Error JSON: {e}")
+    sys.exit(1)
+for req in schema.get("required", []):
+    if req not in mod:
+        print(f"Error: falta propiedad requerida '\''{req}'\''")
+        sys.exit(1)
+' "${mconfig}" "${MODULE_SCHEMA_FILE}" 2>&1); then
+                echo "  [✗] Validación de esquema fallida en ${mconfig}: ${mod_err}" >&2
+                CHECK_ERRORS=$((CHECK_ERRORS + 1))
+            fi
+        fi
+
+        local template_dir="${mdir}/template"
+        if [ -d "${template_dir}" ]; then
+            for jf in $(find "${template_dir}" -name "*.json" 2>/dev/null); do
+                if command -v python3 >/dev/null 2>&1; then
+                    if ! python3 -c 'import json, sys; json.load(open(sys.argv[1]))' "${jf}" >/dev/null 2>&1; then
+                        echo "  [✗] Error de sintaxis JSON en plantilla: ${jf}" >&2
+                        CHECK_ERRORS=$((CHECK_ERRORS + 1))
+                    fi
+                fi
+            done
+        fi
+    done
+
+    echo "  [✓] Módulos de dominio: ${count_modules} módulo(s) verificado(s)"
+}
+
+check_global_mcp_purity() {
+    local antigravity_cfg="${RUNTIMES_BASE_DIR}/antigravity/config.json"
+    if [ -f "${antigravity_cfg}" ]; then
+        if command -v python3 >/dev/null 2>&1; then
+            local domain_mcps
+            domain_mcps="$(python3 -c '
+import json, sys
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    cfg = json.load(f)
+servers = cfg.get("mcp_servers", [])
+leak = [s for s in servers if s in ["eso-mcp-server"]]
+if leak:
+    print(", ".join(leak))
+' "${antigravity_cfg}")"
+            if [ -n "${domain_mcps}" ]; then
+                echo "  [✗] Servidor(es) MCP de dominio detectados en perfil global de antigravity: ${domain_mcps}" >&2
+                CHECK_ERRORS=$((CHECK_ERRORS + 1))
+            else
+                echo "  [✓] Pureza de perfil global: antigravity no contiene servidores MCP de dominio"
+            fi
+        fi
+    fi
+}
+
+cmd_workspace() {
+    local module_name="${1:-}"
+    local target_dir="${2:-}"
+    local runtime_filter="${3:-all}"
+
+    if [ -z "${module_name}" ] || [ -z "${target_dir}" ]; then
+        echo "Uso: $0 workspace <nombre-modulo> <ruta-directorio-destino> [runtime]" >&2
+        echo "Ejemplo: $0 workspace eso /ruta/a/mi-addon" >&2
+        return 1
+    fi
+
+    local module_dir="${MODULES_DIR}/${module_name}"
+    if [ ! -d "${module_dir}" ]; then
+        echo "Error: Módulo de dominio '${module_name}' no existe en ${MODULES_DIR}" >&2
+        return 1
+    fi
+
+    local template_dir="${module_dir}/template"
+    if [ ! -d "${template_dir}" ]; then
+        echo "Error: Módulo '${module_name}' no contiene directorio de plantillas en ${template_dir}" >&2
+        return 1
+    fi
+
+    mkdir -p "${target_dir}"
+    echo "==> [workspace] Aprovisionando módulo '${module_name}' en ${target_dir}..."
+
+    if [ -d "${template_dir}/.agents" ] && [ "${runtime_filter}" != "claude" ]; then
+        mkdir -p "${target_dir}/.agents"
+        cp -rn "${template_dir}/.agents/"* "${target_dir}/.agents/" 2>/dev/null || cp -r "${template_dir}/.agents/"* "${target_dir}/.agents/"
+        echo "  [+] [antigravity] Configuración de plugin copiada a ${target_dir}/.agents/plugins/"
+    fi
+
+    if [ -f "${template_dir}/.mcp.json" ] && [ "${runtime_filter}" != "antigravity" ]; then
+        if [ ! -f "${target_dir}/.mcp.json" ]; then
+            cp "${template_dir}/.mcp.json" "${target_dir}/.mcp.json"
+            echo "  [+] [claude] Configuración MCP copiada a ${target_dir}/.mcp.json"
+        else
+            echo "  [-] [claude] .mcp.json ya existe en destino; se conserva archivo preexistente."
+        fi
+    fi
+
+    echo "==> [workspace] Aprovisionamiento completado con éxito en ${target_dir}."
+}
+
 cmd_check() {
     local target_arg="${1:-all}"
     validate_runtime_arg "${target_arg}" || return 1
@@ -1829,6 +1957,12 @@ cmd_check() {
 
     # Verificaciones comunes de directivas core
     check_core_rules
+
+    # Verificación de pureza de perfil global
+    check_global_mcp_purity
+
+    # Verificación de módulos de dominio y plantillas de workspace
+    check_domain_modules
 
     # Verificación de documentación técnica (README y enlaces a docs/)
     check_documentation
@@ -1906,11 +2040,14 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         reconcile)
             cmd_reconcile "${RUNTIME_ARG}"
             ;;
+        workspace)
+            cmd_workspace "${2:-}" "${3:-}" "${4:-all}"
+            ;;
         all)
             cmd_all "${RUNTIME_ARG}"
             ;;
         *)
-            echo "Uso: $0 {build|link|skills|mcp|status|rollback|check|reconcile|all} [runtime/adr]" >&2
+            echo "Uso: $0 {build|link|skills|mcp|status|rollback|check|reconcile|workspace|all} [args...]" >&2
             exit 1
             ;;
     esac

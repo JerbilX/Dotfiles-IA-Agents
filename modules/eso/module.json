@@ -1,0 +1,14 @@
+{
+  "$schema": "../../runtimes/schema/module-config.schema.json",
+  "name": "eso",
+  "description": "Suite de desarrollo de addons para Elder Scrolls Online (EsoUI)",
+  "skills": [
+    "eso-addon-development"
+  ],
+  "binaries": {
+    "build_release": "eso-build"
+  },
+  "mcp_servers": [
+    "eso-mcp-server"
+  ]
+}
