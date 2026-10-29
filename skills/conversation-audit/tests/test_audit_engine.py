@@ -328,5 +328,57 @@ class TestAgentAuditCli(unittest.TestCase):
                 self.assertEqual(code, 2)
 
 
+class TestSubagentPromptConsistency(unittest.TestCase):
+    """Pruebas de consistencia para el modo de auditoría en background vía subagente."""
+
+    def test_subagent_prompt_template_exists_and_valid(self):
+        template_file = SKILL_ROOT / "templates" / "subagent_prompt.md"
+        self.assertTrue(template_file.is_file(), f"No se encontró {template_file}")
+        content = template_file.read_text(encoding="utf-8")
+        self.assertIn("agent-audit {{TARGET_SESSION}} --format markdown", content)
+        self.assertIn("CONSECUTIVE_TOOL_ERRORS", content)
+        self.assertIn("REPETITIVE_TOOL_LOOP", content)
+        self.assertIn("TERMINAL_REPL_LOOP", content)
+        self.assertIn("CONTEXT_TRUNCATION", content)
+        self.assertIn("Diagnóstico Ejecutivo Consolidado", content)
+        self.assertIn("Veredicto de Antipatrones", content)
+
+    def test_skill_docs_cover_subagent_mode(self):
+        skill_file = SKILL_ROOT / "SKILL.md"
+        content = skill_file.read_text(encoding="utf-8")
+        self.assertIn("## 5. Modo de Auditoría Desacoplada en Background vía Subagente", content)
+        self.assertIn("templates/subagent_prompt.md", content)
+        self.assertIn('"TypeName": "self"', content)
+        self.assertIn('"Model": "flash"', content)
+
+    def test_markdown_report_matches_subagent_expectations(self):
+        from audit_engine import AuditReport, format_markdown_report
+
+        metadata = ConversationMetadata(
+            session_id="test-session-123",
+            title="Test Session",
+            runtime="antigravity",
+            source_path="/tmp/test",
+            start_time=datetime(2026, 10, 29, 10, 0, 0),
+            end_time=datetime(2026, 10, 29, 10, 5, 0),
+        )
+        report = AuditReport(
+            metadata=metadata,
+            total_steps=10,
+            user_turns=2,
+            model_turns=5,
+            system_steps=3,
+            wall_clock_seconds=300.0,
+            avg_step_latency_seconds=30.0,
+            max_step_latency_seconds=45.0,
+        )
+        md = format_markdown_report(report)
+        self.assertIn("## 1. Resumen Ejecutivo", md)
+        self.assertIn("## 2. Desglose de Herramientas", md)
+        self.assertIn("## 3. Pasos de Mayor Latencia", md)
+        self.assertIn("## 4. Antipatrones y Anomalías Detectadas", md)
+
+
 if __name__ == "__main__":
     unittest.main()
+
