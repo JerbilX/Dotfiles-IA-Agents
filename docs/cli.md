@@ -11,7 +11,7 @@ Manual exhaustivo de subcomandos, variables de entorno, compuertas de auditoría
 ```
 
 ### Argumentos Generales
-- `<subcomando>`: Acción operativa requerida (`build`, `link`, `skills`, `mcp`, `status`, `rollback`, `check`, `reconcile`, `all`).
+- `<subcomando>`: Acción operativa requerida (`build`, `link`, `skills`, `mcp`, `status`, `rollback`, `check`, `reconcile`, `workspace`, `all`).
 - `[runtime]`: Parámetro opcional (`antigravity`, `claude` o `all`). Si se omite o se especifica `all`, la operación se aplica de forma unificada a todos los runtimes configurados en `runtimes/`.
 
 ---
@@ -80,7 +80,15 @@ Ejecuta la reconciliación y ratificación determinista de Architecture Decision
 ./build.sh reconcile
 ```
 
-### 9. `all`
+### 9. `workspace`
+Aprovisiona de forma declarativa e idempotente las plantillas de configuración de suite de dominio (como `eso`) hacia un directorio de proyecto destino:
+```bash
+./build.sh workspace <modulo> <ruta_destino> [runtime]
+./build.sh workspace eso /ruta/a/mi-addon             # Aprovisiona plantillas para Antigravity y Claude
+./build.sh workspace eso /ruta/a/mi-addon antigravity # Exclusivamente para Antigravity (.agents/)
+```
+
+### 10. `all`
 Flujo completo por defecto. Ejecuta secuencialmente `build`, `link`, `skills`, `status` y la verificación final `check`:
 ```bash
 ./build.sh                  # Flujo completo para todos los runtimes

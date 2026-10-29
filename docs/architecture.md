@@ -44,10 +44,17 @@ Dotfiles-IA-Agents/
 │   ├── cli.md                           # Referencia técnica exhaustiva del orquestador build.sh
 │   ├── architecture.md                  # Este documento explicativo
 │   └── adr/                             # Architectural Decision Records (estándar MADR)
+├── modules/                             # Suites declarativas y plantillas de workspace por dominio
+│   └── eso/                             # Módulo de desarrollo para Elder Scrolls Online
+│       ├── module.json                  # Manifiesto formal del módulo
+│       └── template/                    # Plantillas declarativas para repositorios de addons
+│           ├── .agents/plugins/         # Configuración de plugin para Antigravity
+│           └── .mcp.json                # Configuración nativa para Claude Code
 ├── runtimes/                            # Configuraciones y adaptadores por entorno
 │   ├── schema/                          # Esquemas JSON canónicos de validación
 │   │   ├── runtime-config.schema.json   # JSON Schema para manifiestos de runtime
-│   │   └── mcp-server.schema.json       # JSON Schema para módulos de servidores MCP
+│   │   ├── mcp-server.schema.json       # JSON Schema para módulos de servidores MCP
+│   │   └── module-config.schema.json    # JSON Schema para módulos de dominio
 │   ├── antigravity/                     # Adaptador para Google Antigravity
 │   │   ├── rules/                       # Especializaciones normativas del runtime
 │   │   ├── mcp/                         # Catálogo modular de servidores MCP
@@ -93,6 +100,17 @@ Gobierna las definiciones modulares en `runtimes/<runtime>/mcp/<nombre>.json`:
 - `command`: Binario o comando ejecutable.
 - `args`: Lista de argumentos de invocación.
 - `env`: Variables de entorno asociadas.
+
+### Módulo de Dominio (`module-config.schema.json`)
+Gobierna los manifiestos de dominio en `modules/<nombre>/module.json`:
+- `name`: Identificador slug de la suite.
+- `description`: Resumen funcional del módulo.
+- `skills`: Skills requeridos por la suite.
+- `binaries`: Alias de scripts/binarios para ejecución.
+- `mcp_servers`: Servidores MCP aislados para el dominio.
+
+### Aislamiento de Dominio por Workspace (ADR-0039)
+Para evitar la sobrecarga masiva de tokens en proyectos genéricos, los servidores MCP especializados (como `eso-mcp-server`) se desacoplan del perfil global y se confinan a los repositorios pertinentes mediante plantillas declarativas (`modules/<dominio>/template/`). Los skills de dominio (como `eso-addon-development`) se preservan de forma global bajo Progressive Disclosure, actuando como orquestadores on-demand para guiar el andamiaje del workspace.
 
 ---
 

@@ -22,6 +22,7 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
    * Validar ejecutando pruebas locales (`luajit tests/...`), sin inspección remota previa.
 3. **Nivel 3 — Referencias Canónicas de EsoUI (MCP y Archivos Locales):**
    * **Vía Preferente — Servidor MCP (`eso-mcp-server`):**
+     * **Aislamiento por Workspace:** Activado localmente en el repositorio del addon vía `.agents/plugins/eso-addon-suite/mcp_config.json` (Antigravity) o `.mcp.json` (Claude Code). Si no existe al inicializar un nuevo addon, andamiar estos archivos declarativos.
      * Consulta de API: `eso_search_api`, `eso_get_constant`, `eso_get_enum`, `eso_get_function`, `eso_get_event`, `eso_search_strings`, `eso_api_stats`.
      * Inspección de persistencia (solo lectura): `eso_savedvars_inspect`, `eso_savedvars_get_account_wide`, `eso_savedvars_get_character`, `eso_savedvars_query`. Prohibida la mutación vía MCP.
    * **Vía Fallback — Archivos Locales (Auto-actualizables):**

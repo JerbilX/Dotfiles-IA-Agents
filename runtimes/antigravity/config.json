@@ -14,9 +14,7 @@
     "gh-pr-review": "gh-pr-review",
     "git-prune-gone": "git-prune-gone"
   },
-  "mcp_servers": [
-    "eso-mcp-server"
-  ],
+  "mcp_servers": [],
   "target": {
     "config_dir": "${HOME}/.gemini/config",
     "prompt_filename": "AGENTS.md",
