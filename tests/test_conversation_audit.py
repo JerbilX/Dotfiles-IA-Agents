@@ -17,6 +17,7 @@ from test_audit_engine import (
     TestInlineEvalDetection,
     TestSubagentPromptConsistency,
     TestTerminalReplLoopAntipattern,
+    TestUnpaginatedFileReadAntipattern,
 )
 
 if __name__ == "__main__":

@@ -51,6 +51,7 @@ Guía metodológica, catálogo de métricas y protocolo operativo para la audito
 | `TERMINAL_PIPELINING` | **MEDIA** | Encadenamiento en Terminal | Uso de operadores (`&&`, `\|`, `;`, tuberías) en comandos de terminal (`run_command`), rompiendo el *prefix matching* de permisos. | Desacoplar en llamadas CLI atómicas o utilizar herramientas nativas de archivos (`write_to_file`, `replace_file_content`). |
 | `TERMINAL_REPL_LOOP` | **ALTA** | Bucle REPL Iterativo en Terminal | Secuencia o alta densidad de ejecuciones de evaluación en línea en terminal (`python3 -c`, `node -e`, etc.) para pruebas iterativas o exploratorias. | Desalentar el uso de terminal como REPL e indicar la refactorización hacia un script de prueba dedicado en scratch (`<appDataDir>/brain/<conversation-id>/scratch/`) o tests unitarios locales. |
 | `CONTEXT_TRUNCATION` | **ALTA** | Truncamiento de Contexto | Pasos con presencia de `truncated_fields`, reflejando lecturas desmedidas o volcados de logs masivos. | Reemplazar lecturas completas por búsquedas dirigidas (`grep_search`), flags compactos (`--jq`) o paginación. |
+| `UNPAGINATED_FILE_READ` | **ALTA** | Lectura No Paginada de Archivos | Invocación de herramientas de lectura de archivos (`view_file` o equivalentes) sin delimitar `StartLine`/`EndLine` o con ventanas excesivas (> 200 líneas). | Utilizar `grep_search` para localización previa y acotamiento de ventana mediante `StartLine` y `EndLine`. |
 | `COMPLACENCY_DETECTED` | **BAJA** | Complacencia o Adulación Vacía | Respuestas del modelo con frases serviles ("¡Gran idea!", "tienes toda la razón", "disculpa las molestias"). | Cumplir estrictamente `core/01-critical-feedback.md`. Mantener tono asertivo, objetivo y neutro. |
 
 ---
@@ -126,6 +127,10 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
   ```bash
   agent-audit <target> --threshold-latency 45.0
   ```
+- Ajuste de umbral de líneas para lecturas de archivo:
+  ```bash
+  agent-audit <target> --threshold-file-lines 150
+  ```
 - Retorno estricto para CI (código 2 ante antipatrones críticos):
   ```bash
   agent-audit <target> --fail-on-antipattern
@@ -133,7 +138,7 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
 
 ### Paso 3: Evaluación de Hallazgos
 - Contrastar el desglose de herramientas: identificar si herramientas pesadas como `search_web` o `run_command` monopolizan el tiempo de ejecución.
-- Inspeccionar si existen antipatrones de `CONSECUTIVE_TOOL_ERRORS`, `REPETITIVE_TOOL_LOOP` o `TERMINAL_REPL_LOOP`.
+- Inspeccionar si existen antipatrones de `CONSECUTIVE_TOOL_ERRORS`, `REPETITIVE_TOOL_LOOP`, `TERMINAL_REPL_LOOP` o `UNPAGINATED_FILE_READ`.
 - Revisar los pasos de mayor latencia y contrastarlos con las operaciones realizadas.
 
 ### Paso 4: Registro y Retroalimentación
@@ -164,7 +169,7 @@ La delegación al subagente se estructura con la herramienta nativa `invoke_suba
 
 2. **Contrato Operativo del Subagente:**
    - **Invocación Determinista:** Ejecutar `agent-audit <target> --format markdown` (con fallback determinista `./skills/conversation-audit/bin/agent-audit <target> --format markdown` si no está en `$PATH`).
-   - **Evaluación de Hallazgos:** Parsear la salida markdown, evaluando tiempos wall-clock, latencia promedio/máxima, tasa de fallos de herramientas y la presencia de antipatrones (`CONSECUTIVE_TOOL_ERRORS`, `REPETITIVE_TOOL_LOOP`, `TERMINAL_REPL_LOOP`, `HIGH_LATENCY_STEP`, etc.).
+   - **Evaluación de Hallazgos:** Parsear la salida markdown, evaluando tiempos wall-clock, latencia promedio/máxima, tasa de fallos de herramientas y la presencia de antipatrones (`CONSECUTIVE_TOOL_ERRORS`, `REPETITIVE_TOOL_LOOP`, `TERMINAL_REPL_LOOP`, `CONTEXT_TRUNCATION`, `UNPAGINATED_FILE_READ`, `HIGH_LATENCY_STEP`, etc.).
    - **Contrato de Salida Limpia:** El subagente tiene estrictamente prohibido reenviar trazas crudas, transcripciones enteras o tablas intermedias excesivas. Emite únicamente un **Diagnóstico Ejecutivo Consolidado**.
    - **Canal de Emisión:** Envía el reporte consolidado directamente en su mensaje de respuesta de finalización o mediante `send_message` hacia la sesión principal.
 
