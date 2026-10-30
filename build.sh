@@ -1945,14 +1945,15 @@ for req in schema.get("required", []):
 
         local template_dir="${mdir}/template"
         if [ -d "${template_dir}" ]; then
-            for jf in $(find "${template_dir}" -name "*.json" 2>/dev/null); do
+            local jf
+            while IFS= read -r -d '' jf; do
                 if command -v python3 >/dev/null 2>&1; then
                     if ! python3 -c 'import json, sys; json.load(open(sys.argv[1]))' "${jf}" >/dev/null 2>&1; then
                         echo "  [✗] Error de sintaxis JSON en plantilla: ${jf}" >&2
                         CHECK_ERRORS=$((CHECK_ERRORS + 1))
                     fi
                 fi
-            done
+            done < <(find "${template_dir}" -name "*.json" -print0 2>/dev/null | sort -z)
         fi
     done
 
