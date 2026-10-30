@@ -54,6 +54,48 @@ class TestBuildPathSafety(unittest.TestCase):
                     continue
         self.assertTrue(found, "Rule with spaces in filename was not compiled into dist/")
 
+    def _path_without_jq(self):
+        """Build a PATH dir mirroring every executable on PATH except jq."""
+        shim = os.path.join(self._tmp, "bin-nojq")
+        os.makedirs(shim)
+        for d in os.environ.get("PATH", "").split(os.pathsep):
+            if not os.path.isdir(d):
+                continue
+            for name in os.listdir(d):
+                src = os.path.join(d, name)
+                dst = os.path.join(shim, name)
+                if name == "jq" or os.path.exists(dst):
+                    continue
+                if os.path.isfile(src) and os.access(src, os.X_OK):
+                    os.symlink(src, dst)
+        return shim
+
+    def test_python_fallbacks_without_jq(self):
+        env = dict(os.environ, PATH=self._path_without_jq())
+        self.assertIsNone(shutil.which("jq", path=env["PATH"]))
+
+        res = subprocess.run(
+            [os.path.join(self.repo, "build.sh"), "build", "all"],
+            cwd=self.repo,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        self.assertEqual(res.returncode, 0, f"build (no jq) failed:\n{res.stdout}\n{res.stderr}")
+        self.assertIn("Telemetría de contexto [antigravity]", res.stdout)
+        self.assertIn("Telemetría de contexto [claude]", res.stdout)
+
+        # Python fallback output must match the canonical (jq-built) dist/ byte for byte.
+        for rt in ("antigravity", "claude"):
+            for name in ("AGENTS.md", "mcp_config.json"):
+                canonical = os.path.join(REPO_ROOT, "dist", rt, name)
+                produced = os.path.join(self.repo, "dist", rt, name)
+                if not os.path.isfile(canonical):
+                    continue
+                with open(canonical, "rb") as a, open(produced, "rb") as b:
+                    self.assertEqual(a.read(), b.read(), f"dist/{rt}/{name} differs without jq")
+
+
     def test_no_shell_interpolation_inside_python_c(self):
         with open(BUILD_SH, "r", encoding="utf-8") as f:
             content = f.read()
