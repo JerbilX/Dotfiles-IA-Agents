@@ -34,7 +34,7 @@ get_runtime_status() {
         if command -v jq >/dev/null 2>&1; then
             status="$(jq -r '.status // empty' "${cfg}" 2>/dev/null || true)"
         elif command -v python3 >/dev/null 2>&1; then
-            status="$(python3 -c "import json; print(json.load(open('${cfg}')).get('status', ''))" 2>/dev/null || true)"
+            status="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("status", ""))' "${cfg}" 2>/dev/null || true)"
         fi
     fi
     if [ -z "${status}" ]; then
@@ -122,7 +122,7 @@ get_runtime_target_dir() {
         if command -v jq >/dev/null 2>&1; then
             t_dir="$(jq -r '.target.config_dir // empty' "${cfg}" 2>/dev/null || true)"
         elif command -v python3 >/dev/null 2>&1; then
-            t_dir="$(python3 -c "import json; print(json.load(open('${cfg}')).get('target', {}).get('config_dir', ''))" 2>/dev/null || true)"
+            t_dir="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("target", {}).get("config_dir", ""))' "${cfg}" 2>/dev/null || true)"
         fi
     fi
     if [ -z "${t_dir}" ]; then
@@ -148,7 +148,7 @@ get_runtime_target_prompt_file() {
         if command -v jq >/dev/null 2>&1; then
             t_name="$(jq -r '.target.prompt_filename // empty' "${cfg}" 2>/dev/null || true)"
         elif command -v python3 >/dev/null 2>&1; then
-            t_name="$(python3 -c "import json; print(json.load(open('${cfg}')).get('target', {}).get('prompt_filename', ''))" 2>/dev/null || true)"
+            t_name="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("target", {}).get("prompt_filename", ""))' "${cfg}" 2>/dev/null || true)"
         fi
     fi
     if [ -z "${t_name}" ]; then
@@ -168,7 +168,7 @@ get_runtime_target_mcp_file() {
         if command -v jq >/dev/null 2>&1; then
             t_name="$(jq -r '.target.mcp_filename // empty' "${cfg}" 2>/dev/null || true)"
         elif command -v python3 >/dev/null 2>&1; then
-            t_name="$(python3 -c "import json; print(json.load(open('${cfg}')).get('target', {}).get('mcp_filename', ''))" 2>/dev/null || true)"
+            t_name="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("target", {}).get("mcp_filename", ""))' "${cfg}" 2>/dev/null || true)"
         fi
     fi
     if [ -z "${t_name}" ]; then
@@ -188,7 +188,7 @@ get_runtime_target_skills_dir() {
         if command -v jq >/dev/null 2>&1; then
             s_dir="$(jq -r '.target.skills_dir // empty' "${cfg}" 2>/dev/null || true)"
         elif command -v python3 >/dev/null 2>&1; then
-            s_dir="$(python3 -c "import json; print(json.load(open('${cfg}')).get('target', {}).get('skills_dir', ''))" 2>/dev/null || true)"
+            s_dir="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("target", {}).get("skills_dir", ""))' "${cfg}" 2>/dev/null || true)"
         fi
     fi
     if [ -z "${s_dir}" ]; then
@@ -350,7 +350,7 @@ get_enabled_skills() {
     if command -v jq >/dev/null 2>&1; then
         jq -r '.skills[]?' "${config_file}" 2>/dev/null || true
     elif command -v python3 >/dev/null 2>&1; then
-        python3 -c "import json; [print(s) for s in json.load(open('${config_file}')).get('skills', [])]" 2>/dev/null || true
+        python3 -c 'import json, sys; [print(s) for s in json.load(open(sys.argv[1])).get("skills", [])]' "${config_file}" 2>/dev/null || true
     fi
 }
 
@@ -365,7 +365,7 @@ get_binary_alias() {
     if command -v jq >/dev/null 2>&1; then
         jq -r --arg b "${bin_name}" '.binaries[$b] // empty' "${config_file}" 2>/dev/null || true
     elif command -v python3 >/dev/null 2>&1; then
-        python3 -c "import json; print(json.load(open('${config_file}')).get('binaries', {}).get('${bin_name}', ''))" 2>/dev/null || true
+        python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("binaries", {}).get(sys.argv[2], ""))' "${config_file}" "${bin_name}" 2>/dev/null || true
     fi
 }
 
@@ -374,7 +374,7 @@ get_declared_binaries() {
     if command -v jq >/dev/null 2>&1; then
         jq -r '.binaries | to_entries[]? | "\(.key)=\(.value)"' "${config_file}" 2>/dev/null || true
     elif command -v python3 >/dev/null 2>&1; then
-        python3 -c "import json; [print(f'{k}={v}') for k, v in json.load(open('${config_file}')).get('binaries', {}).items()]" 2>/dev/null || true
+        python3 -c 'import json, sys; [print(f"{k}={v}") for k, v in json.load(open(sys.argv[1])).get("binaries", {}).items()]' "${config_file}" 2>/dev/null || true
     fi
 }
 
@@ -383,7 +383,7 @@ get_enabled_mcp_servers() {
     if command -v jq >/dev/null 2>&1; then
         jq -r '.mcp_servers[]?' "${config_file}" 2>/dev/null || true
     elif command -v python3 >/dev/null 2>&1; then
-        python3 -c "import json; [print(s) for s in json.load(open('${config_file}')).get('mcp_servers', [])]" 2>/dev/null || true
+        python3 -c 'import json, sys; [print(s) for s in json.load(open(sys.argv[1])).get("mcp_servers", [])]' "${config_file}" 2>/dev/null || true
     fi
 }
 
@@ -395,7 +395,7 @@ get_disabled_core_rules() {
     if command -v jq >/dev/null 2>&1; then
         jq -r '.disabled_core_rules[]?' "${config_file}" 2>/dev/null || true
     elif command -v python3 >/dev/null 2>&1; then
-        python3 -c "import json; [print(r) for r in json.load(open('${config_file}')).get('disabled_core_rules', [])]" 2>/dev/null || true
+        python3 -c 'import json, sys; [print(r) for r in json.load(open(sys.argv[1])).get("disabled_core_rules", [])]' "${config_file}" 2>/dev/null || true
     fi
 }
 
@@ -407,7 +407,7 @@ get_core_overrides() {
     if command -v jq >/dev/null 2>&1; then
         jq -r '.overrides | to_entries[]? | "\(.key)=\(.value)"' "${config_file}" 2>/dev/null || true
     elif command -v python3 >/dev/null 2>&1; then
-        python3 -c "import json; [print(f'{k}={v}') for k, v in json.load(open('${config_file}')).get('overrides', {}).items()]" 2>/dev/null || true
+        python3 -c 'import json, sys; [print(f"{k}={v}") for k, v in json.load(open(sys.argv[1])).get("overrides", {}).items()]' "${config_file}" 2>/dev/null || true
     fi
 }
 
@@ -662,7 +662,8 @@ EOF
     done
 
     if [ -d "${rules_dir}" ]; then
-        for f in $(find "${rules_dir}" -maxdepth 1 -name "*.md" | sort); do
+        for f in "${rules_dir}"/*.md; do
+            [ -e "$f" ] || continue
             if [ "$first" = false ]; then
                 printf "\n\n" >> "${tmp_file}"
             fi
@@ -1167,7 +1168,8 @@ CHECK_WARNINGS=0
 check_core_rules() {
     local seen_core_prefixes=()
     local core_broken_links=0
-    for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
+    for f in "${CORE_DIR}"/*.md; do
+        [ -e "$f" ] || continue
         local fname
         fname="$(basename "$f")"
         if [[ "${fname}" =~ ^([0-9]+)- ]]; then
@@ -1227,7 +1229,8 @@ for l in links:
     local router_file="${CORE_DIR}/00-router.md"
     if [ -f "${router_file}" ]; then
         local unindexed_modules=0
-        for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
+        for f in "${CORE_DIR}"/*.md; do
+            [ -e "$f" ] || continue
             local fname
             fname="$(basename "$f")"
             [[ "${fname}" == "00-router.md" || "${fname}" == "01-objectivity.md" ]] && continue
@@ -1440,7 +1443,7 @@ check_runtime() {
                 if command -v jq >/dev/null 2>&1; then
                     cmd="$(jq -r '.command // empty' "${s_path}")"
                 elif command -v python3 >/dev/null 2>&1; then
-                    cmd="$(python3 -c "import json; print(json.load(open('${s_path}')).get('command', ''))")"
+                    cmd="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("command", ""))' "${s_path}")"
                 fi
 
                 if [ -n "${cmd}" ]; then
@@ -1508,7 +1511,8 @@ check_runtime() {
     local collision_error=false
     if [ -d "${rules_dir}" ]; then
         local seen_rules_prefixes=()
-        for f in $(find "${rules_dir}" -maxdepth 1 -name "*.md" | sort); do
+        for f in "${rules_dir}"/*.md; do
+            [ -e "$f" ] || continue
             local fname
             fname="$(basename "$f")"
             if [[ "${fname}" =~ ^([0-9]+)- ]]; then
@@ -1569,7 +1573,8 @@ for l in links:
 
     local seen_h1=()
     local all_files=()
-    for f in $(find "${CORE_DIR}" -maxdepth 1 -name "*.md" | sort); do
+    for f in "${CORE_DIR}"/*.md; do
+        [ -e "$f" ] || continue
         local fname
         fname="$(basename "$f")"
         if [ ${#suppressed_rules_check[@]} -gt 0 ] && is_rule_suppressed "${fname}" "${suppressed_rules_check[@]}"; then
@@ -1578,7 +1583,8 @@ for l in links:
         all_files+=("$f")
     done
     if [ -d "${rules_dir}" ]; then
-        for f in $(find "${rules_dir}" -maxdepth 1 -name "*.md" | sort); do
+        for f in "${rules_dir}"/*.md; do
+            [ -e "$f" ] || continue
             all_files+=("$f")
         done
     fi
