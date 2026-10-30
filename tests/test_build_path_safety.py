@@ -102,6 +102,39 @@ class TestBuildPathSafety(unittest.TestCase):
         offenders = re.findall(r'python3 -c "[^"]*\$\{[^"]*"', content)
         self.assertEqual(offenders, [], f"Shell interpolation inside python3 -c: {offenders}")
 
+    def test_no_for_loop_over_find_substitution(self):
+        with open(BUILD_SH, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIsNone(re.search(r'for\s+\w+\s+in\s+\$\(find', content))
+
+    def _check_with_template(self, payload):
+        """Issue #196: place a template JSON under a spaced/glob path and run check."""
+        tdir = os.path.join(self.repo, "modules", "eso", "template", "dir with spaces [x]")
+        os.makedirs(tdir, exist_ok=True)
+        tfile = os.path.join(tdir, "my template *.json")
+        with open(tfile, "w", encoding="utf-8") as f:
+            f.write(payload)
+        # check runs tests/ itself; drop it from the copy to avoid infinite recursion.
+        shutil.rmtree(os.path.join(self.repo, "tests"), ignore_errors=True)
+        res = subprocess.run(
+            [os.path.join(self.repo, "build.sh"), "check"],
+            cwd=self.repo,
+            capture_output=True,
+            text=True,
+        )
+        return tfile, res
+
+    def test_valid_template_in_spaced_path_passes(self):
+        tfile, res = self._check_with_template('{"ok": true}\n')
+        out = res.stdout + res.stderr
+        self.assertNotIn("Error de sintaxis JSON en plantilla", out, out)
+
+    def test_invalid_template_in_spaced_path_fails(self):
+        tfile, res = self._check_with_template('{"broken": \n')
+        out = res.stdout + res.stderr
+        self.assertIn(f"Error de sintaxis JSON en plantilla: {tfile}", out, out)
+        self.assertNotEqual(res.returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
