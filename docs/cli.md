@@ -91,7 +91,12 @@ Aprovisiona de forma declarativa e idempotente las skills locales (`.agents/skil
 ./build.sh workspace eso /ruta/a/addon  # Aprovisiona en directorio específico
 ```
 > [!TIP]
-> Desde el workspace del proyecto también puedes utilizar directamente la herramienta CLI en `$PATH`: `agent-module enable <modulo>`, o solicitarlo conversacionalmente al agente (*"activa el soporte de eso en este proyecto"*).
+> Desde el workspace del proyecto también puedes utilizar directamente la herramienta CLI en `$PATH` (`~/.local/bin/agent-module` expuesta tras `./build.sh all` o `./build.sh skills`):
+> - `agent-module list`: Lista los módulos disponibles en dotfiles.
+> - `agent-module status [ruta]`: Inspecciona el estado de los módulos en el workspace actual.
+> - `agent-module enable <modulo> [ruta] [--runtime all|antigravity|claude]`: Aprovisiona skills y configuraciones MCP.
+> - `agent-module disable <modulo> [ruta] [--runtime all|antigravity|claude]`: Poda y revierte la integración local.
+> O bien solicitarlo conversacionalmente al agente en el chat (*"activa el soporte de eso en este proyecto"*).
 
 
 ### 10. `all`

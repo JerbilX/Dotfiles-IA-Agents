@@ -55,6 +55,20 @@ git clone https://github.com/JerbilX/Dotfiles-IA-Agents.git && cd Dotfiles-IA-Ag
 | `workspace` | Aprovisiona skills y configuraciones de suite de dominio en un proyecto. | [docs/cli.md](docs/cli.md#9-workspace) |
 | `all` | Pipeline completo por defecto (`build` $\rightarrow$ `link` $\rightarrow$ `skills` $\rightarrow$ `status` $\rightarrow$ `check`). | [docs/cli.md](docs/cli.md#10-all) |
 
+### Módulos de Dominio por Workspace (`agent-module`)
+
+Tras el bootstrap (`./build.sh all` con `~/.local/bin` en `$PATH`), gestiona módulos de dominio bajo demanda en workspaces locales:
+
+```bash
+agent-module list             # Lista módulos de dominio disponibles
+agent-module status           # Consulta módulos activos en el workspace
+agent-module enable <modulo>  # Habilita capacidades en el proyecto (ej. eso)
+agent-module disable <modulo> # Poda y remueve configuraciones del módulo
+```
+
+También puedes solicitar la activación en el chat (*"activa el soporte de eso en este proyecto"*). Referencia en [docs/cli.md](docs/cli.md#9-workspace).
+
+
 ---
 
 ## Mapa de Documentación y Convenciones
