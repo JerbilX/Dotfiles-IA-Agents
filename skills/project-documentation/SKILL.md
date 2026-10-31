@@ -124,7 +124,92 @@ Antes de finalizar cualquier tarea de documentación o abrir un Pull Request, va
 
 ---
 
-## 7. Catálogo de Plantillas Operativas (`resources/`)
+## 7. Protocolo de Auditoría Estática con Subagente Ligero (flash / flash_lite)
+
+### 7.1 Racional y Umbral de Delegación
+La verificación sistemática de calidad documental (cumplimiento estricto del contrato de `README.md`, integridad de enlaces cruzados en `docs/` y coherencia funcional con la taxonomía Diátaxis) es una tarea pasiva y mecánica de inspección de texto.
+- **Sobrecarga de Contexto:** Ejecutar múltiples lecturas secuenciales de archivos en la sesión principal acumula tokens irreversiblemente en el historial conversacional.
+- **Umbral de Activación:** Se recomienda delegar la auditoría a un subagente ligero (`flash` o `flash_lite`) ante revisiones integrales de documentación, auditorías de repositorios, refactorizaciones documentales o preparación de Pull Requests con impacto en `docs/`.
+
+### 7.2 Especificación y Contrato del Subagente
+La delegación al subagente se estructura con la herramienta nativa `invoke_subagent`:
+
+1. **Parámetros Canónicos de Configuración:**
+   - `TypeName`: `"research"` (subagente nativo de lectura y análisis, dotado con `view_file`, `grep_search`, `find_by_name`, `list_dir`).
+   - `Role`: `"Static Documentation Auditor"` o `"Documentation Quality Auditor"`.
+   - `Model`: `"flash"` o `"flash_lite"` (modelo ligero de alta velocidad y bajo costo, óptimo para parsear Markdown, verificar enlaces y evaluar estructura).
+   - `Workspace`: `"inherit"` (hereda el workspace activo con permisos de solo lectura; sin branching ni duplicación de almacenamiento).
+
+2. **Reglas de Blindaje Operativo:**
+   - **Solo Lectura Confinado:** El subagente opera en modo estrictamente pasivo. Tiene terminantemente prohibido utilizar herramientas de escritura (`write_to_file`, `replace_file_content`) o ejecutar comandos mutadores.
+   - **Presupuesto Finito de Herramientas (Tool Budget):** Máximo estricto de **4 a 6 lecturas dirigidas** (`view_file`, `grep_search`). Debe utilizar lecturas dirigidas y acotadas por rango de líneas en lugar de volcar archivos completos.
+   - **Disyuntor Autónomo de Seguridad (Circuit Breaker - Stop & Synthesize):** Si se alcanza el presupuesto de herramientas o un archivo esperado no existe, el subagente debe detenerse inmediatamente (*Stop & Synthesize*) y reportar los hallazgos en la tabla diagnóstica, sin iterar en búsquedas redundantes.
+   - **Contrato de Salida Limpia:** Prohibido reenviar el contenido completo de los archivos analizados. Debe devolver exclusivamente la **Tabla Diagnóstica de Deficiencias y Conformidad** y el **Veredicto Global**.
+
+### 7.3 Estructura Canónica de Invocación (`invoke_subagent`)
+
+```json
+{
+  "Subagents": [
+    {
+      "TypeName": "research",
+      "Role": "Static Documentation Auditor",
+      "Model": "flash",
+      "Workspace": "inherit",
+      "Prompt": "Ejecuta la auditoría estática de documentación según la checklist de skills/project-documentation/SKILL.md y la plantilla skills/project-documentation/resources/template-doc-audit-subagent.md. Inspecciona README.md y docs/ con herramientas de lectura nativas (view_file, grep_search). Presupuesto estricto: máximo 6 lecturas dirigidas. Prohibido modificar archivos o volcar texto completo. Devuelve únicamente la Tabla Diagnóstica de Conformidad y el Veredicto Global al hilo principal."
+    }
+  ]
+}
+```
+
+### 7.4 Checklist Estandarizada de Auditoría Estática
+El subagente debe verificar sistemáticamente cuatro ejes evaluativos:
+
+#### Eje 1: Estructura y Contrato del `README.md`
+- [ ] **Presupuesto Cuantitativo:** $\le 70$ líneas y $\le 500$ palabras (alerta estática en 600 palabras).
+- [ ] **Header & Badges:** Título oficial del proyecto, badges relevantes de estado y subtítulo descriptivo de una sola frase.
+- [ ] **Resumen Ejecutivo (Elevator Pitch):** Exactamente un párrafo denso (3-5 líneas) con el propósito y valor diferencial.
+- [ ] **Arquitectura Esencial:** Esquema conceptual compacto (Mermaid o ASCII $\le 6$ líneas). Prohibidos árboles ASCII exhaustivos de archivos.
+- [ ] **Puesta en Marcha (Quickstart):** Bloque de 3 a 5 comandos atómicos y verificados para puesta en marcha inmediata.
+- [ ] **Tabla Sintética de Comandos / Interfaces:** Resumen tabular conciso con enlaces directos a `docs/cli.md` o `docs/usage.md`.
+- [ ] **Mapa Documental y Convenciones:** $\le 3$ viñetas con enlaces relativos hacia los archivos en `docs/`.
+
+#### Eje 2: Verificación de Enlaces Cruzados e Integridad Relativa
+- [ ] **Enlaces Salientes de `README.md`:** Todo enlace hacia `docs/` apunta a un archivo existente en el sistema de archivos (sin rutas rotas).
+- [ ] **Enlaces Internos entre Módulos de `docs/`:** Las referencias cruzadas entre `docs/setup.md`, `docs/cli.md`, `docs/architecture.md` y `docs/adr/` están resueltas y vigentes.
+- [ ] **Local-First y Navegabilidad Relativa:** Ausencia de dependencias de wikis externas para información esencial; sin rutas absolutas hacia carpetas del host.
+
+#### Eje 3: Adherencia a la Taxonomía Diátaxis
+- [ ] **`docs/setup.md` [How-To / Bootstrap]:** Precondiciones del sistema, `$PATH`, flujo paso a paso y troubleshooting. Sin disquisiciones conceptuales ni esquemas de datos.
+- [ ] **`docs/cli.md` o `docs/usage.md` [Reference]:** Manual exhaustivo de sintaxis, subcomandos, banderas, variables de entorno y códigos de salida. Sin guías de instalación de dependencias del SO.
+- [ ] **`docs/architecture.md` [Explanation]:** Fundamentos de diseño, mapas modulares, esquemas de datos y guías de extensibilidad. Sin comandos de setup o snippets de inicio rápido.
+- [ ] **`docs/adr/` [Decisions]:** Registros arquitectónicos bajo estándar MADR (`NNNN-titulo.md`) gobernados exclusivamente por `adr-manager`.
+
+#### Eje 4: Higiene e Inmunidad Normativa
+- [ ] **Cero Contenido Normativo:** Ausencia de órdenes o directivas para agentes de IA dentro de los documentos técnicos de `docs/` (reservadas a `core/` y `rules/`).
+- [ ] **Ausencia de Backlogs Locales:** No existen archivos `TODO.md`, `HISTORIAL.md`, `backlog.md` ni listas informales de tareas pendientes.
+
+### 7.5 Formato del Reporte Consolidado (Tabla Diagnóstica)
+El subagente sintetiza y devuelve al agente principal una tabla estructurada con el veredicto:
+
+| Archivo / Componente | Eje de Evaluación | Criterio Específico | Estado | Hallazgo / Evidencia | Acción Correctiva Sugerida |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `README.md` | Estructura | Presupuesto cuantitativo | `[CONFORME]` | 48 líneas, 395 palabras. | Ninguna requerida. |
+| `README.md` | Estructura | Arquitectura conceptual | `[DEFICIENCIA]` | Incluye árbol de archivos de 25 líneas. | Reemplazar por diagrama Mermaid conceptual $\le 6$ líneas. |
+| `docs/setup.md` | Enlaces Cruzados | Enlace a CLI reference | `[DEFICIENCIA]` | Enlace roto `docs/cli-usage.md`. | Corregir ruta a `docs/cli.md`. |
+| `docs/architecture.md`| Diátaxis | Separación funcional | `[CONFORME]` | Explica módulos y flujos sin mezclar setup. | Ninguna requerida. |
+
+#### Veredicto Global:
+- **Resumen:** Evaluados: `<N>` | Conformes: `<C>` | Deficiencias: `<D>`
+- **Dictamen:** `APROBADO` / `REQUIERE SUBSANACIÓN`
+
+### 7.6 Recepción Asíncrona y Espera Reactiva
+- **Prohibición de Polling:** Tras invocar al subagente, el agente principal no debe ejecutar comandos de espera en bucle (`manage_subagents` status o sleep). El runtime reactiva el turno automáticamente al completarse la auditoría.
+- **Aislamiento de Contexto:** La conversación principal solo incorpora la tabla consolidada y el veredicto, protegiendo el presupuesto de tokens para la resolución de tickets y el desarrollo guiado por issues.
+
+---
+
+## 8. Catálogo de Plantillas Operativas (`resources/`)
 
 El skill incluye plantillas listas para su uso en proyectos nuevos o en refactorizaciones dentro de `skills/project-documentation/resources/`:
 
@@ -133,3 +218,4 @@ El skill incluye plantillas listas para su uso en proyectos nuevos o en refactor
 - [`template-setup.md`](resources/template-setup.md): Plantilla de How-To para instalación, `$PATH` y bootstrap.
 - [`template-cli.md`](resources/template-cli.md): Plantilla de Reference para manuales técnicos de CLI y APIs.
 - [`template-architecture.md`](resources/template-architecture.md): Plantilla de Explanation para visión técnica, esquemas y extensibilidad.
+- [`template-doc-audit-subagent.md`](resources/template-doc-audit-subagent.md): Plantilla de prompt y directiva para subagente de auditoría estática de documentación.
