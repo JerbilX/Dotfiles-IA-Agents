@@ -17,6 +17,76 @@ MAX_README_WORDS="${MAX_README_WORDS:-600}"
 # Descubrimiento y Resolución Dinámica de Runtimes
 # ------------------------------------------------------------------------------
 
+declare -A RUNTIME_CONFIG_CACHE
+
+load_runtime_config() {
+    local r="$1"
+    if [[ -n "${RUNTIME_CONFIG_CACHE["${r}:_loaded"]:-}" ]]; then
+        return 0
+    fi
+    local cfg="${RUNTIMES_BASE_DIR}/${r}/config.json"
+    if [[ ! -f "${cfg}" ]]; then
+        return 0
+    fi
+    local raw=""
+    if command -v jq >/dev/null 2>&1; then
+        raw="$(jq -r '
+          "status=" + (.status // "active"),
+          "config_dir=" + (.target.config_dir // ""),
+          "prompt_filename=" + (.target.prompt_filename // "AGENTS.md"),
+          "mcp_filename=" + (.target.mcp_filename // "mcp_config.json"),
+          "skills_dir=" + (.target.skills_dir // ""),
+          "skills=" + ((.skills // []) | join("\t")),
+          "mcp_servers=" + ((.mcp_servers // []) | join("\t")),
+          "disabled_core_rules=" + ((.disabled_core_rules // []) | join("\t")),
+          "binaries=" + ((.binaries // {}) | to_entries | map("\(.key)=\(.value)") | join("\t")),
+          "overrides=" + ((.overrides // {}) | to_entries | map("\(.key)=\(.value)") | join("\t"))
+        ' "${cfg}" 2>/dev/null || true)"
+    elif command -v python3 >/dev/null 2>&1; then
+        raw="$(python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+except Exception:
+    cfg = {}
+print("status=" + (cfg.get("status") or "active"))
+print("config_dir=" + (cfg.get("target", {}).get("config_dir") or ""))
+print("prompt_filename=" + (cfg.get("target", {}).get("prompt_filename") or "AGENTS.md"))
+print("mcp_filename=" + (cfg.get("target", {}).get("mcp_filename") or "mcp_config.json"))
+print("skills_dir=" + (cfg.get("target", {}).get("skills_dir") or ""))
+print("skills=" + "\t".join(cfg.get("skills") or []))
+print("mcp_servers=" + "\t".join(cfg.get("mcp_servers") or []))
+print("disabled_core_rules=" + "\t".join(cfg.get("disabled_core_rules") or []))
+print("binaries=" + "\t".join(f"{k}={v}" for k, v in (cfg.get("binaries") or {}).items()))
+print("overrides=" + "\t".join(f"{k}={v}" for k, v in (cfg.get("overrides") or {}).items()))
+' "${cfg}" 2>/dev/null || true)"
+    fi
+    while IFS="=" read -r k v; do
+        [[ -n "${k}" ]] && RUNTIME_CONFIG_CACHE["${r}:${k}"]="${v}"
+    done <<< "${raw}"
+    RUNTIME_CONFIG_CACHE["${r}:_loaded"]="1"
+}
+
+cfg_to_runtime() {
+    local cfg="$1"
+    local dir
+    dir="$(dirname "${cfg}")"
+    basename "${dir}"
+}
+
+get_tab_delimited_items() {
+    local val="$1"
+    if [[ -z "${val}" ]]; then
+        return 0
+    fi
+    local items=()
+    IFS=$'\t' read -r -a items <<< "${val}"
+    for it in "${items[@]}"; do
+        [[ -n "${it}" ]] && echo "${it}"
+    done
+}
+
 get_runtime_dir() { echo "${RUNTIMES_BASE_DIR}/$1"; }
 get_runtime_config_file() { echo "${RUNTIMES_BASE_DIR}/$1/config.json"; }
 get_runtime_rules_dir() { echo "${RUNTIMES_BASE_DIR}/$1/rules"; }
@@ -27,16 +97,8 @@ get_runtime_dist_mcp_file() { echo "${SCRIPT_DIR}/dist/$1/mcp_config.json"; }
 
 get_runtime_status() {
     local r="$1"
-    local cfg
-    cfg="$(get_runtime_config_file "$r")"
-    local status=""
-    if [ -f "${cfg}" ]; then
-        if command -v jq >/dev/null 2>&1; then
-            status="$(jq -r '.status // empty' "${cfg}" 2>/dev/null || true)"
-        elif command -v python3 >/dev/null 2>&1; then
-            status="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("status", ""))' "${cfg}" 2>/dev/null || true)"
-        fi
-    fi
+    load_runtime_config "$r"
+    local status="${RUNTIME_CONFIG_CACHE["${r}:status"]:-}"
     if [ -z "${status}" ]; then
         status="active"
     fi
@@ -51,8 +113,8 @@ get_available_runtimes() {
         rname="$(basename "$d")"
         [ "$rname" = "schema" ] && continue
         if [ -f "$d/config.json" ]; then
-            local st
-            st="$(get_runtime_status "$rname")"
+            load_runtime_config "$rname"
+            local st="${RUNTIME_CONFIG_CACHE["${rname}:status"]:-active}"
             if [ "$st" != "disabled" ]; then
                 runtimes+=("$rname")
             fi
@@ -63,18 +125,29 @@ get_available_runtimes() {
 
 get_active_runtimes() {
     local runtimes=()
-    for r in $(get_available_runtimes); do
-        local st
-        st="$(get_runtime_status "$r")"
-        if [ "$st" = "active" ]; then
-            runtimes+=("$r")
+    for d in "${RUNTIMES_BASE_DIR}"/*; do
+        [ ! -d "$d" ] && continue
+        local rname
+        rname="$(basename "$d")"
+        [ "$rname" = "schema" ] && continue
+        if [ -f "$d/config.json" ]; then
+            load_runtime_config "$rname"
+            local st="${RUNTIME_CONFIG_CACHE["${rname}:status"]:-active}"
+            if [ "$st" = "active" ]; then
+                runtimes+=("$rname")
+            fi
         fi
     done
     printf '%s\n' "${runtimes[@]}"
 }
 
+LAST_VALIDATED_RUNTIME=""
+
 validate_runtime_arg() {
     local target_arg="${1:-}"
+    if [ -n "${LAST_VALIDATED_RUNTIME}" ] && [ "${LAST_VALIDATED_RUNTIME}" = "${target_arg}" ]; then
+        return 0
+    fi
     if [ -n "${target_arg}" ] && [ "${target_arg}" != "all" ] && [ "${target_arg}" != "default" ] && [ "${target_arg}" != "active" ]; then
         local config_path="${RUNTIMES_BASE_DIR}/${target_arg}/config.json"
         if [ ! -f "${config_path}" ]; then
@@ -88,6 +161,7 @@ validate_runtime_arg() {
             return 1
         fi
     fi
+    LAST_VALIDATED_RUNTIME="${target_arg}"
     return 0
 }
 
@@ -115,16 +189,8 @@ expand_path() {
 
 get_runtime_target_dir() {
     local r="$1"
-    local cfg
-    cfg="$(get_runtime_config_file "$r")"
-    local t_dir=""
-    if [ -f "${cfg}" ]; then
-        if command -v jq >/dev/null 2>&1; then
-            t_dir="$(jq -r '.target.config_dir // empty' "${cfg}" 2>/dev/null || true)"
-        elif command -v python3 >/dev/null 2>&1; then
-            t_dir="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("target", {}).get("config_dir", ""))' "${cfg}" 2>/dev/null || true)"
-        fi
-    fi
+    load_runtime_config "$r"
+    local t_dir="${RUNTIME_CONFIG_CACHE["${r}:config_dir"]:-}"
     if [ -z "${t_dir}" ]; then
         if [ "$r" = "antigravity" ]; then
             t_dir="${HOME}/.gemini/config"
@@ -141,16 +207,8 @@ get_runtime_target_dir() {
 
 get_runtime_target_prompt_file() {
     local r="$1"
-    local cfg
-    cfg="$(get_runtime_config_file "$r")"
-    local t_name=""
-    if [ -f "${cfg}" ]; then
-        if command -v jq >/dev/null 2>&1; then
-            t_name="$(jq -r '.target.prompt_filename // empty' "${cfg}" 2>/dev/null || true)"
-        elif command -v python3 >/dev/null 2>&1; then
-            t_name="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("target", {}).get("prompt_filename", ""))' "${cfg}" 2>/dev/null || true)"
-        fi
-    fi
+    load_runtime_config "$r"
+    local t_name="${RUNTIME_CONFIG_CACHE["${r}:prompt_filename"]:-}"
     if [ -z "${t_name}" ]; then
         t_name="AGENTS.md"
     fi
@@ -161,16 +219,8 @@ get_runtime_target_prompt_file() {
 
 get_runtime_target_mcp_file() {
     local r="$1"
-    local cfg
-    cfg="$(get_runtime_config_file "$r")"
-    local t_name=""
-    if [ -f "${cfg}" ]; then
-        if command -v jq >/dev/null 2>&1; then
-            t_name="$(jq -r '.target.mcp_filename // empty' "${cfg}" 2>/dev/null || true)"
-        elif command -v python3 >/dev/null 2>&1; then
-            t_name="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("target", {}).get("mcp_filename", ""))' "${cfg}" 2>/dev/null || true)"
-        fi
-    fi
+    load_runtime_config "$r"
+    local t_name="${RUNTIME_CONFIG_CACHE["${r}:mcp_filename"]:-}"
     if [ -z "${t_name}" ]; then
         t_name="mcp_config.json"
     fi
@@ -181,16 +231,8 @@ get_runtime_target_mcp_file() {
 
 get_runtime_target_skills_dir() {
     local r="$1"
-    local cfg
-    cfg="$(get_runtime_config_file "$r")"
-    local s_dir=""
-    if [ -f "${cfg}" ]; then
-        if command -v jq >/dev/null 2>&1; then
-            s_dir="$(jq -r '.target.skills_dir // empty' "${cfg}" 2>/dev/null || true)"
-        elif command -v python3 >/dev/null 2>&1; then
-            s_dir="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("target", {}).get("skills_dir", ""))' "${cfg}" 2>/dev/null || true)"
-        fi
-    fi
+    load_runtime_config "$r"
+    local s_dir="${RUNTIME_CONFIG_CACHE["${r}:skills_dir"]:-}"
     if [ -z "${s_dir}" ]; then
         if [ "$r" = "antigravity" ]; then
             s_dir="${HOME}/.gemini/config/skills"
@@ -347,11 +389,10 @@ if "target" in config:
 
 get_enabled_skills() {
     local config_file="$1"
-    if command -v jq >/dev/null 2>&1; then
-        jq -r '.skills[]?' "${config_file}" 2>/dev/null || true
-    elif command -v python3 >/dev/null 2>&1; then
-        python3 -c 'import json, sys; [print(s) for s in json.load(open(sys.argv[1])).get("skills", [])]' "${config_file}" 2>/dev/null || true
-    fi
+    local r
+    r="$(cfg_to_runtime "${config_file}")"
+    load_runtime_config "${r}"
+    get_tab_delimited_items "${RUNTIME_CONFIG_CACHE["${r}:skills"]:-}"
 }
 
 resolve_skill_dir() {
@@ -362,29 +403,36 @@ resolve_skill_dir() {
 get_binary_alias() {
     local config_file="$1"
     local bin_name="$2"
-    if command -v jq >/dev/null 2>&1; then
-        jq -r --arg b "${bin_name}" '.binaries[$b] // empty' "${config_file}" 2>/dev/null || true
-    elif command -v python3 >/dev/null 2>&1; then
-        python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("binaries", {}).get(sys.argv[2], ""))' "${config_file}" "${bin_name}" 2>/dev/null || true
+    local r
+    r="$(cfg_to_runtime "${config_file}")"
+    load_runtime_config "${r}"
+    local entries="${RUNTIME_CONFIG_CACHE["${r}:binaries"]:-}"
+    if [[ -n "${entries}" ]]; then
+        local items=()
+        IFS=$'\t' read -r -a items <<< "${entries}"
+        for entry in "${items[@]}"; do
+            if [[ "${entry%%=*}" == "${bin_name}" ]]; then
+                echo "${entry#*=}"
+                return 0
+            fi
+        done
     fi
 }
 
 get_declared_binaries() {
     local config_file="$1"
-    if command -v jq >/dev/null 2>&1; then
-        jq -r '.binaries | to_entries[]? | "\(.key)=\(.value)"' "${config_file}" 2>/dev/null || true
-    elif command -v python3 >/dev/null 2>&1; then
-        python3 -c 'import json, sys; [print(f"{k}={v}") for k, v in json.load(open(sys.argv[1])).get("binaries", {}).items()]' "${config_file}" 2>/dev/null || true
-    fi
+    local r
+    r="$(cfg_to_runtime "${config_file}")"
+    load_runtime_config "${r}"
+    get_tab_delimited_items "${RUNTIME_CONFIG_CACHE["${r}:binaries"]:-}"
 }
 
 get_enabled_mcp_servers() {
     local config_file="$1"
-    if command -v jq >/dev/null 2>&1; then
-        jq -r '.mcp_servers[]?' "${config_file}" 2>/dev/null || true
-    elif command -v python3 >/dev/null 2>&1; then
-        python3 -c 'import json, sys; [print(s) for s in json.load(open(sys.argv[1])).get("mcp_servers", [])]' "${config_file}" 2>/dev/null || true
-    fi
+    local r
+    r="$(cfg_to_runtime "${config_file}")"
+    load_runtime_config "${r}"
+    get_tab_delimited_items "${RUNTIME_CONFIG_CACHE["${r}:mcp_servers"]:-}"
 }
 
 get_disabled_core_rules() {
@@ -392,11 +440,10 @@ get_disabled_core_rules() {
     if [ ! -f "${config_file}" ]; then
         return 0
     fi
-    if command -v jq >/dev/null 2>&1; then
-        jq -r '.disabled_core_rules[]?' "${config_file}" 2>/dev/null || true
-    elif command -v python3 >/dev/null 2>&1; then
-        python3 -c 'import json, sys; [print(r) for r in json.load(open(sys.argv[1])).get("disabled_core_rules", [])]' "${config_file}" 2>/dev/null || true
-    fi
+    local r
+    r="$(cfg_to_runtime "${config_file}")"
+    load_runtime_config "${r}"
+    get_tab_delimited_items "${RUNTIME_CONFIG_CACHE["${r}:disabled_core_rules"]:-}"
 }
 
 get_core_overrides() {
@@ -404,11 +451,10 @@ get_core_overrides() {
     if [ ! -f "${config_file}" ]; then
         return 0
     fi
-    if command -v jq >/dev/null 2>&1; then
-        jq -r '.overrides | to_entries[]? | "\(.key)=\(.value)"' "${config_file}" 2>/dev/null || true
-    elif command -v python3 >/dev/null 2>&1; then
-        python3 -c 'import json, sys; [print(f"{k}={v}") for k, v in json.load(open(sys.argv[1])).get("overrides", {}).items()]' "${config_file}" 2>/dev/null || true
-    fi
+    local r
+    r="$(cfg_to_runtime "${config_file}")"
+    load_runtime_config "${r}"
+    get_tab_delimited_items "${RUNTIME_CONFIG_CACHE["${r}:overrides"]:-}"
 }
 
 is_rule_suppressed() {
@@ -600,8 +646,7 @@ os.replace(tmp_file, dist_file)
         return 1
     fi
 
-    local server_count
-    server_count=$(get_enabled_mcp_servers "${config_file}" | grep -c . || true)
+    local server_count="${#enabled_mcps[@]}"
     echo "==> [build] Configuración MCP compilada con éxito para '${r}': ${dist_mcp_file} (${server_count} servidor(es))"
 }
 

@@ -144,6 +144,17 @@ class TestRuntimeLifecycle(unittest.TestCase):
         self.assertIn("agent-module", content)
         self.assertIn("BypassSandbox: true", content)
 
+    def test_config_json_cached_single_parse(self):
+        """build.sh must cache config.json and avoid redundant parsing per runtime execution (Issue #192)."""
+        res = subprocess.run(
+            ["bash", "-c", f"source {BUILD_SH} && load_runtime_config antigravity && echo ${{RUNTIME_CONFIG_CACHE['antigravity:_loaded']}}"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True
+        )
+        self.assertEqual(res.returncode, 0, f"Cache verification failed: {res.stderr}")
+        self.assertEqual(res.stdout.strip(), "1")
+
 
 if __name__ == "__main__":
     unittest.main()
