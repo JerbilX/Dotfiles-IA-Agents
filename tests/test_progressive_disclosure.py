@@ -103,6 +103,8 @@ class TestProgressiveDisclosure(unittest.TestCase):
             "Uso Exclusivo de",
             "Límites de Workspace",
             "Lectura Quirúrgica en Dos Fases",
+            "Lectura Paginada Obligatoria",
+            "Prohibición Universal de REPL en Terminal",
         ]
 
         for inv in required_invariants:
