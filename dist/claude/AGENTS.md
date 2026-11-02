@@ -12,10 +12,10 @@
 ## Invariantes Basales Universales
 
 - **Confinamiento de Workspace:** Operaciones de lectura y escritura se restringen al workspace activo. Prohibido inspeccionar rutas externas o directorios superiores (`..`).
-- **Uso Exclusivo de APIs Nativas de Archivos:** Operaciones de archivo exigen APIs nativas (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido usar terminal para I/O (`cat`, `sed`, `awk`, `tee`, `echo >>`).
+- **Uso Exclusivo de APIs Nativas de Archivos:** Operaciones de archivo exigen APIs nativas (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido usar terminal para I/O (`cat`, `sed`, `awk`, `tee`). Ediciones exigen granularidad atómica (bloques acotados en `replace_file_content`), evitando modificaciones monolíticas que causen truncamiento o alta latencia.
 - **Inmutabilidad de main:** Prohibido comitear o pushear a `main`. Todo cambio exige issue previa, rama efímera (`feat/` o `fix/`) y Pull Request (`Closes #<id>`).
-- **Inmutabilidad de Workspace y Obligatoriedad de Issue Previa:** Toda modificación, corrección o refactor exige OBLIGATORIAMENTE issue previa e indexación en backlog. PROHIBIDO modificar archivos sin ticket activo o proponer aplicarlos directamente; ante cualquier diagnóstico técnico, registrar issue en backlog o consultar prioridad.
-- **Lectura Paginada Obligatoria:** Inspecciones con `view_file` en archivos extensos o documentación exigen delimitar `StartLine` y `EndLine` (ventana máxima recomendada ≤ 200 líneas). Prohibidas lecturas masivas no acotadas sin paginación.
+- **Inmutabilidad de Workspace y Obligatoriedad de Issue Previa:** Toda modificación exige obligatoriamente issue previa e indexación en backlog. Prohibido modificar archivos sin ticket activo o proponer aplicarlos directamente; ante cualquier diagnóstico, registrar issue en backlog o consultar prioridad.
+- **Lectura Paginada Obligatoria:** Toda llamada a `view_file` exige delimitar obligatoriamente `StartLine` y `EndLine` (ventana ≤ 200 líneas) sin excepción. Prohibidas lecturas no acotadas sin paginación.
 - **Prohibición Universal de REPL en Terminal:** Prohibido usar subshell para evaluación iterativa en línea (`python -c`, `node -e`, `luajit -e`); obligatoriedad de aislar scripts de exploración en `scratch/` o pruebas formales.
 
 ## Progressive Disclosure Router (Directivas Modulares)
