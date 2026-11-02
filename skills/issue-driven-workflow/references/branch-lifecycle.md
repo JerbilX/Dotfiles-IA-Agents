@@ -78,6 +78,8 @@ git-prune-gone --sync
 ### Paso 4: Transición a Desarrollo y Verificación (⚙️ In Progress)
 * Al aprobarse el plan o entrar en fast-path, la tarea entra en desarrollo activo (`⚙️ In Progress`) en la rama local, sin mutaciones CLI en Projects v2.
 * Modificaciones de código exclusivamente mediante herramientas nativas de archivos (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido usar comandos de terminal para I/O (`cat`, `sed`, `awk`, `tee`).
+* **Lectura Paginada Obligatoria:** Toda llamada a `view_file` exige delimitar `StartLine` y `EndLine` (ventana ≤ 200 líneas) sin excepción; prohibidas lecturas no acotadas. Localizar previamente mediante `grep_search`.
+* **Granularidad Atómica en Ediciones:** Particionar cambios en bloques acotados de `replace_file_content` para prevenir truncamientos en `tool_calls` y degradación por latencia. Prohibido reemplazar archivos completos monolíticamente.
 * Validar compilación, linters y suites de prueba locales (`./build.sh check`).
 * **Promoción Atómica del ADR:** Al comenzar a codificar, actualizar el YAML frontmatter del ADR a `status: accepted` en la rama de trabajo para ratificación atómica al mergear.
 

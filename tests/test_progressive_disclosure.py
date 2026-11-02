@@ -183,6 +183,27 @@ class TestProgressiveDisclosure(unittest.TestCase):
 
         self.assertIn('--label "profile:<perfil>"', skill_content)
 
+    def test_pagination_and_atomic_edits_invariants(self):
+        """Strict pagination in view_file and atomic granularity in replace_file_content must be enforced."""
+        router_path = os.path.join(CORE_DIR, "00-router.md")
+        with open(router_path, "r", encoding="utf-8") as f:
+            router_content = f.read()
+        self.assertIn("granularidad atómica", router_content)
+        self.assertIn("ventana ≤ 200 líneas", router_content)
+
+        env_path = os.path.join(CORE_DIR, "10-environment-standards.md")
+        with open(env_path, "r", encoding="utf-8") as f:
+            env_content = f.read()
+        self.assertIn("granularidad atómica", env_content)
+        self.assertIn("ventana ≤ 200 líneas", env_content)
+
+        skill_path = os.path.join(REPO_ROOT, "skills", "issue-driven-workflow", "SKILL.md")
+        with open(skill_path, "r", encoding="utf-8") as f:
+            skill_content = f.read()
+        self.assertIn("granularidad atómica", skill_content)
+        self.assertIn("`StartLine` y `EndLine` (≤ 200 líneas)", skill_content)
+
 
 if __name__ == "__main__":
     unittest.main()
+
