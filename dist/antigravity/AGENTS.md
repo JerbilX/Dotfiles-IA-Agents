@@ -15,7 +15,7 @@
 - **Uso Exclusivo de APIs Nativas de Archivos:** Operaciones exigen herramientas nativas (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`); prohibido usar terminal para I/O (`cat`, `sed`, `awk`). Ediciones exigen granularidad atómica (bloques acotados en `replace_file_content`), evitando cambios monolíticos.
 - **Inmutabilidad de main:** Prohibido comitear o pushear a `main`. Todo cambio exige issue previa, rama efímera (`feat/`, `fix/`) y Pull Request (`Closes #<id>`).
 - **Inmutabilidad de Workspace y Obligatoriedad de Issue Previa:** Modificaciones exigen issue previa e indexación en backlog. Prohibido mutar archivos sin ticket activo; ante diagnósticos, registrar issue en backlog o consultar prioridad.
-- **Lectura Paginada Obligatoria y Circuit Breaker:** Toda llamada a `view_file` exige delimitar `StartLine` y `EndLine` (ventana ≤ 200 líneas). En archivos > 150 líneas, localizar funciones, clases o variables exclusivamente con `grep_search`, restringiendo `view_file` a ventana quirúrgica (≤ 50 líneas). Prohibido interpretar advertencias de contenido no mostrado como orden de seguir leyendo (cero paginación secuencial ciega). Máximo 3 lecturas consecutivas globales de herramientas de inspección (`view_file`, `grep_search`, `find_by_name`) sin acción intermedia observable (mutación con `replace_file_content`/`write_to_file`, comando terminal o parada Stop & Ask/síntesis), independientemente de si alternan archivos.
+- **Lectura Paginada Obligatoria y Circuit Breaker:** Toda llamada a `view_file` exige delimitar `StartLine` y `EndLine` (ventana ≤ 200 líneas). En archivos > 150 líneas, localizar funciones, clases o variables exclusivamente con `grep_search`, restringiendo `view_file` a ventana quirúrgica (≤ 50 líneas). Prohibido interpretar advertencias de contenido no mostrado como orden de seguir leyendo (cero paginación secuencial ciega). Máximo 3 lecturas consecutivas globales de herramientas de inspección (`view_file`, `grep_search`, `find_by_name`) sin acción intermedia observable (mutación con `replace_file_content`/`write_to_file`, comando terminal mutador o de ejecución de pruebas/build (ej. tests, linter, compilación), o parada Stop & Ask/síntesis), independientemente de si alternan archivos. Comandos de mera inspección pasiva en terminal (`git status`, `git log`, `git branch`, `git remote`, `pwd`, etc.) no constituyen acción observable y no resetean el contador de parálisis.
 - **Prohibición Universal de REPL en Terminal:** Prohibido usar subshell para evaluación interactiva o en línea (`python -c`, `node -e`); obligatoriedad de aislar scripts de exploración en `scratch/` o pruebas formales.
 
 ## Progressive Disclosure Router (Directivas Modulares)
@@ -44,16 +44,16 @@ Consultar obligatoriamente la directiva modular correspondiente antes de actuar:
 # Especialización de Sandbox y Ejecución (Runtime: Antigravity)
 
 - **Ejecución de Git y Bypass de Sandbox:**
-  - **Solo Lectura Confinado (`BypassSandbox: false` obligatorio):** Inspección pasiva (`git status`, `git log`, `git diff`, `git branch`) en sandbox estándar.
-  - **Mutadores Locales y Red (`BypassSandbox: true` directo):** Al montar el kernel `.git/` de solo lectura (`ro`), mutadores locales (`init`, `checkout`, `branch -d`, `add`, `commit`, `merge`, `reset`) y remotos (`git push`, `git pull`, `gh`) requieren `BypassSandbox: true` directo para evitar turnos fallidos.
-  - **Formato Atómico de Commits:** Prohibido `git commit -m "..."` (rompe prefix matching). Redactar mensaje en `.commit_msg` con `write_to_file` y ejecutar `git commit -F .commit_msg` con `BypassSandbox: true`.
+  - **Solo Lectura Confinado (`BypassSandbox: false` obligatorio):** Inspección pasiva (`git status`, `git log`, `git diff`, `git branch`) en sandbox.
+  - **Mutadores Locales y Red (`BypassSandbox: true` directo):** Por kernel `.git/` de solo lectura (`ro`), mutadores locales (`init`, `checkout`, `branch -d`, `add`, `commit`, `merge`, `reset`) y remotos (`git push`, `git pull`, `gh`) exigen `BypassSandbox: true` directo.
+  - **Formato Atómico de Commits:** Prohibido `git commit -m "..."` (rompe prefix matching). Redactar en `.commit_msg` vía `write_to_file` y ejecutar `git commit -F .commit_msg` con `BypassSandbox: true`.
 - **Aprovisionamiento Hermético de Dotfiles:**
-  - `./build.sh build` y `./build.sh check` operan en workspace confinado (`BypassSandbox: false`).
-  - Escrituras fuera del workspace (`./build.sh link`, `./build.sh all`) son bootstrap exclusivo del usuario en terminal nativa.
+  - `./build.sh build` y `./build.sh check` operan confinados (`BypassSandbox: false`).
+  - Escrituras externas (`./build.sh link`, `./build.sh all`) son bootstrap exclusivo del usuario en terminal nativa.
 - **Exclusividad de Bypass y Preservación de Prefix Matching:**
-  - `BypassSandbox: true` se reserva exclusivamente para `git`, `gh` y los CLIs `agent-audit`, `agent-module`, `gh-pr-review` y `git-prune-gone` (en `$PATH` o fallback a `skills/*/bin/`). Prohibido para comandos locales (`ls`, `cat`). Ignorar sugerencias del sandbox de reintentar con bypass herramientas no autorizadas.
-  - **Comandos Atómicos y Prohibición de Tuberías:** Comandos atómicos sin encadenamientos (`&&`, `||`) ni tuberías (`|`) hacia utilidades externas (`jq`, `grep`, `awk`, `sed`) en bypass; usar filtrado nativo (`--jq`, `--json`, `--query`).
-  - **Veto Absoluto a Evaluadores en Línea y Wrappers:** Prohibido taxativamente el uso de evaluadores inline (`python3 -c`, `node -e`, `bash -c`) o envolver binarios autorizados (`agent-audit`, `git`, `gh`) en subshells/subprocess (rompe el prefix matching de "Always allow"). Todo procesamiento con script debe escribirse en `<appDataDir>/brain/<conversation-id>/scratch/` mediante `write_to_file` y ejecutarse confinado (`BypassSandbox: false`).
+  - `BypassSandbox: true` exclusivo para `git`, `gh` y CLIs `agent-audit`, `agent-module`, `gh-pr-review`, `git-prune-gone` (en `$PATH` o `skills/*/bin/`). Prohibido para comandos locales (`ls`, `cat`). Ignorar sugerencias de bypass no autorizadas.
+  - **Comandos Atómicos y Prohibición de Tuberías:** Comandos atómicos sin encadenamientos (`&&`, `||`) ni tuberías (`|`) externas (`jq`, `grep`, `awk`, `sed`) en bypass; usar filtrado nativo (`--jq`, `--json`, `--query`).
+  - **Veto Absoluto a Evaluadores en Línea y Wrappers:** Prohibido usar evaluadores inline (`python3 -c`, `node -e`, `bash -c`) o envolver binarios autorizados (`agent-audit`, `git`, `gh`) en subshells/subprocess (rompe el prefix matching de "Always allow"). Todo script debe guardarse en `<appDataDir>/brain/<conversation-id>/scratch/` vía `write_to_file` y ejecutarse confinado (`BypassSandbox: false`).
 
 
 
