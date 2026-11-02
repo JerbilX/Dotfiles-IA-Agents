@@ -11,6 +11,7 @@ import unittest
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 RUNTIMES_DIR = os.path.join(REPO_ROOT, "runtimes")
 SCHEMA_FILE = os.path.join(RUNTIMES_DIR, "schema", "runtime-config.schema.json")
+CORE_DIR = os.path.join(REPO_ROOT, "core")
 BUILD_SH = os.path.join(REPO_ROOT, "build.sh")
 
 
@@ -154,6 +155,40 @@ class TestRuntimeLifecycle(unittest.TestCase):
         )
         self.assertEqual(res.returncode, 0, f"Cache verification failed: {res.stderr}")
         self.assertEqual(res.stdout.strip(), "1")
+
+    def test_antigravity_rules_veto_inline_evaluators_and_wrappers(self):
+        """runtimes/antigravity/rules/01-sandbox.md must explicitly prohibit inline evaluators and wrappers (Issue #208)."""
+        sandbox_rule = os.path.join(RUNTIMES_DIR, "antigravity", "rules", "01-sandbox.md")
+        with open(sandbox_rule, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        self.assertIn("python3 -c", content)
+        self.assertIn("node -e", content)
+        self.assertIn("bash -c", content)
+        self.assertIn("subprocess", content)
+        self.assertIn("prefix matching", content)
+        self.assertIn("scratch", content)
+
+    def test_environment_standards_prohibit_inline_evaluators_and_wrappers(self):
+        """core/10-environment-standards.md must prohibit inline evaluators and CLI wrappers (Issue #208)."""
+        env_rule = os.path.join(CORE_DIR, "10-environment-standards.md")
+        with open(env_rule, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        self.assertIn("python3 -c", content)
+        self.assertIn("node -e", content)
+        self.assertIn("bash -c", content)
+        self.assertIn("wrappers", content)
+
+    def test_conversation_audit_skill_prohibits_subprocess_wrappers(self):
+        """skills/conversation-audit/SKILL.md must mandate native options and prohibit subprocess wrappers (Issue #208)."""
+        skill_file = os.path.join(REPO_ROOT, "skills", "conversation-audit", "SKILL.md")
+        with open(skill_file, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        self.assertIn("subprocess", content)
+        self.assertIn("--format", content)
+        self.assertIn("--inspect-step", content)
 
 
 if __name__ == "__main__":

@@ -49,7 +49,7 @@ Guía metodológica, catálogo de métricas y protocolo operativo para la audito
 | `CONSECUTIVE_TOOL_ERRORS` | **CRÍTICA** | Errores Consecutivos en Herramientas | Dos o más fallos de ejecución de herramientas consecutivos. | Activar de inmediato el disyuntor de seguridad (Stop & Ask). Prohibido seguir probando variaciones sin hipótesis fundada. |
 | `HIGH_LATENCY_STEP` | **MEDIA** | Paso de Alta Latencia | Pasos con duración individual superior al umbral configurado (ej. > 60s). | Investigar llamadas bloqueantes de red, búsquedas sin filtro o procesamiento excesivo en terminal. |
 | `TERMINAL_PIPELINING` | **MEDIA** | Encadenamiento en Terminal | Uso de operadores (`&&`, `\|`, `;`, tuberías) en comandos de terminal (`run_command`), rompiendo el *prefix matching* de permisos. | Desacoplar en llamadas CLI atómicas o utilizar herramientas nativas de archivos (`write_to_file`, `replace_file_content`). |
-| `TERMINAL_REPL_LOOP` | **ALTA** | Bucle REPL Iterativo en Terminal | Secuencia o alta densidad de ejecuciones de evaluación en línea en terminal (`python3 -c`, `node -e`, etc.) para pruebas iterativas o exploratorias. | Desalentar el uso de terminal como REPL e indicar la refactorización hacia un script de prueba dedicado en scratch (`<appDataDir>/brain/<conversation-id>/scratch/`) o tests unitarios locales. |
+| `TERMINAL_REPL_LOOP` | **ALTA** | Bucle REPL Iterativo en Terminal | Secuencia o alta densidad de ejecuciones de evaluación en línea en terminal (`python3 -c`, `node -e`, `bash -c`) o wrappers vía `subprocess` para pruebas, exploración o filtrado de utilidades. | Desalentar el uso de terminal como REPL/wrapper e indicar el consumo de flags nativos del CLI, refactorización hacia un script dedicado en scratch (`<appDataDir>/brain/<conversation-id>/scratch/`) o tests locales. |
 | `CONTEXT_TRUNCATION` | **ALTA** | Truncamiento de Contexto | Pasos con presencia de `truncated_fields`, reflejando lecturas desmedidas o volcados de logs masivos. | Reemplazar lecturas completas por búsquedas dirigidas (`grep_search`), flags compactos (`--jq`) o paginación. |
 | `UNPAGINATED_FILE_READ` | **ALTA** | Lectura No Paginada de Archivos | Invocación de herramientas de lectura de archivos (`view_file` o equivalentes) sin delimitar `StartLine`/`EndLine` o con ventanas excesivas (> 200 líneas). | Utilizar `grep_search` para localización previa y acotamiento de ventana mediante `StartLine` y `EndLine`. |
 | `COMPLACENCY_DETECTED` | **BAJA** | Complacencia o Adulación Vacía | Respuestas del modelo con frases serviles ("¡Gran idea!", "tienes toda la razón", "disculpa las molestias"). | Cumplir estrictamente `core/01-critical-feedback.md`. Mantener tono asertivo, objetivo y neutro. |
@@ -71,6 +71,10 @@ Cuando el usuario solicite auditar una conversación previa o cuando se requiera
 ### Paso 2: Invocación del CLI Determinista (`agent-audit`)
 
 La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder a las rutas externas al workspace donde residen los logs del runtime).
+
+- **Consumo Exclusivo de Opciones Nativas y Veto a Wrappers:**
+  - Toda la extracción, filtrado e inspección de telemetría debe consumirse exclusivamente mediante las opciones nativas de `agent-audit` (`--format`, `--inspect-step`, `--failed-steps`, `--metadata-only`, etc.).
+  - Prohibido taxativamente envolver `agent-audit` en llamadas intermedias vía `subprocess` dentro de scripts en subshell o evaluadores (`python3 -c`, `bash -c`), así como canalizar su salida por tuberías hacia scripts ad-hoc. El procesamiento debe operar sobre la salida directa del CLI o aislarse en un script formal en `scratch/` confinado (`BypassSandbox: false`).
 
 #### Jerarquía Determinista de Invocación (Degradación Elegante):
 
@@ -187,7 +191,7 @@ La delegación al subagente se estructura con la herramienta nativa `invoke_suba
 
 2. **Contrato Operativo y Reglas de Blindaje:**
    - **Restricción Estricta de Herramientas (Exclusividad de `agent-audit`):**
-     - Prohibido taxativamente al subagente ejecutar comandos de terminal ajenos a `agent-audit` (veto absoluto de `python3`, `python3 -c`, `node`, `ruby`, `cat`, `grep`, `bash`, scripts ad-hoc).
+     - Prohibido taxativamente al subagente ejecutar comandos de terminal ajenos a `agent-audit` (veto absoluto de `python3`, `python3 -c`, `node`, `ruby`, `cat`, `grep`, `bash`, scripts ad-hoc o wrappers vía `subprocess`).
      - Prohibido el uso de herramientas nativas de lectura o búsqueda (`view_file`, `grep_search`) sobre transcripciones externas. Toda la telemetría se extrae de forma 100% determinista mediante `agent-audit`.
    - **Presupuesto Finito de Herramientas (Tool Budget):**
      - Presupuesto máximo estricto de **2 a 3 invocaciones de herramientas** en toda la sesión: 1 ejecución global (`agent-audit <target> --format markdown`) y hasta 2 quirúrgicas opcionales (`agent-audit <target> --failed-steps` o `agent-audit <target> --inspect-step <N>`).
