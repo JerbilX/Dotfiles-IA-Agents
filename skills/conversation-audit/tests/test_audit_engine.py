@@ -18,7 +18,15 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from adapters.base import ConversationMetadata, NormalizedStep, NormalizedToolCall
-from audit_engine import AuditEngine, DetectedAntipattern
+from audit_engine import (
+    AuditEngine,
+    DetectedAntipattern,
+    filter_steps_by_tool,
+    format_json_steps,
+    format_markdown_steps,
+    format_text_steps,
+    parse_step_ranges,
+)
 
 
 class TestInlineEvalDetection(unittest.TestCase):
@@ -815,6 +823,240 @@ class TestSubagentPromptConsistency(unittest.TestCase):
         self.assertIn("## 2. Desglose de Herramientas", md)
         self.assertIn("## 3. Pasos de Mayor Latencia", md)
         self.assertIn("## 4. Antipatrones y Anomalías Detectadas", md)
+
+
+class TestStepRangesAndToolFiltering(unittest.TestCase):
+    """Pruebas unitarias para la inspección de rangos de pasos y filtros avanzados."""
+
+    def test_parse_step_ranges_valid(self):
+        """Verifica el parsing de números simples, rangos (guión y doble punto), listas y combinaciones."""
+        self.assertEqual(parse_step_ranges("5"), [5])
+        self.assertEqual(parse_step_ranges("0"), [0])
+        self.assertEqual(parse_step_ranges("87-90"), [87, 88, 89, 90])
+        self.assertEqual(parse_step_ranges("87..90"), [87, 88, 89, 90])
+        self.assertEqual(parse_step_ranges("87,88,92,100"), [87, 88, 92, 100])
+        self.assertEqual(parse_step_ranges("1-5,87-90,105"), [1, 2, 3, 4, 5, 87, 88, 89, 90, 105])
+        self.assertEqual(parse_step_ranges("1..3, 87..88, 90"), [1, 2, 3, 87, 88, 90])
+        self.assertEqual(parse_step_ranges("0-2, 5"), [0, 1, 2, 5])
+        # Deduplicación y ordenamiento
+        self.assertEqual(parse_step_ranges("1-3, 2, 3-4"), [1, 2, 3, 4])
+        self.assertEqual(parse_step_ranges("87-87"), [87])
+
+    def test_parse_step_ranges_invalid(self):
+        """Verifica que sintaxis inválidas o rangos invertidos disparen ValueError."""
+        invalid_cases = [
+            "",
+            "   ",
+            ",",
+            "abc",
+            "1-a",
+            "1..z",
+            "10-5",
+            "10..5",
+            "-5",
+            "5-",
+            "1-2-3",
+            "1..2..3",
+        ]
+        for expr in invalid_cases:
+            with self.subTest(expr=expr):
+                with self.assertRaises(ValueError):
+                    parse_step_ranges(expr)
+
+    def test_filter_steps_by_tool(self):
+        """Verifica el filtrado de pasos por herramienta exacta, normalizada o MCP."""
+        step1 = NormalizedStep(
+            step_index=1,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            tool_calls=[NormalizedToolCall(name="run_command", args={"CommandLine": "ls"})],
+        )
+        step2 = NormalizedStep(
+            step_index=2,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            tool_calls=[NormalizedToolCall(name="view_file", args={"AbsolutePath": "/a"})],
+        )
+        step3 = NormalizedStep(
+            step_index=3,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            tool_calls=[
+                NormalizedToolCall(name="run_command", args={"CommandLine": "pwd"}),
+                NormalizedToolCall(name="mcp_gemini-api-docs_gemini_search_docs", args={"query": "test"}),
+            ],
+        )
+        steps = [step1, step2, step3]
+
+        # run_command -> pasos 1 y 3
+        res_rc = filter_steps_by_tool(steps, "run_command")
+        self.assertEqual([s.step_index for s in res_rc], [1, 3])
+
+        # Case-insensitive
+        res_rc_upper = filter_steps_by_tool(steps, "RUN_COMMAND")
+        self.assertEqual([s.step_index for s in res_rc_upper], [1, 3])
+
+        # view_file -> paso 2
+        res_vf = filter_steps_by_tool(steps, "view_file")
+        self.assertEqual([s.step_index for s in res_vf], [2])
+
+        # MCP tool con sufijo normalizado
+        res_mcp = filter_steps_by_tool(steps, "gemini_search_docs")
+        self.assertEqual([s.step_index for s in res_mcp], [3])
+
+        # Herramienta inexistente -> vacío
+        res_none = filter_steps_by_tool(steps, "nonexistent_tool")
+        self.assertEqual(res_none, [])
+
+        # Herramienta vacía -> devuelve todos
+        self.assertEqual(filter_steps_by_tool(steps, ""), steps)
+
+    def test_format_steps_text_markdown_json(self):
+        """Verifica la generación de formatos text, markdown y json para múltiples pasos."""
+        import json
+        from audit_engine import format_json_step, format_markdown_step, format_text_step
+
+        step1 = NormalizedStep(
+            step_index=1,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            content="Paso 1 completado",
+            tool_calls=[
+                NormalizedToolCall(
+                    name="run_command",
+                    args={"CommandLine": "git status"},
+                    status="DONE",
+                    raw_output="clean",
+                )
+            ],
+            status="DONE",
+        )
+        step2 = NormalizedStep(
+            step_index=2,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            content="Paso 2 completado",
+            tool_calls=[
+                NormalizedToolCall(
+                    name="replace_file_content",
+                    args={"TargetFile": "/foo.py"},
+                    status="DONE",
+                )
+            ],
+            status="DONE",
+        )
+        steps = [step1, step2]
+
+        # Text
+        txt = format_text_steps(steps)
+        self.assertIn("INSPECCIÓN DE PASOS (2 pasos)", txt)
+        self.assertIn("Pasos incluidos : 1, 2", txt)
+        self.assertIn("DETALLE DE PASO 1", txt)
+        self.assertIn("DETALLE DE PASO 2", txt)
+
+        # Markdown
+        md = format_markdown_steps(steps)
+        self.assertIn("# Inspección de Pasos (2 pasos)", md)
+        self.assertIn("- **Pasos incluidos:** `1, 2`", md)
+        self.assertIn("## Detalle del Paso `1`", md)
+        self.assertIn("## Detalle del Paso `2`", md)
+        self.assertIn("`agent-audit --inspect-steps`", md)
+
+        # JSON
+        js = format_json_steps(steps)
+        data = json.loads(js)
+        self.assertEqual(data["total_steps"], 2)
+        self.assertEqual(len(data["steps"]), 2)
+        self.assertEqual(data["steps"][0]["step_index"], 1)
+        self.assertEqual(data["steps"][1]["step_index"], 2)
+
+        # Invocación polimórfica (pasando lista a format_*_step)
+        self.assertEqual(format_text_step(steps), txt)
+        self.assertEqual(format_markdown_step(steps), md)
+        self.assertEqual(format_json_step(steps), js)
+
+        # Manejo de listas vacías
+        self.assertIn("No se encontraron pasos", format_text_steps([]))
+        self.assertIn("No se encontraron pasos", format_markdown_steps([]))
+        empty_js = json.loads(format_json_steps([]))
+        self.assertEqual(empty_js["total_steps"], 0)
+        self.assertEqual(empty_js["steps"], [])
+
+    def test_cli_inspect_steps_and_filter_tool(self):
+        """Verifica la ejecución de agent-audit con --inspect-steps y --filter-tool."""
+        import json
+        import tempfile
+        from unittest.mock import patch
+        import importlib.machinery
+        import importlib.util
+
+        cli_path = SKILL_ROOT / "bin" / "agent-audit"
+        loader = importlib.machinery.SourceFileLoader("agent_audit_cli_steps_test", str(cli_path))
+        spec = importlib.util.spec_from_loader("agent_audit_cli_steps_test", loader)
+        cli_mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(cli_mod)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            transcript_file = Path(tmpdir) / "transcript.jsonl"
+            lines = [
+                {"step_index": 0, "source": "USER", "type": "USER_INPUT", "content": "iniciar"},
+                {
+                    "step_index": 1,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "tool_calls": [{"name": "run_command", "args": {"CommandLine": "ls"}}],
+                },
+                {
+                    "step_index": 2,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "tool_calls": [{"name": "view_file", "args": {"AbsolutePath": "/a"}}],
+                },
+                {
+                    "step_index": 3,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "tool_calls": [{"name": "run_command", "args": {"CommandLine": "pwd"}}],
+                },
+            ]
+            with open(transcript_file, "w", encoding="utf-8") as f:
+                for line in lines:
+                    f.write(json.dumps(line) + "\n")
+
+            # 1. Rango numérico con --inspect-steps
+            with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-steps", "1-2"]):
+                code = cli_mod.main()
+                self.assertEqual(code, 0)
+
+            # 2. Rango con sintaxis doble punto '..'
+            with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-steps", "1..3", "--format", "json"]):
+                code = cli_mod.main()
+                self.assertEqual(code, 0)
+
+            # 3. Flexibilidad de --inspect-step aceptando rangos
+            with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-step", "1-2"]):
+                code = cli_mod.main()
+                self.assertEqual(code, 0)
+
+            # 4. Combinación de rango con --filter-tool
+            with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-steps", "1-3", "--filter-tool", "run_command"]):
+                code = cli_mod.main()
+                self.assertEqual(code, 0)
+
+            # 5. --filter-tool aislado
+            with patch("sys.argv", ["agent-audit", str(transcript_file), "--filter-tool", "run_command", "--format", "markdown"]):
+                code = cli_mod.main()
+                self.assertEqual(code, 0)
+
+            # 6. --filter-tool sin coincidencias -> salida 1
+            with patch("sys.argv", ["agent-audit", str(transcript_file), "--filter-tool", "nonexistent"]):
+                code = cli_mod.main()
+                self.assertEqual(code, 1)
+
+            # 7. Sintaxis de rango inválida -> salida 1
+            with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-steps", "invalid-range"]):
+                code = cli_mod.main()
+                self.assertEqual(code, 1)
 
 
 if __name__ == "__main__":
