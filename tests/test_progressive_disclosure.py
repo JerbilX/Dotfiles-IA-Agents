@@ -156,6 +156,33 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("supersedes:", content, "ADR-0038 must specify supersedes")
         self.assertIn("Progressive Disclosure", content, "ADR-0038 title/content must describe Progressive Disclosure")
 
+    def test_execution_profiles_standardization(self):
+        """Execution profile labels and MBR matrix must be documented across core and skills."""
+        core_08_path = os.path.join(CORE_DIR, "08-task-backlog-management.md")
+        with open(core_08_path, "r", encoding="utf-8") as f:
+            core_08_content = f.read()
+
+        for label in ("profile:flash-low", "profile:flash-medium", "profile:flash-high", "profile:pro"):
+            self.assertIn(label, core_08_content, f"Missing {label} in core/08-task-backlog-management.md")
+
+        backlog_ref_path = os.path.join(
+            REPO_ROOT, "skills", "issue-driven-workflow", "references", "issue-backlog.md"
+        )
+        with open(backlog_ref_path, "r", encoding="utf-8") as f:
+            backlog_ref_content = f.read()
+
+        for label in ("profile:flash-low", "profile:flash-medium", "profile:flash-high", "profile:pro"):
+            self.assertIn(label, backlog_ref_content, f"Missing {label} in issue-backlog.md")
+        self.assertIn("Matriz Canónica de Ruteo de Modelos", backlog_ref_content)
+
+        skill_path = os.path.join(
+            REPO_ROOT, "skills", "issue-driven-workflow", "SKILL.md"
+        )
+        with open(skill_path, "r", encoding="utf-8") as f:
+            skill_content = f.read()
+
+        self.assertIn('--label "profile:<perfil>"', skill_content)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -47,20 +47,43 @@ Al diseñar, planificar o registrar cualquier solución, el agente debe aplicar 
 
 ---
 
-## 4. Gate de Justificación de Elevación Basal
+## 4. Matriz Canónica de Ruteo de Modelos y Metadata de Perfiles de Ejecución
+
+Para habilitar la orquestación desatendida (*headless*) mediante herramientas de despacho automático (ej. `agent-cockpit`) y optimizar la asignación de recursos computacionales sin incurrir en sobredimensionamiento ni en subdimensionamiento analítico, toda issue registrada debe tipificarse deterministamente según su nivel de Minimal Blast Radius (MBR), la naturaleza técnica de la tarea y el perfil de modelo/thinking requerido.
+
+### 4.1 Matriz de Correspondencia Técnica (MBR -> Perfil de Modelo)
+
+| Nivel MBR | Naturaleza y Alcance Técnico | Perfil de Ejecución | Label de GitHub Issue | Familia y Modo de Thinking Recomendado |
+| :---: | :--- | :--- | :--- | :--- |
+| **0** | Tareas triviales, correcciones de formato, typos, documentación menor o sincronización cosmética. | `flash-low` | `profile:flash-low` | Gemini Flash (Thinking: low / mínimo). Máxima velocidad y latencia mínima. |
+| **1 - 2** | Reglas markdown, configuraciones de runtime, tooling local con tests, scripts y procedimientos operativos de skills. | `flash-medium` | `profile:flash-medium` | Gemini Flash (Thinking: medium / estándar). Balance analítico óptimo y razonamiento guiado. |
+| **3** | Refactors arquitectónicos, manejo de estado o concurrencia, reglas especializadas de runtime, diagnósticos inciertos o con múltiples hipótesis. | `flash-high` | `profile:flash-high` | Gemini Flash (Thinking: high / profundo) o Gemini Pro. Razonamiento intensivo y verificación sistemática. |
+| **4** | Directivas basales (`core/`), blindaje de seguridad de runtime, invariantes universales, impacto transversal o cross-repo. | `pro` | `profile:pro` | Gemini Pro (Thinking: high / exhaustivo). Capacidad de frontera para deducción lógica estricta y contención de riesgo basal. |
+
+### 4.2 Contrato de Metadata Estructurada (Machine-Readable)
+
+Los orquestadores desatendidos consumen la metadata de perfiles directamente a través de GitHub API/CLI (`gh issue list --json labels`, `gh issue view --json labels`), evitando invocar modelos adicionales para clasificar la tarea y eliminando la fragilidad de parsing en lenguaje natural:
+* **`profile:flash-low`**: Asignado a tareas MBR 0 sin impacto estructural ni lógico.
+* **`profile:flash-medium`**: Asignado a tareas MBR 1 y MBR 2 (tooling, skills y configuraciones).
+* **`profile:flash-high`**: Asignado a tareas MBR 3 (refactors, concurrencia, diagnósticos complejos).
+* **`profile:pro`**: Asignado a tareas MBR 4 (invariantes basales, seguridad de runtime, impacto transversal).
+
+---
+
+## 5. Gate de Justificación de Elevación Basal
 
 Toda propuesta en la especificación de una issue (`.issue_body`) o plan de implementación que plantee modificar directivas en la capa basal (`core/`) debe incluir obligatoriamente el apartado técnico **"Justificación de Elevación Basal"**. Dicha sección debe demostrar fehacientemente por qué la necesidad técnica es inviable o insuficiente de abordar en los niveles 0 a 3. Propuestas de modificación a `core/` sin esta justificación se consideran técnicamente inválidas por definición.
 
 ---
 
-## 5. Creación Determinista del Issue y Protección de Prefix Matching
+## 6. Creación Determinista del Issue y Protección de Prefix Matching
 
-Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix matching* cuando se utilizan comillas complejas o cadenas multilínea en la terminal, el cuerpo debe transferirse mediante archivo temporal:
+Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix matching* cuando se utilizan comillas complejas o cadenas multilínea en la terminal, el cuerpo debe transferirse mediante archivo temporal y el perfil tipificarse vía label:
 
 1. Redactar la especificación técnica en `.issue_body` con `write_to_file`.
-2. Crear el issue mediante GitHub CLI:
+2. Crear el issue mediante GitHub CLI especificando su perfil de ejecución:
    ```bash
-   gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body
+   gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"
    ```
 3. Limpiar el archivo temporal en el mismo turno:
    ```bash
@@ -69,7 +92,7 @@ Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix
 
 ---
 
-## 6. Inyección Inmediata y Agnóstica al Tablero Central (Projects v2)
+## 7. Inyección Inmediata y Agnóstica al Tablero Central (Projects v2)
 
 El workflow nativo `Auto-add to project` indexa automáticamente los issues de repositorios que coinciden con su filtro configurado. Para garantizar la indexación inmediata y agnóstica en repositorios fuera de dicho filtro (o como salvaguarda idempotente ante demoras del workflow):
 ```bash
@@ -79,7 +102,7 @@ gh project item-add <project_number> --owner <project_owner> --url <issue-url>
 
 ---
 
-## 7. Taxonomía Canónica de Estados en Projects v2
+## 8. Taxonomía Canónica de Estados en Projects v2
 
 El campo `Status` del tablero central (Project 1 `Proyectos-IA-V3`) define 6 estados canónicos, cuya transición está desacoplada de la CLI del agente y gobernada por el ciclo nativo de Git/GitHub y los Built-in Workflows (para la matriz completa de transiciones progresivas y regresivas, ver [`references/state-machine.md`](state-machine.md)):
 
@@ -94,7 +117,7 @@ El campo `Status` del tablero central (Project 1 `Proyectos-IA-V3`) define 6 est
 
 ---
 
-## 8. Reporte al Usuario
+## 9. Reporte al Usuario
 
 Al completar la creación e indexación, el agente debe reportar al usuario:
 - El número de issue asignado (`#<id>`).
@@ -103,10 +126,10 @@ Al completar la creación e indexación, el agente debe reportar al usuario:
 
 ---
 
-## 9. Control de Alcance (Scope Creep) y Tareas Derivadas
+## 10. Control de Alcance (Scope Creep) y Tareas Derivadas
 
 - El agente **no debe inflar** el objetivo del ticket original con refactors, mejoras o arreglos colaterales no contemplados en la especificación de la issue.
-- Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create --body-file .issue_body`), indexarla al tablero central (`gh project item-add <project_number> --owner <project_owner> --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
+- Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"`), indexarla al tablero central (`gh project item-add <project_number> --owner <project_owner> --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
 - **Vinculación Múltiple en Tareas Derivadas:** Si una tarea de investigación, auditoría forense o spike genera una o más issues derivadas de corrección/implementación, cuando se resuelva la causa raíz y se abra el Pull Request respectivo, el cuerpo del PR (`.pr_body`) DEBE declarar explícitamente el cierre de todas las issues vinculadas:
   ```markdown
   Closes #<issue_derivada>
@@ -116,7 +139,7 @@ Al completar la creación e indexación, el agente debe reportar al usuario:
 
 ---
 
-## 10. Consultas de Tablero y Coordinación (*"¿qué hay en el board?"*, *"¿con qué seguimos?"*)
+## 11. Consultas de Tablero y Coordinación (*"¿qué hay en el board?"*, *"¿con qué seguimos?"*)
 
 Ante preguntas de consulta, estado o coordinación sobre tareas pendientes en el tablero central:
 
@@ -146,11 +169,11 @@ Ante preguntas de consulta, estado o coordinación sobre tareas pendientes en el
 
 ---
 
-## 11. Manifiesto Canónico de Configuración de Repositorio (`.repo-config.json`)
+## 12. Manifiesto Canónico de Configuración de Repositorio (`.repo-config.json`)
 
 Para desacoplar el comportamiento del flujo de trabajo y la integración con GitHub Projects v2 de valores cableados o supuestos globales, todo repositorio puede definir en su raíz el archivo `.repo-config.json`. Queda formalmente descartado el uso de nombres genéricos como `config.json` para evitar colisiones con frameworks o herramientas del proyecto.
 
-### 11.1 Contrato y Esquema Formal
+### 12.1 Contrato y Esquema Formal
 
 ```json
 {
@@ -166,7 +189,7 @@ Para desacoplar el comportamiento del flujo de trabajo y la integración con Git
 * **`project_number`** *(integer, opcional)*: Número del tablero en GitHub Projects v2 al que pertenece el repositorio. Default: `1`.
 * **`project_owner`** *(string, opcional)*: Identificador del propietario del tablero en GitHub Projects v2 (ej. `"@me"` para el usuario autenticado, o el nombre de una organización/usuario específico). Default: `"@me"`.
 
-### 11.2 Resolución Dinámica con Fallback Determinista
+### 12.2 Resolución Dinámica con Fallback Determinista
 
 Al consultar o interactuar con GitHub Projects v2 (`gh project item-list`, `gh project item-add`, `gh project link`), el agente debe:
 1. Verificar si existe `.repo-config.json` en la raíz del workspace activo mediante herramientas nativas de archivos (`view_file`).

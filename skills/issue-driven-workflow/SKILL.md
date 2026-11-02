@@ -27,7 +27,7 @@ Procedimientos detallados y plantillas en `references/`:
 
 | Dominio | Contenido | Referencia Especializada |
 | :--- | :--- | :--- |
-| **Backlog** | Criterios, Minimal Blast Radius (0-4), 6 estados y Projects v2. | [`references/issue-backlog.md`](references/issue-backlog.md) |
+| **Backlog** | Criterios, Minimal Blast Radius (0-4), matriz MBR->perfiles, 6 estados y Projects v2. | [`references/issue-backlog.md`](references/issue-backlog.md) |
 | **Aprovisionamiento** | `git init`, gate de origin y repo privado en GitHub. | [`references/repo-provisioning.md`](references/repo-provisioning.md) |
 | **Ramas y PRs** | Cat. A/B, higiene, 8 fases E2E, apertura de PRs y cierre post-merge. | [`references/branch-lifecycle.md`](references/branch-lifecycle.md) |
 | **Máquina de Estados** | Matriz de transiciones progresivas y regresivas (rework, bloqueos, rollback). | [`references/state-machine.md`](references/state-machine.md) |
@@ -65,6 +65,20 @@ gh board-ready <owner>/<repo>
 Para relevamientos técnicos que requieran inspeccionar más de 3 archivos o explorar bases de código externas/desconocidas:
 1. **Delegación Mandatoria:** Prohibido acumular lecturas masivas en la sesión principal. Invocar subagente nativo `research` (`TypeName: "research"`, `Model: "flash"`, `Workspace: "inherit"`).
 2. **Consolidación:** El subagente entrega un resumen ejecutivo consolidado al hilo principal, protegiendo el contexto de la sesión. Ver [`references/exploratory-research.md`](references/exploratory-research.md).
+
+### 3.5 Creación y Tipificación de Issues en Backlog
+Toda nueva tarea, bug o deuda técnica detectada debe registrarse formalmente en GitHub Issues tipificando su perfil de ejecución (`profile:<perfil>`):
+1. Redactar especificación técnica en `.issue_body` vía `write_to_file`.
+2. Crear issue determinista:
+```bash
+gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"
+```
+3. Limpiar temporal: `rm -f .issue_body` (en paralelo en el mismo turno).
+4. Indexar inmediatamente en tablero central:
+```bash
+gh project item-add <project_number> --owner <project_owner> --url <issue_url>
+```
+*(Resueltos desde `.repo-config.json` o fallback `1` y `@me`).*
 
 ---
 
