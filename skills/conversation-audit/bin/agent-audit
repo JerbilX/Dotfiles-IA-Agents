@@ -19,19 +19,24 @@ try:
     from adapters import get_adapter
     from audit_engine import (
         AuditEngine,
+        filter_steps_by_tool,
         format_json_failed_steps,
         format_json_metadata,
         format_json_report,
         format_json_step,
+        format_json_steps,
         format_markdown_failed_steps,
         format_markdown_metadata,
         format_markdown_report,
         format_markdown_step,
+        format_markdown_steps,
         format_text_failed_steps,
         format_text_metadata,
         format_text_report,
         format_text_step,
+        format_text_steps,
         get_failed_steps,
+        parse_step_ranges,
     )
 except ImportError as e:
     sys.stderr.write(f"Error al cargar dependencias internas de agent-audit: {e}\n")
@@ -92,15 +97,29 @@ def parse_arguments() -> argparse.Namespace:
     )
     inspect_group.add_argument(
         "--inspect-step",
-        type=int,
+        type=str,
         metavar="N",
         default=None,
-        help="Muestra el contenido detallado de un paso específico (herramientas, argumentos, salida y errores) de forma acotada.",
+        help="Muestra el contenido detallado de un paso específico (ej. 5) o rango/lista.",
+    )
+    inspect_group.add_argument(
+        "--inspect-steps",
+        type=str,
+        metavar="RANGES",
+        default=None,
+        help="Muestra el contenido detallado de rangos o listas de pasos (ej. '87-105', '87..105', '1-5,87-90,105').",
     )
     inspect_group.add_argument(
         "--failed-steps",
         action="store_true",
         help="Lista exclusivamente los pasos que arrojaron errores o excepciones en herramientas.",
+    )
+    parser.add_argument(
+        "--filter-tool",
+        type=str,
+        metavar="TOOL",
+        default=None,
+        help="Filtra pasos para incluir únicamente aquellos que invoquen la herramienta especificada (ej. 'run_command', 'replace_file_content').",
     )
     parser.add_argument(
         "--verbose",
@@ -171,19 +190,45 @@ def main() -> int:
     if not steps:
         sys.stderr.write(f"Advertencia: No se encontraron pasos válidos en la transcripción: {target_path}\n")
 
-    if args.inspect_step is not None:
-        target_step = next((s for s in steps if s.step_index == args.inspect_step), None)
-        if target_step is None:
-            sys.stderr.write(f"Error: No se encontró el paso {args.inspect_step} en la transcripción: {target_path}\n")
+    step_spec = args.inspect_steps if args.inspect_steps is not None else args.inspect_step
+
+    if step_spec is not None:
+        try:
+            target_indices = parse_step_ranges(str(step_spec))
+        except ValueError as e:
+            sys.stderr.write(f"Error en parámetro de inspección de pasos: {e}\n")
             return 1
 
-        if args.format == "json":
-            output_content = format_json_step(target_step)
-        elif args.format == "markdown":
-            output_content = format_markdown_step(target_step)
+        if len(target_indices) == 1:
+            single_idx = target_indices[0]
+            target_steps = [s for s in steps if s.step_index == single_idx]
+            if not target_steps:
+                sys.stderr.write(f"Error: No se encontró el paso {single_idx} en la transcripción: {target_path}\n")
+                return 1
         else:
-            output_content = format_text_step(target_step)
+            target_steps = [s for s in steps if s.step_index in target_indices]
+            if not target_steps:
+                sys.stderr.write(f"Error: No se encontraron los pasos especificados en la transcripción: {target_path}\n")
+                return 1
 
+        if args.filter_tool:
+            target_steps = filter_steps_by_tool(target_steps, args.filter_tool)
+            if not target_steps:
+                sys.stderr.write(
+                    f"Error: Ningún paso coincidió con el filtro de herramienta '{args.filter_tool}' en los pasos seleccionados: {target_path}\n"
+                )
+                return 1
+
+        is_single = (len(target_steps) == 1 and args.inspect_steps is None and len(target_indices) == 1)
+
+        if args.format == "json":
+            output_content = format_json_step(target_steps[0]) if is_single else format_json_steps(target_steps)
+        elif args.format == "markdown":
+            output_content = format_markdown_step(target_steps[0]) if is_single else format_markdown_steps(target_steps)
+        else:
+            output_content = format_text_step(target_steps[0]) if is_single else format_text_steps(target_steps)
+
+        msg_type = "Detalle de paso" if is_single else "Detalle de pasos"
         if args.output:
             try:
                 args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -191,9 +236,9 @@ def main() -> int:
                     f.write(output_content)
                     if not output_content.endswith("\n"):
                         f.write("\n")
-                print(f"Detalle de paso guardado exitosamente en: {args.output}")
+                print(f"{msg_type} guardado exitosamente en: {args.output}")
             except Exception as e:
-                sys.stderr.write(f"Error al escribir detalle de paso en '{args.output}': {e}\n")
+                sys.stderr.write(f"Error al escribir {msg_type.lower()} en '{args.output}': {e}\n")
                 return 1
         else:
             print(output_content)
@@ -201,6 +246,9 @@ def main() -> int:
 
     if args.failed_steps:
         failed = get_failed_steps(steps)
+        if args.filter_tool:
+            failed = filter_steps_by_tool(failed, args.filter_tool)
+
         if args.format == "json":
             output_content = format_json_failed_steps(failed)
         elif args.format == "markdown":
@@ -218,6 +266,36 @@ def main() -> int:
                 print(f"Listado de pasos con errores guardado exitosamente en: {args.output}")
             except Exception as e:
                 sys.stderr.write(f"Error al escribir pasos con errores en '{args.output}': {e}\n")
+                return 1
+        else:
+            print(output_content)
+        return 0
+
+    if args.filter_tool:
+        target_steps = filter_steps_by_tool(steps, args.filter_tool)
+        if not target_steps:
+            sys.stderr.write(
+                f"Error: No se encontraron pasos con llamadas a la herramienta '{args.filter_tool}' en la transcripción: {target_path}\n"
+            )
+            return 1
+
+        if args.format == "json":
+            output_content = format_json_steps(target_steps)
+        elif args.format == "markdown":
+            output_content = format_markdown_steps(target_steps)
+        else:
+            output_content = format_text_steps(target_steps)
+
+        if args.output:
+            try:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                with open(args.output, "w", encoding="utf-8") as f:
+                    f.write(output_content)
+                    if not output_content.endswith("\n"):
+                        f.write("\n")
+                print(f"Pasos filtrados guardados exitosamente en: {args.output}")
+            except Exception as e:
+                sys.stderr.write(f"Error al escribir pasos filtrados en '{args.output}': {e}\n")
                 return 1
         else:
             print(output_content)

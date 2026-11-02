@@ -875,8 +875,90 @@ def get_failed_steps(steps: List[NormalizedStep]) -> List[NormalizedStep]:
     return failed
 
 
-def format_text_step(step: NormalizedStep, max_content_chars: int = 1500) -> str:
-    """Genera una salida tabular acotada para un paso específico."""
+def parse_step_ranges(expression: str) -> List[int]:
+    """
+    Parsea una expresión de pasos y rangos numéricos y retorna una lista ordenada y deduplicada.
+
+    Formatos soportados:
+    - Pasos individuales: "5", "0"
+    - Rangos con guión: "87-105"
+    - Rangos con dos puntos: "87..105"
+    - Listas separadas por comas: "87,88,92,100"
+    - Mezcla de rangos y pasos: "1-5,87-90,105", "1..5, 87..90, 105"
+
+    Lanza ValueError si la sintaxis es inválida, si hay valores no numéricos,
+    o si en algún rango el inicio es mayor que el fin.
+    """
+    if not expression or not expression.strip():
+        raise ValueError("La expresión de pasos o rangos no puede estar vacía.")
+
+    parts = [p.strip() for p in expression.split(",") if p.strip()]
+    if not parts:
+        raise ValueError("La expresión de pasos o rangos no puede estar vacía.")
+
+    indices = set()
+    for part in parts:
+        if ".." in part:
+            subparts = part.split("..")
+            if len(subparts) != 2:
+                raise ValueError(f"Sintaxis de rango inválida: '{part}'")
+            s_start, s_end = subparts[0].strip(), subparts[1].strip()
+            if not (s_start.isdigit() and s_end.isdigit()):
+                raise ValueError(f"Sintaxis de rango inválida: '{part}' (los límites deben ser enteros no negativos)")
+            start, end = int(s_start), int(s_end)
+            if start > end:
+                raise ValueError(f"Rango inválido: '{part}' (el inicio {start} no puede ser mayor que el fin {end})")
+            indices.update(range(start, end + 1))
+        elif "-" in part:
+            subparts = part.split("-")
+            if len(subparts) != 2:
+                raise ValueError(f"Sintaxis de rango inválida: '{part}'")
+            s_start, s_end = subparts[0].strip(), subparts[1].strip()
+            if not (s_start.isdigit() and s_end.isdigit()):
+                raise ValueError(f"Sintaxis de rango inválida: '{part}' (los límites deben ser enteros no negativos)")
+            start, end = int(s_start), int(s_end)
+            if start > end:
+                raise ValueError(f"Rango inválido: '{part}' (el inicio {start} no puede ser mayor que el fin {end})")
+            indices.update(range(start, end + 1))
+        elif part.isdigit():
+            indices.add(int(part))
+        else:
+            raise ValueError(f"Sintaxis de paso o rango inválida: '{part}'")
+
+    return sorted(list(indices))
+
+
+def filter_steps_by_tool(
+    steps: List[NormalizedStep],
+    tool_name: str,
+) -> List[NormalizedStep]:
+    """
+    Filtra y devuelve los pasos que contienen al menos una llamada a la herramienta especificada.
+    Soporta coincidencias exactas o nombres normalizados sin prefijo MCP (ej. 'run_command', 'search_docs').
+    """
+    if not tool_name or not tool_name.strip():
+        return steps
+
+    target_tool = tool_name.strip().lower()
+
+    def matches_tool(call_name: str) -> bool:
+        cn = call_name.strip().lower()
+        if cn == target_tool:
+            return True
+        if cn.endswith(f"_{target_tool}") or cn.endswith(f":{target_tool}"):
+            return True
+        return False
+
+    return [
+        s for s in steps
+        if any(matches_tool(tc.name) for tc in s.tool_calls)
+    ]
+
+
+def format_text_step(step: Any, max_content_chars: int = 1500) -> str:
+    """Genera una salida tabular acotada para un paso específico (o lista de pasos)."""
+    if isinstance(step, list):
+        return format_text_steps(step, max_content_chars=max_content_chars)
     lines: List[str] = []
     lines.append("=" * 72)
     lines.append(f" DETALLE DE PASO {step.step_index} - AGENT-AUDIT")
@@ -945,8 +1027,30 @@ def format_text_step(step: NormalizedStep, max_content_chars: int = 1500) -> str
     return "\n".join(lines)
 
 
-def format_markdown_step(step: NormalizedStep, max_content_chars: int = 1500) -> str:
-    """Genera informe Markdown acotado para un paso específico."""
+def format_text_steps(steps: List[NormalizedStep], max_content_chars: int = 1500) -> str:
+    """Genera salida tabular acotada para una secuencia de pasos específicos."""
+    if not steps:
+        return "No se encontraron pasos coincidentes con los criterios de inspección."
+
+    step_indices_str = ", ".join(str(s.step_index) for s in steps)
+    plural_str = "pasos" if len(steps) != 1 else "paso"
+    lines: List[str] = []
+    lines.append("=" * 72)
+    lines.append(f" INSPECCIÓN DE PASOS ({len(steps)} {plural_str}) - AGENT-AUDIT")
+    lines.append("=" * 72)
+    lines.append(f"  Pasos incluidos : {step_indices_str}")
+    lines.append("=" * 72)
+    lines.append("")
+
+    step_blocks = [format_text_step(s, max_content_chars=max_content_chars) for s in steps]
+    lines.append("\n\n".join(step_blocks))
+    return "\n".join(lines)
+
+
+def format_markdown_step(step: Any, max_content_chars: int = 1500) -> str:
+    """Genera informe Markdown acotado para un paso específico (o lista de pasos)."""
+    if isinstance(step, list):
+        return format_markdown_steps(step, max_content_chars=max_content_chars)
     lines: List[str] = []
     lines.append(f"# Detalle del Paso `{step.step_index}`")
     lines.append("")
@@ -1011,17 +1115,93 @@ def format_markdown_step(step: NormalizedStep, max_content_chars: int = 1500) ->
     return "\n".join(lines)
 
 
-def format_json_step(step: NormalizedStep, max_content_chars: int = 2000) -> str:
-    """Genera JSON acotado para un paso específico."""
-    import json
+def format_markdown_steps(steps: List[NormalizedStep], max_content_chars: int = 1500) -> str:
+    """Genera informe Markdown acotado para múltiples pasos específicos."""
+    if not steps:
+        return "# Inspección de Pasos\n\nNo se encontraron pasos coincidentes con los criterios de inspección.\n"
 
-    def custom_serializer(obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        if hasattr(obj, "__dict__"):
-            return asdict(obj)
-        return str(obj)
+    lines: List[str] = []
+    step_indices_str = ", ".join(str(s.step_index) for s in steps)
+    plural_str = "pasos" if len(steps) != 1 else "paso"
+    lines.append(f"# Inspección de Pasos ({len(steps)} {plural_str})")
+    lines.append("")
+    lines.append(f"- **Total de pasos inspeccionados:** `{len(steps)}`")
+    lines.append(f"- **Pasos incluidos:** `{step_indices_str}`")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
 
+    for s in steps:
+        lines.append(f"## Detalle del Paso `{s.step_index}`")
+        lines.append("")
+        lines.append(f"- **Paso:** `{s.step_index}`")
+        lines.append(f"- **Fuente:** `{s.source}`")
+        lines.append(f"- **Tipo:** `{s.step_type}`")
+        lines.append(f"- **Estado:** `{s.status}`")
+        if s.created_at:
+            lines.append(f"- **Timestamp:** `{s.created_at.isoformat()}`")
+        if s.duration_seconds is not None:
+            lines.append(f"- **Duración:** `{s.duration_seconds:.2f} s`")
+        if s.truncated_fields:
+            lines.append(f"- **Campos Truncados:** `{', '.join(s.truncated_fields)}`")
+        lines.append("")
+
+        if s.thinking:
+            lines.append("### Pensamiento (Thinking)")
+            lines.append("")
+            lines.append(f"```\n{truncate_str(s.thinking, max_content_chars)}\n```")
+            lines.append("")
+
+        if s.content:
+            lines.append("### Contenido")
+            lines.append("")
+            lines.append(f"```\n{truncate_str(s.content, max_content_chars)}\n```")
+            lines.append("")
+
+        if s.tool_calls:
+            lines.append(f"### Llamadas a Herramientas ({len(s.tool_calls)})")
+            lines.append("")
+            for i, tc in enumerate(s.tool_calls, 1):
+                lines.append(f"#### {i}. `{tc.name}`")
+                lines.append(f"- **Estado:** `{tc.status}`")
+                if tc.call_id:
+                    lines.append(f"- **Call ID:** `{tc.call_id}`")
+                if tc.tool_action:
+                    lines.append(f"- **Acción:** {tc.tool_action}")
+                if tc.tool_summary:
+                    lines.append(f"- **Resumen:** {tc.tool_summary}")
+                lines.append("")
+                if tc.args:
+                    lines.append("##### Argumentos")
+                    lines.append("```json")
+                    lines.append(format_args(tc.args, max_content_chars))
+                    lines.append("```")
+                    lines.append("")
+                if tc.error:
+                    lines.append("##### Error")
+                    lines.append("```")
+                    lines.append(truncate_str(tc.error, max_content_chars))
+                    lines.append("```")
+                    lines.append("")
+                elif tc.raw_output:
+                    lines.append("##### Salida")
+                    lines.append("```")
+                    lines.append(truncate_str(tc.raw_output, max_content_chars))
+                    lines.append("```")
+                    lines.append("")
+        elif not s.thinking and not s.content:
+            lines.append("*(Paso sin contenido textual ni llamadas a herramientas)*")
+            lines.append("")
+
+        lines.append("---")
+        lines.append("")
+
+    lines.append("*Inspección quirúrgica generada por `agent-audit --inspect-steps`.*")
+    return "\n".join(lines)
+
+
+def _step_to_dict(step: NormalizedStep, max_content_chars: int = 2000) -> Dict[str, Any]:
+    """Serializa un NormalizedStep en diccionario acotando campos extensos."""
     def clean_val(v):
         if isinstance(v, str) and len(v) > max_content_chars:
             return v[:max_content_chars] + f"... [Truncado: {max_content_chars}/{len(v)} chars]"
@@ -1031,7 +1211,7 @@ def format_json_step(step: NormalizedStep, max_content_chars: int = 2000) -> str
             return [clean_val(item) for item in v]
         return v
 
-    step_data = {
+    return {
         "step_index": step.step_index,
         "source": step.source,
         "step_type": step.step_type,
@@ -1056,7 +1236,42 @@ def format_json_step(step: NormalizedStep, max_content_chars: int = 2000) -> str
             for tc in step.tool_calls
         ],
     }
+
+
+def format_json_step(step: Any, max_content_chars: int = 2000) -> str:
+    """Genera JSON acotado para un paso específico (o lista de pasos)."""
+    if isinstance(step, list):
+        return format_json_steps(step, max_content_chars=max_content_chars)
+
+    import json
+
+    def custom_serializer(obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if hasattr(obj, "__dict__"):
+            return asdict(obj)
+        return str(obj)
+
+    step_data = _step_to_dict(step, max_content_chars=max_content_chars)
     return json.dumps(step_data, indent=2, default=custom_serializer)
+
+
+def format_json_steps(steps: List[NormalizedStep], max_content_chars: int = 2000) -> str:
+    """Genera JSON acotado para una secuencia de pasos específicos."""
+    import json
+
+    def custom_serializer(obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if hasattr(obj, "__dict__"):
+            return asdict(obj)
+        return str(obj)
+
+    data = {
+        "total_steps": len(steps),
+        "steps": [_step_to_dict(s, max_content_chars=max_content_chars) for s in steps],
+    }
+    return json.dumps(data, indent=2, default=custom_serializer)
 
 
 def format_text_failed_steps(failed_steps: List[NormalizedStep], max_snippet_chars: int = 500) -> str:

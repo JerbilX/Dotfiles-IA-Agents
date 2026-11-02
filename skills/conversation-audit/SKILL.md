@@ -73,7 +73,7 @@ Cuando el usuario solicite auditar una conversación previa o cuando se requiera
 La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder a las rutas externas al workspace donde residen los logs del runtime).
 
 - **Consumo Exclusivo de Opciones Nativas y Veto a Wrappers:**
-  - Toda la extracción, filtrado e inspección de telemetría debe consumirse exclusivamente mediante las opciones nativas de `agent-audit` (`--format`, `--inspect-step`, `--failed-steps`, `--metadata-only`, etc.).
+  - Toda la extracción, filtrado e inspección de telemetría debe consumirse exclusivamente mediante las opciones nativas de `agent-audit` (`--format`, `--inspect-step`, `--inspect-steps`, `--filter-tool`, `--failed-steps`, `--metadata-only`, etc.).
   - Prohibido taxativamente envolver `agent-audit` en llamadas intermedias vía `subprocess` dentro de scripts en subshell o evaluadores (`python3 -c`, `bash -c`), así como canalizar su salida por tuberías hacia scripts ad-hoc. El procesamiento debe operar sobre la salida directa del CLI o aislarse en un script formal en `scratch/` confinado (`BypassSandbox: false`).
 
 #### Jerarquía Determinista de Invocación (Degradación Elegante):
@@ -131,10 +131,25 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
   ```bash
   agent-audit <target> --inspect-step <N>
   ```
-- Inspección quirúrgica de paso en Markdown o JSON:
+- Inspección de secuencias y rangos de pasos (soporta rangos `N-M`, sintaxis `N..M`, listas `A,B,C` o mixtas):
+  ```bash
+  agent-audit <target> --inspect-steps 87-105
+  agent-audit <target> --inspect-steps 87..105
+  agent-audit <target> --inspect-steps 87,88,92,100
+  agent-audit <target> --inspect-steps 1-5,87-90,105
+  ```
+- Inspección quirúrgica de pasos en Markdown o JSON:
   ```bash
   agent-audit <target> --inspect-step <N> --format markdown
   agent-audit <target> --inspect-step <N> --format json
+  agent-audit <target> --inspect-steps 87-105 --format markdown
+  agent-audit <target> --inspect-steps 87-105 --format json
+  ```
+- Filtrado nativo avanzado por herramienta (aislado o en combinación con rangos o fallos, sin scripts evaluadores):
+  ```bash
+  agent-audit <target> --filter-tool run_command
+  agent-audit <target> --inspect-steps 87-105 --filter-tool run_command
+  agent-audit <target> --failed-steps --filter-tool run_command
   ```
 - Listado exclusivo de pasos con errores o excepciones en herramientas:
   ```bash
