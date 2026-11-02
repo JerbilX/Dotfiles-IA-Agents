@@ -215,6 +215,8 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("≤ 50 líneas", router_content)
         self.assertIn("contenido no mostrado", router_content)
         self.assertIn("3 lecturas consecutivas", router_content)
+        self.assertIn("comando terminal mutador o de ejecución de pruebas/build", router_content)
+        self.assertIn("Comandos de mera inspección pasiva en terminal", router_content)
 
 
 if __name__ == "__main__":
