@@ -92,3 +92,101 @@ El recolector de basura de Lua puede introducir tirones de rendimiento (*frame d
 
 * **Jerarquía Canónica del Motor:** Evaluar y clasificar ítems y entidades utilizando los enums tipados oficiales de ZOS (`ItemType`, `SpecializedItemType`, `FilterType`, `EquipType`).
 * **Prohibición de Listas Quemadas de IDs:** Prohibido compilar o mantener listas manuales de identificadores numéricos (`itemId`) extraídas de bases de datos o wikis de terceros cuando el motor ya provee constantes semánticas y funciones de inspección (`GetItemType`, `GetItemLinkItemType`). Las excepciones individuales deben documentarse puntualmente como tales.
+
+---
+
+## 7. Centralización de Constantes y Metadatos
+
+Para prevenir la dispersión de literales (*magic strings* y *magic numbers*) y facilitar el mantenimiento, todo addon debe consolidar sus metadatos y parámetros operativos en un módulo de constantes dedicado.
+
+### 7.1 Carga Temprana en el Manifiesto (`.txt`)
+El archivo de definición de constantes (ej. `src/Constants.lua`) debe posicionarse en el manifiesto antes de cualquier archivo de inicialización o lógica de negocio (ej. `src/Init.lua`, `src/Main.lua`):
+
+```lua
+## Title: MyAwesomeAddon
+## APIVersion: 101044
+## SavedVariables: MyAwesomeAddonSavedVars
+
+# 1. Definición de Constantes y Metadatos (Carga temprana)
+src/Constants.lua
+
+# 2. Inicialización y Núcleo del Addon
+src/Init.lua
+
+# 3. Lógica de Dominio e Interfaz
+src/UI.lua
+src/Main.lua
+```
+
+### 7.2 Encapsulamiento en Namespace (Cero Polución Global)
+Las constantes deben estructurarse exclusivamente bajo el subespacio del addon (`Addon.Constants` o `MyAddon.Constants`), garantizando estricto aislamiento de `_G`:
+
+```lua
+-- src/Constants.lua
+MyAddon = MyAddon or {}
+
+MyAddon.Constants = {
+    -- Metadatos del Addon
+    METADATA = {
+        NAME = "MyAwesomeAddon",
+        TITLE = "My Awesome Addon",
+        VERSION = "1.0.0",
+        AUTHOR = "AuthorName",
+    },
+
+    -- Parámetros de Persistencia (SavedVariables)
+    SAVED_VARS = {
+        NAME = "MyAwesomeAddonSavedVars",
+        VERSION = 1,
+    },
+
+    -- UI, Chat e Interfaz
+    UI = {
+        CHAT_PREFIX = "|cFFD700[MyAddon]|r ",
+        KEYBINDINGS = {
+            TOGGLE = "MYADDON_TOGGLE_WINDOW",
+        },
+        COLORS = {
+            SUCCESS = "22C55E",
+            ERROR = "EF4444",
+            WARNING = "F59E0B",
+        },
+    },
+
+    -- Límites y Reglas de Dominio
+    LIMITS = {
+        MAX_TRACKED_ITEMS = 100,
+        THROTTLE_MS = 250,
+        DEFAULT_REFRESH_RATE_SEC = 5,
+    },
+}
+```
+
+### 7.3 Categorías Canónicas Obligatorias
+Toda tabla de constantes debe clasificar sus valores según los siguientes dominios:
+* **Metadatos del Addon:** Identificadores fundamentales del proyecto (`ADDON_NAME`, `ADDON_TITLE`, `ADDON_VERSION`, `ADDON_AUTHOR`).
+* **Persistencia:** Nombre de tabla persistida (`SAVED_VARS_NAME`) y versión de esquema (`SAVED_VARS_VERSION`), referenciados directamente al invocar `ZO_SavedVars`.
+* **UI / Chat / Interfaz:** Prefijos de consola formateados (`CHAT_PREFIX`), identificadores de enlaces de teclado (*keybindings*) y códigos hexadecimales de color para mensajería y controles.
+* **Límites y Reglas de Dominio:** Capacidades máximas, frecuencias de refresco, tiempos de expiración (*timeouts*) y umbrales operacionales.
+
+### 7.4 Inmutabilidad y Cero Magic Strings / Numbers
+* **Prohibición de Literales Quemados:** Prohibido introducir cadenas de texto hardcodeadas o números mágicos en submódulos de eventos, cálculos o interfaces.
+* **Consumo Canónico:** Los módulos de inicialización y lógica deben consumir las constantes exclusivamente mediante el namespace:
+
+```lua
+-- src/Init.lua
+local Addon = MyAddon
+local C = Addon.Constants
+
+function Addon:Initialize()
+    self.savedVars = ZO_SavedVars:NewAccountWide(
+        C.SAVED_VARS.NAME,
+        C.SAVED_VARS.VERSION,
+        nil,
+        self.defaults
+    )
+
+    d(C.UI.CHAT_PREFIX .. "Addon inicializado v" .. C.METADATA.VERSION)
+end
+```
+
