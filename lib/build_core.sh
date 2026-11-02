@@ -172,6 +172,26 @@ EOF
 
     # Compilación modular de configuración MCP
     compile_runtime_mcp "${r}"
+
+    # Compilación modular de Lifecycle Hooks
+    compile_runtime_hooks "${r}"
+}
+
+compile_runtime_hooks() {
+    local r="$1"
+    local dist_dir
+    dist_dir="$(get_runtime_dist_dir "$r")"
+    local dist_hooks_file
+    dist_hooks_file="$(get_runtime_dist_hooks_file "$r")"
+    local hooks_source
+    hooks_source="$(get_runtime_hooks_source_file "$r")"
+
+    if [ -f "${hooks_source}" ]; then
+        echo "==> [build] Compilando configuración de Lifecycle Hooks para runtime '${r}' en ${dist_hooks_file}..."
+        mkdir -p "${dist_dir}"
+        cp "${hooks_source}" "${dist_hooks_file}"
+        echo "==> [build] Lifecycle Hooks compilados con éxito para '${r}': ${dist_hooks_file}"
+    fi
 }
 
 cmd_build() {

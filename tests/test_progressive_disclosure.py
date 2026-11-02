@@ -214,7 +214,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("> 150 líneas", router_content)
         self.assertIn("≤ 50 líneas", router_content)
         self.assertIn("contenido no mostrado", router_content)
-        self.assertIn("2 llamadas consecutivas", router_content)
+        self.assertIn("3 lecturas consecutivas", router_content)
 
 
 if __name__ == "__main__":

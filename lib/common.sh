@@ -103,6 +103,7 @@ load_runtime_config() {
           "config_dir=" + (.target.config_dir // ""),
           "prompt_filename=" + (.target.prompt_filename // "AGENTS.md"),
           "mcp_filename=" + (.target.mcp_filename // "mcp_config.json"),
+          "hooks_filename=" + (.target.hooks_filename // "hooks.json"),
           "skills_dir=" + (.target.skills_dir // ""),
           "skills=" + ((.skills // []) | join("\t")),
           "mcp_servers=" + ((.mcp_servers // []) | join("\t")),
@@ -122,6 +123,7 @@ print("status=" + (cfg.get("status") or "active"))
 print("config_dir=" + (cfg.get("target", {}).get("config_dir") or ""))
 print("prompt_filename=" + (cfg.get("target", {}).get("prompt_filename") or "AGENTS.md"))
 print("mcp_filename=" + (cfg.get("target", {}).get("mcp_filename") or "mcp_config.json"))
+print("hooks_filename=" + (cfg.get("target", {}).get("hooks_filename") or "hooks.json"))
 print("skills_dir=" + (cfg.get("target", {}).get("skills_dir") or ""))
 print("skills=" + "\t".join(cfg.get("skills") or []))
 print("mcp_servers=" + "\t".join(cfg.get("mcp_servers") or []))
@@ -162,6 +164,8 @@ get_runtime_mcp_dir() { echo "${RUNTIMES_BASE_DIR}/$1/mcp"; }
 get_runtime_dist_dir() { echo "${SCRIPT_DIR}/dist/$1"; }
 get_runtime_dist_prompt_file() { echo "${SCRIPT_DIR}/dist/$1/AGENTS.md"; }
 get_runtime_dist_mcp_file() { echo "${SCRIPT_DIR}/dist/$1/mcp_config.json"; }
+get_runtime_dist_hooks_file() { echo "${SCRIPT_DIR}/dist/$1/hooks.json"; }
+get_runtime_hooks_source_file() { echo "${RUNTIMES_BASE_DIR}/$1/hooks.json"; }
 
 get_runtime_status() {
     local r="$1"
@@ -291,6 +295,18 @@ get_runtime_target_mcp_file() {
     local t_name="${RUNTIME_CONFIG_CACHE["${r}:mcp_filename"]:-}"
     if [ -z "${t_name}" ]; then
         t_name="mcp_config.json"
+    fi
+    local t_dir
+    t_dir="$(get_runtime_target_dir "$r")"
+    echo "${t_dir}/${t_name}"
+}
+
+get_runtime_target_hooks_file() {
+    local r="$1"
+    load_runtime_config "$r"
+    local t_name="${RUNTIME_CONFIG_CACHE["${r}:hooks_filename"]:-}"
+    if [ -z "${t_name}" ]; then
+        t_name="hooks.json"
     fi
     local t_dir
     t_dir="$(get_runtime_target_dir "$r")"

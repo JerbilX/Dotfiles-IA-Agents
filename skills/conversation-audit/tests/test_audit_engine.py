@@ -1058,6 +1058,36 @@ class TestStepRangesAndToolFiltering(unittest.TestCase):
                 code = cli_mod.main()
                 self.assertEqual(code, 1)
 
+    def test_read_only_loop_detection(self):
+        engine = AuditEngine()
+        meta = ConversationMetadata(session_id="test-ro", runtime="antigravity", source_path=Path("/dummy"))
+        steps = [
+            NormalizedStep(step_index=0, source="USER", step_type="USER_INPUT", content="start"),
+            NormalizedStep(step_index=1, source="MODEL", step_type="PLANNER_RESPONSE", tool_calls=[NormalizedToolCall(name="view_file", args={"AbsolutePath": "/a.lua", "StartLine": 1, "EndLine": 50})]),
+            NormalizedStep(step_index=2, source="MODEL", step_type="PLANNER_RESPONSE", tool_calls=[NormalizedToolCall(name="view_file", args={"AbsolutePath": "/b.lua", "StartLine": 1, "EndLine": 50})]),
+            NormalizedStep(step_index=3, source="MODEL", step_type="PLANNER_RESPONSE", tool_calls=[NormalizedToolCall(name="grep_search", args={"Query": "foo", "SearchPath": "/c.lua"})]),
+            NormalizedStep(step_index=4, source="MODEL", step_type="PLANNER_RESPONSE", tool_calls=[NormalizedToolCall(name="find_by_name", args={"Pattern": "*.lua", "SearchDirectory": "/dir"})]),
+        ]
+        rep = engine.analyze(meta, steps)
+        ro_antipatterns = [ap for ap in rep.antipatterns if ap.code == "READ_ONLY_LOOP"]
+        self.assertEqual(len(ro_antipatterns), 1)
+        self.assertEqual(ro_antipatterns[0].step_index, 4)
+
+    def test_ping_pong_tool_loop_detection(self):
+        engine = AuditEngine()
+        meta = ConversationMetadata(session_id="test-pp", runtime="antigravity", source_path=Path("/dummy"))
+        steps = [
+            NormalizedStep(step_index=0, source="USER", step_type="USER_INPUT", content="start"),
+            NormalizedStep(step_index=1, source="MODEL", step_type="PLANNER_RESPONSE", tool_calls=[NormalizedToolCall(name="view_file", args={"AbsolutePath": "/a.lua", "StartLine": 1, "EndLine": 50})]),
+            NormalizedStep(step_index=2, source="MODEL", step_type="PLANNER_RESPONSE", tool_calls=[NormalizedToolCall(name="view_file", args={"AbsolutePath": "/b.lua", "StartLine": 1, "EndLine": 50})]),
+            NormalizedStep(step_index=3, source="MODEL", step_type="PLANNER_RESPONSE", tool_calls=[NormalizedToolCall(name="view_file", args={"AbsolutePath": "/a.lua", "StartLine": 51, "EndLine": 100})]),
+            NormalizedStep(step_index=4, source="MODEL", step_type="PLANNER_RESPONSE", tool_calls=[NormalizedToolCall(name="view_file", args={"AbsolutePath": "/b.lua", "StartLine": 51, "EndLine": 100})]),
+        ]
+        rep = engine.analyze(meta, steps)
+        pp_antipatterns = [ap for ap in rep.antipatterns if ap.code == "PING_PONG_TOOL_LOOP"]
+        self.assertEqual(len(pp_antipatterns), 1)
+        self.assertEqual(pp_antipatterns[0].step_index, 4)
+
 
 if __name__ == "__main__":
     unittest.main()

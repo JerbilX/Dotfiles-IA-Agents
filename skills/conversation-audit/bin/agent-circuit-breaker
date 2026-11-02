@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+"""
+agent-circuit-breaker - Lifecycle Hook PreToolUse para Antigravity.
+Interrumpe deterministamente bucles de lectura pasiva consecutiva (> 3)
+e impone un disyuntor de seguridad mecánico para evitar parálisis por inspección.
+"""
+
+import json
+import os
+import sys
+from pathlib import Path
+
+PASSIVE_TOOLS = {
+    "view_file",
+    "grep_search",
+    "find_by_name",
+    "list_dir",
+    "read_url_content",
+    "read_browser_page",
+}
+
+ACTIVE_TOOLS = {
+    "replace_file_content",
+    "write_to_file",
+    "run_command",
+    "bash",
+    "execute_command",
+    "generate_image",
+    "ask_question",
+}
+
+DEFAULT_MAX_PASSIVE_READS = 3
+
+
+def inspect_transcript_for_passive_reads(transcript_path: Path, max_reads: int = DEFAULT_MAX_PASSIVE_READS) -> int:
+    """Calcula la cantidad de llamadas pasivas consecutivas recientes en la transcripción."""
+    if not transcript_path.is_file():
+        return 0
+
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            read_size = min(size, 65536)
+            f.seek(size - read_size)
+            chunk = f.read().decode("utf-8", errors="ignore")
+            lines = chunk.strip().splitlines()
+
+        records = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except Exception:
+                continue
+
+        consecutive_passive_count = 0
+        for rec in reversed(records):
+            source = rec.get("source")
+            rec_type = rec.get("type")
+
+            # La intervención del usuario reinicia la cuenta
+            if source == "USER_EXPLICIT" or rec_type == "USER_INPUT":
+                break
+
+            tcs = rec.get("tool_calls", [])
+            if not tcs:
+                continue
+
+            has_active = any(tc.get("name") in ACTIVE_TOOLS for tc in tcs)
+            if has_active:
+                break
+
+            has_passive = any(tc.get("name") in PASSIVE_TOOLS for tc in tcs)
+            if has_passive:
+                consecutive_passive_count += 1
+            else:
+                break
+
+        return consecutive_passive_count
+    except Exception:
+        return 0
+
+
+def evaluate_pre_tool_use(payload: dict) -> dict:
+    """Evalúa el payload de PreToolUse y retorna la decisión canónica."""
+    tool_call = payload.get("toolCall", {})
+    tool_name = tool_call.get("name", "")
+
+    # Si no es una herramienta pasiva de inspección, permitir sin costo
+    if tool_name not in PASSIVE_TOOLS:
+        return {"decision": "allow"}
+
+    max_reads = int(os.environ.get("AGENT_CIRCUIT_BREAKER_MAX_READS", str(DEFAULT_MAX_PASSIVE_READS)))
+    transcript_path_str = payload.get("transcriptPath")
+
+    if not transcript_path_str:
+        return {"decision": "allow"}
+
+    tpath = Path(transcript_path_str)
+    consecutive_reads = inspect_transcript_for_passive_reads(tpath, max_reads)
+
+    # Si ya se alcanzó o superó el umbral, la llamada actual excede el límite permitido
+    if consecutive_reads >= max_reads:
+        reason = (
+            f"Hard Circuit Breaker Activado: Has alcanzado el límite de {max_reads} lecturas pasivas "
+            f"consecutivas ('{tool_name}') sin acción intermedia observable (mutación con "
+            f"replace_file_content/write_to_file o ejecución de comando en run_command). "
+            f"Prohibido continuar en parálisis por inspección. Formula tu hipótesis de trabajo y "
+            f"procede a editar código, ejecutar pruebas o detenerte con síntesis."
+        )
+        return {
+            "decision": "deny",
+            "reason": reason,
+        }
+
+    return {"decision": "allow"}
+
+
+def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+        sys.stdout.write("Uso: agent-circuit-breaker\n")
+        sys.stdout.write("Lifecycle Hook PreToolUse para corte determinista de bucles pasivos.\n")
+        return 0
+
+    try:
+        raw_input = sys.stdin.read()
+        if not raw_input.strip():
+            sys.stdout.write(json.dumps({"decision": "allow"}) + "\n")
+            return 0
+        payload = json.loads(raw_input)
+    except Exception:
+        sys.stdout.write(json.dumps({"decision": "allow"}) + "\n")
+        return 0
+
+    result = evaluate_pre_tool_use(payload)
+    sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
