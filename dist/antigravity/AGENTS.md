@@ -11,12 +11,12 @@
 
 ## Invariantes Basales Universales
 
-- **Confinamiento de Workspace:** Operaciones de lectura y escritura se restringen al workspace activo. Prohibido inspeccionar rutas externas o directorios superiores (`..`).
-- **Uso Exclusivo de APIs Nativas de Archivos:** Operaciones de archivo exigen APIs nativas (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido usar terminal para I/O (`cat`, `sed`, `awk`, `tee`). Ediciones exigen granularidad atómica (bloques acotados en `replace_file_content`), evitando modificaciones monolíticas que causen truncamiento o alta latencia.
-- **Inmutabilidad de main:** Prohibido comitear o pushear a `main`. Todo cambio exige issue previa, rama efímera (`feat/` o `fix/`) y Pull Request (`Closes #<id>`).
-- **Inmutabilidad de Workspace y Obligatoriedad de Issue Previa:** Toda modificación exige obligatoriamente issue previa e indexación en backlog. Prohibido modificar archivos sin ticket activo o proponer aplicarlos directamente; ante cualquier diagnóstico, registrar issue en backlog o consultar prioridad.
-- **Lectura Paginada Obligatoria:** Toda llamada a `view_file` exige delimitar obligatoriamente `StartLine` y `EndLine` (ventana ≤ 200 líneas) sin excepción. Prohibidas lecturas no acotadas sin paginación.
-- **Prohibición Universal de REPL en Terminal:** Prohibido usar subshell para evaluación iterativa en línea (`python -c`, `node -e`, `luajit -e`); obligatoriedad de aislar scripts de exploración en `scratch/` o pruebas formales.
+- **Confinamiento de Workspace:** Operaciones se restringen al workspace activo. Prohibido inspeccionar rutas externas o directorios superiores (`..`).
+- **Uso Exclusivo de APIs Nativas de Archivos:** Operaciones exigen herramientas nativas (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`); prohibido usar terminal para I/O (`cat`, `sed`, `awk`). Ediciones exigen granularidad atómica (bloques acotados en `replace_file_content`), evitando cambios monolíticos.
+- **Inmutabilidad de main:** Prohibido comitear o pushear a `main`. Todo cambio exige issue previa, rama efímera (`feat/`, `fix/`) y Pull Request (`Closes #<id>`).
+- **Inmutabilidad de Workspace y Obligatoriedad de Issue Previa:** Modificaciones exigen issue previa e indexación en backlog. Prohibido mutar archivos sin ticket activo; ante diagnósticos, registrar issue en backlog o consultar prioridad.
+- **Lectura Paginada Obligatoria y Circuit Breaker:** Toda llamada a `view_file` exige delimitar `StartLine` y `EndLine` (ventana ≤ 200 líneas). En archivos > 150 líneas, localizar funciones, clases o variables exclusivamente con `grep_search`, restringiendo `view_file` a ventana quirúrgica (≤ 50 líneas). Prohibido interpretar advertencias de contenido no mostrado como orden de seguir leyendo (cero paginación secuencial ciega). Máximo 2 llamadas consecutivas a `view_file` sobre un mismo archivo sin acción intermedia observable (mutación con `replace_file_content`/`write_to_file`, comando terminal o parada Stop & Ask/síntesis).
+- **Prohibición Universal de REPL en Terminal:** Prohibido usar subshell para evaluación interactiva o en línea (`python -c`, `node -e`); obligatoriedad de aislar scripts de exploración en `scratch/` o pruebas formales.
 
 ## Progressive Disclosure Router (Directivas Modulares)
 
@@ -36,8 +36,8 @@ Consultar obligatoriamente la directiva modular correspondiente antes de actuar:
 # Critical Feedback and Objectivity
 
 - **Cero complacencia:** Prohibido asumir que las ideas del usuario son buenas por defecto o usar frases de validación vacías ("¡Gran idea!", "Me parece perfecto").
-- **Cuestionar y proponer:** Ante fallas técnicas, limitaciones o errores de diseño, señalarlas de forma directa y plantear alternativas más eficientes, estándar o seguras, priorizando la calidad técnica sobre la complacencia.
-- **Cero adulación y disculpas:** Ante correcciones o mejoras aportadas por el usuario, asumirlas de manera neutra y técnica. Prohibido usar frases sumisas ("tienes toda la razón", "análisis impecable") o disculparse reiteradamente; proceder directamente a la corrección.
+- **Cuestionar y proponer:** Ante fallas técnicas o errores de diseño, señalarlas de forma directa y plantear alternativas más eficientes o seguras, priorizando la calidad técnica.
+- **Cero adulación y disculpas:** Ante correcciones del usuario, asumirlas de forma neutra y técnica. Prohibido usar frases sumisas o disculparse; proceder directamente a la corrección.
 
 
 
@@ -45,15 +45,15 @@ Consultar obligatoriamente la directiva modular correspondiente antes de actuar:
 
 - **Ejecución de Git y Bypass de Sandbox:**
   - **Solo Lectura Confinado (`BypassSandbox: false` obligatorio):** Inspección pasiva (`git status`, `git log`, `git diff`, `git branch`) en sandbox estándar.
-  - **Mutadores Locales y Red (`BypassSandbox: true` directo):** Como el kernel monta `.git/` de solo lectura (`ro`), mutadores locales (`git init`, `checkout`, `branch -d`, `add`, `commit`, `merge`, `reset`) y remotos (`git push`, `git pull`, `gh`) fallan en sandbox; ejecutarlos directamente con `BypassSandbox: true` para evitar turnos fallidos.
+  - **Mutadores Locales y Red (`BypassSandbox: true` directo):** Al montar el kernel `.git/` de solo lectura (`ro`), mutadores locales (`init`, `checkout`, `branch -d`, `add`, `commit`, `merge`, `reset`) y remotos (`git push`, `git pull`, `gh`) requieren `BypassSandbox: true` directo para evitar turnos fallidos.
   - **Formato Atómico de Commits:** Prohibido `git commit -m "..."` (rompe prefix matching). Redactar mensaje en `.commit_msg` con `write_to_file` y ejecutar `git commit -F .commit_msg` con `BypassSandbox: true`.
 - **Aprovisionamiento Hermético de Dotfiles:**
   - `./build.sh build` y `./build.sh check` operan en workspace confinado (`BypassSandbox: false`).
   - Escrituras fuera del workspace (`./build.sh link`, `./build.sh all`) son bootstrap exclusivo del usuario en terminal nativa.
 - **Exclusividad de Bypass y Preservación de Prefix Matching:**
-  - `BypassSandbox: true` se reserva exclusivamente para `git`, `gh` y los CLIs `agent-audit`, `agent-module`, `gh-pr-review` y `git-prune-gone` (priorizando `$PATH` con fallback a `skills/*/bin/`). Prohibido para otros comandos locales (`ls`, `cat`, utilidades). Ignorar sugerencias del sandbox de reintentar con bypass comandos no autorizados.
-  - **Comandos Atómicos y Prohibición de Tuberías:** Mantener comandos atómicos sin operadores encadenados (`&&`, `||`) ni tuberías (`|`) hacia utilidades externas (`jq`, `grep`, `awk`, `sed`) en bypass; usar filtrado nativo (`--jq`, `--json`, `--query`).
-  - **Veto Absoluto a Evaluadores en Línea y Wrappers:** Prohibido taxativamente el uso de evaluadores inline (`python3 -c`, `node -e`, `bash -c`) o envolver binarios autorizados (`agent-audit`, `git`, `gh`) en subshells/subprocess. Antigravity anula el prefix matching ante scripts inline al exigir coincidencia exacta del string completo, destruyendo "Always allow" y forzando confirmaciones interactivas continuas. Todo procesamiento con script debe escribirse en `<appDataDir>/brain/<conversation-id>/scratch/` mediante `write_to_file` y ejecutarse confinado (`BypassSandbox: false`).
+  - `BypassSandbox: true` se reserva exclusivamente para `git`, `gh` y los CLIs `agent-audit`, `agent-module`, `gh-pr-review` y `git-prune-gone` (en `$PATH` o fallback a `skills/*/bin/`). Prohibido para comandos locales (`ls`, `cat`). Ignorar sugerencias del sandbox de reintentar con bypass herramientas no autorizadas.
+  - **Comandos Atómicos y Prohibición de Tuberías:** Comandos atómicos sin encadenamientos (`&&`, `||`) ni tuberías (`|`) hacia utilidades externas (`jq`, `grep`, `awk`, `sed`) en bypass; usar filtrado nativo (`--jq`, `--json`, `--query`).
+  - **Veto Absoluto a Evaluadores en Línea y Wrappers:** Prohibido taxativamente el uso de evaluadores inline (`python3 -c`, `node -e`, `bash -c`) o envolver binarios autorizados (`agent-audit`, `git`, `gh`) en subshells/subprocess (rompe el prefix matching de "Always allow"). Todo procesamiento con script debe escribirse en `<appDataDir>/brain/<conversation-id>/scratch/` mediante `write_to_file` y ejecutarse confinado (`BypassSandbox: false`).
 
 
 

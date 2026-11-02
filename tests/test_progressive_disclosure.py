@@ -203,6 +203,19 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("granularidad atómica", skill_content)
         self.assertIn("`StartLine` y `EndLine` (≤ 200 líneas)", skill_content)
 
+    def test_view_file_circuit_breaker_and_prompt_immunity_invariants(self):
+        """core/00-router.md must enforce circuit breaker (<= 2 calls), heuristic prompt immunity, and grep_search (>150 lines, <=50 lines)."""
+        router_path = os.path.join(CORE_DIR, "00-router.md")
+        with open(router_path, "r", encoding="utf-8") as f:
+            router_content = f.read()
+
+        self.assertIn("Circuit Breaker", router_content)
+        self.assertIn("grep_search", router_content)
+        self.assertIn("> 150 líneas", router_content)
+        self.assertIn("≤ 50 líneas", router_content)
+        self.assertIn("contenido no mostrado", router_content)
+        self.assertIn("2 llamadas consecutivas", router_content)
+
 
 if __name__ == "__main__":
     unittest.main()
