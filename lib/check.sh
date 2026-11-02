@@ -284,6 +284,18 @@ check_runtime() {
         echo "  [✓] [${r}] Servidores MCP: ${count_mcps} módulo(s) verificado(s)"
     fi
 
+    # 4b. Verificación de Lifecycle Hooks
+    local hooks_source
+    hooks_source="$(get_runtime_hooks_source_file "$r")"
+    if [ -f "${hooks_source}" ]; then
+        if python3 -c 'import json, sys; json.load(open(sys.argv[1]))' "${hooks_source}" >/dev/null 2>&1; then
+            echo "  [✓] [${r}] Lifecycle Hooks: hooks.json sintácticamente válido"
+        else
+            echo "  [✗] [${r}] Error de sintaxis JSON en ${hooks_source}" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        fi
+    fi
+
     # 5. Verificación de directivas excluidas y sobreescritas (disabled_core_rules y overrides)
     local disabled_rules=()
     mapfile -t disabled_rules < <(get_disabled_core_rules "${config_file}")
@@ -448,6 +460,22 @@ for l in links:
     elif [ ! -e "${target_mcp_file}" ]; then
         if [ "${count_mcps}" -gt 0 ]; then
             echo "  [!] Advertencia [${r}]: ${target_mcp_file} no existe aún (ejecuta './build.sh link ${r}')" >&2
+            CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+        fi
+    fi
+
+    local dist_hooks_file
+    dist_hooks_file="$(get_runtime_dist_hooks_file "$r")"
+    local target_hooks_file
+    target_hooks_file="$(get_runtime_target_hooks_file "$r")"
+    if [ -f "${dist_hooks_file}" ]; then
+        if [ -L "${target_hooks_file}" ]; then
+            if [ ! -e "${target_hooks_file}" ]; then
+                echo "  [✗] [${r}] Symlink roto en Hooks: ${target_hooks_file} -> $(readlink "${target_hooks_file}" || true)" >&2
+                CHECK_ERRORS=$((CHECK_ERRORS + 1))
+            fi
+        elif [ ! -e "${target_hooks_file}" ]; then
+            echo "  [!] Advertencia [${r}]: ${target_hooks_file} no existe aún (ejecuta './build.sh link ${r}')" >&2
             CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
         fi
     fi

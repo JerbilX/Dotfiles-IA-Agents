@@ -80,6 +80,10 @@
           "type": "string",
           "description": "Nombre del archivo de configuración MCP en el destino (por defecto mcp_config.json)"
         },
+        "hooks_filename": {
+          "type": "string",
+          "description": "Nombre del archivo de configuración de lifecycle hooks en el destino (por defecto hooks.json)"
+        },
         "skills_dir": {
           "type": "string",
           "description": "Directorio destino para enlaces simbólicos de skills (ej. ~/.gemini/config/skills)"

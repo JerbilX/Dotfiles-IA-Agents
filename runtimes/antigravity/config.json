@@ -11,7 +11,8 @@
     "agent-audit": "agent-audit",
     "gh-pr-review": "gh-pr-review",
     "git-prune-gone": "git-prune-gone",
-    "agent-module": "agent-module"
+    "agent-module": "agent-module",
+    "agent-circuit-breaker": "agent-circuit-breaker"
   },
   "mcp_servers": [],
   "status": "active",
@@ -19,6 +20,7 @@
     "config_dir": "${HOME}/.gemini/config",
     "prompt_filename": "AGENTS.md",
     "mcp_filename": "mcp_config.json",
+    "hooks_filename": "hooks.json",
     "skills_dir": "${HOME}/.gemini/config/skills"
   }
 }

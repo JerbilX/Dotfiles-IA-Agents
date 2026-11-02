@@ -94,6 +94,38 @@ class AuditEngine:
         "read_local_file",
     }
 
+    PASSIVE_INSPECTION_TOOLS = {
+        "view_file",
+        "view",
+        "read_file",
+        "readfile",
+        "read_local_file",
+        "grep_search",
+        "grep",
+        "search",
+        "find_by_name",
+        "find",
+        "list_dir",
+        "list_directory",
+        "read_url_content",
+        "read_browser_page",
+    }
+
+    ACTIVE_MUTATION_TOOLS = {
+        "replace_file_content",
+        "write_to_file",
+        "write_file",
+        "edit_file",
+        "run_command",
+        "bash",
+        "execute_command",
+        "terminal",
+        "sh",
+        "run_shell_command",
+        "generate_image",
+        "ask_question",
+    }
+
     BINARY_EXTENSIONS = {
         ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp", ".tiff",
         ".mp3", ".wav", ".ogg", ".mp4", ".mkv", ".webm", ".avi",
@@ -213,11 +245,11 @@ class AuditEngine:
             return ""
         for k in ("AbsolutePath", "TargetFile", "file_path", "filePath", "path", "filename", "file"):
             if k in args and args[k]:
-                return str(args[k])
+                return str(args[k]).strip('\'"')
         for k, v in args.items():
             if k.lower().replace("_", "") in ("absolutepath", "targetfile", "filepath", "path", "file"):
                 if v:
-                    return str(v)
+                    return str(v).strip('\'"')
         return ""
 
     @classmethod
@@ -634,6 +666,132 @@ class AuditEngine:
                                 ),
                             )
                         )
+        # I. Bucle de Solo Lectura / Parálisis por Inspección (READ_ONLY_LOOP)
+        current_passive_steps: List[NormalizedStep] = []
+        for s in steps:
+            if s.source == "USER" or s.step_type == "USER_INPUT":
+                if len(current_passive_steps) >= 4:
+                    start_step = current_passive_steps[0].step_index
+                    end_step = current_passive_steps[-1].step_index
+                    count = len(current_passive_steps)
+                    tools_used = sorted(set(tc.name for st in current_passive_steps for tc in st.tool_calls))
+                    tools_str = ", ".join(tools_used)
+                    antipatterns.append(
+                        DetectedAntipattern(
+                            severity="ALTA",
+                            code="READ_ONLY_LOOP",
+                            title="Bucle de Solo Lectura / Parálisis por Inspección",
+                            step_index=end_step,
+                            description=(
+                                f"Se detectaron {count} pasos consecutivos de lecturas pasivas mediante '{tools_str}' "
+                                f"sin mutación intermedia de código ni ejecución de pruebas "
+                                f"(entre los pasos {start_step} y {end_step}). Indican parálisis por inspección."
+                            ),
+                            recommendation=(
+                                "Detener lecturas consecutivas, formular hipótesis y proceder a mutar código, "
+                                "ejecutar pruebas o detenerse con síntesis."
+                            ),
+                        )
+                    )
+                current_passive_steps = []
+                continue
+
+            if s.tool_calls:
+                has_active = any(tc.name in self.ACTIVE_MUTATION_TOOLS for tc in s.tool_calls)
+                if has_active:
+                    if len(current_passive_steps) >= 4:
+                        start_step = current_passive_steps[0].step_index
+                        end_step = current_passive_steps[-1].step_index
+                        count = len(current_passive_steps)
+                        tools_used = sorted(set(tc.name for st in current_passive_steps for tc in st.tool_calls))
+                        tools_str = ", ".join(tools_used)
+                        antipatterns.append(
+                            DetectedAntipattern(
+                                severity="ALTA",
+                                code="READ_ONLY_LOOP",
+                                title="Bucle de Solo Lectura / Parálisis por Inspección",
+                                step_index=end_step,
+                                description=(
+                                    f"Se detectaron {count} pasos consecutivos de lecturas pasivas mediante '{tools_str}' "
+                                    f"sin mutación intermedia de código ni ejecución de pruebas "
+                                    f"(entre los pasos {start_step} y {end_step}). Indican parálisis por inspección."
+                                ),
+                                recommendation=(
+                                    "Detener lecturas consecutivas, formular hipótesis y proceder a mutar código, "
+                                    "ejecutar pruebas o detenerse con síntesis."
+                                ),
+                            )
+                        )
+                    current_passive_steps = []
+                elif all(tc.name in self.PASSIVE_INSPECTION_TOOLS for tc in s.tool_calls):
+                    current_passive_steps.append(s)
+
+        if len(current_passive_steps) >= 4:
+            start_step = current_passive_steps[0].step_index
+            end_step = current_passive_steps[-1].step_index
+            count = len(current_passive_steps)
+            tools_used = sorted(set(tc.name for st in current_passive_steps for tc in st.tool_calls))
+            tools_str = ", ".join(tools_used)
+            antipatterns.append(
+                DetectedAntipattern(
+                    severity="ALTA",
+                    code="READ_ONLY_LOOP",
+                    title="Bucle de Solo Lectura / Parálisis por Inspección",
+                    step_index=end_step,
+                    description=(
+                        f"Se detectaron {count} pasos consecutivos de lecturas pasivas mediante '{tools_str}' "
+                        f"sin mutación intermedia de código ni ejecución de pruebas "
+                        f"(entre los pasos {start_step} y {end_step}). Indican parálisis por inspección."
+                    ),
+                    recommendation=(
+                        "Detener lecturas consecutivas, formular hipótesis y proceder a mutar código, "
+                        "ejecutar pruebas o detenerse con síntesis."
+                    ),
+                )
+            )
+
+        # J. Bucle Cíclico Alternante / Ping-Pong (PING_PONG_TOOL_LOOP)
+        tool_events = []
+        for s in steps:
+            for tc in s.tool_calls:
+                target = self.extract_file_target(tc.args) if isinstance(tc.args, dict) else ""
+                target_base = Path(target).name if target else ""
+                sig = f"{tc.name}:{target_base}" if target_base else tc.name
+                tool_events.append((s.step_index, sig))
+
+        if len(tool_events) >= 4:
+            flagged_ping_pong_ranges = []
+            i = 0
+            while i <= len(tool_events) - 4:
+                if (tool_events[i][1] != tool_events[i+1][1] and
+                    tool_events[i][1] == tool_events[i+2][1] and
+                    tool_events[i+1][1] == tool_events[i+3][1]):
+                    k = i + 4
+                    while k + 1 < len(tool_events) and tool_events[k][1] == tool_events[i][1] and tool_events[k+1][1] == tool_events[i+1][1]:
+                        k += 2
+                    flagged_ping_pong_ranges.append((tool_events[i][0], tool_events[k-1][0], f"{tool_events[i][1]} <-> {tool_events[i+1][1]}"))
+                    i = k
+                else:
+                    i += 1
+
+            for start_st, end_st, pat in flagged_ping_pong_ranges:
+                antipatterns.append(
+                    DetectedAntipattern(
+                        severity="ALTA",
+                        code="PING_PONG_TOOL_LOOP",
+                        title="Bucle Cíclico Alternante (Ping-Pong)",
+                        step_index=end_st,
+                        description=(
+                            f"Se detectó un patrón cíclico alternante ('{pat}') "
+                            f"entre los pasos {start_st} y {end_st}. "
+                            f"El agente alterna herramientas/archivos repetidamente eludiendo límites per-file."
+                        ),
+                        recommendation=(
+                            "Romper la alternancia ciega entre archivos; aplicar disyuntor de seguridad "
+                            "y contrastar hipótesis en pruebas o solicitar clarificación."
+                        ),
+                    )
+                )
 
         return antipatterns
 

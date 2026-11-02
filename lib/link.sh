@@ -44,6 +44,22 @@ link_runtime() {
     fi
 
     link_runtime_mcp "${r}"
+    link_runtime_hooks "${r}"
+}
+
+link_runtime_hooks() {
+    local r="$1"
+    local dist_hooks_file
+    dist_hooks_file="$(get_runtime_dist_hooks_file "$r")"
+    local target_hooks_file
+    target_hooks_file="$(get_runtime_target_hooks_file "$r")"
+    local target_dir
+    target_dir="$(get_runtime_target_dir "$r")"
+
+    if [ -f "${dist_hooks_file}" ]; then
+        echo "==> [link] Asegurando enlace simbólico para Lifecycle Hooks [${r}] en ${target_dir}..."
+        safe_symlink "${dist_hooks_file}" "${target_hooks_file}" "${r} Hooks"
+    fi
 }
 
 setup_gh_aliases() {
