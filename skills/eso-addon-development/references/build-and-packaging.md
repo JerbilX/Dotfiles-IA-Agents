@@ -50,3 +50,24 @@ Guía técnica y operativa para la documentación de comandos, gestión de depen
   * Si una llamada, signatura, constante o evento nativo válido de EsoUI (ej. `EVENT_MANAGER:AddFilterForEvent`, constantes tipadas `ITEMTYPE_*`) genera errores o aserciones fallidas en la suite de pruebas locales (`tests/`), el agente **DEBE actualizar y sincronizar los mocks y fixtures de prueba** para alinearlos con el contrato real de la API oficial.
   * Los mocks bajo LuaJIT son emulaciones artesanales de soporte; nunca deben dictar el diseño ni degradar la compatibilidad con el motor real.
 * **Prohibición de Comprobaciones Defensivas Artificiales:** Queda terminantemente prohibido introducir comprobaciones defensivas artificiales en el código de producción (tales como `if API_EXISTS then`, comprobaciones de existencia de métodos nativos, o desactivación de filtros válidos) con el único fin de complacer un mock incompleto o desactualizado.
+
+---
+
+## 5. Estándares del Arnés de Pruebas (Test Harness Standards)
+
+Para mitigar desbordes de buffer (`CONTEXT_TRUNCATION`) y saturación de la ventana de contexto durante el ciclo de desarrollo asistido por IA y pipelines CI/CD, las suites de pruebas locales (`tests/run.lua` o ejecutores afines) deben adherirse a los siguientes estándares de salida y arquitectura:
+
+* **Reporter Conciso y Límite de Salida Estándar:**
+  * En ejecuciones exitosas, el arnés de pruebas **DEBE** emitir un reporte compacto y sintético (estilo TAP resumido o recuento conciso: `N tests passed, 0 failed`), garantizando una salida total inferior a **50 líneas** en stdout.
+  * Queda prohibido emitir logs informativos línea por línea (`print("Checking item X...")`) de forma predeterminada cuando las pruebas pasan satisfactoriamente.
+* **Supresión de Volcados Masivos de Tablas (Anti-Table-Dumps):**
+  * Queda estrictamente prohibido volcar estructuras de datos completas, tablas complejas o mocks crudos a stdout durante aserciones fallidas (evitar serializadores recursivos indiscriminados tipo `dumptable` o volcados de `_G`).
+  * En caso de aserción fallida, el reporte de error debe limitarse exclusivamente a:
+    1. Archivo y línea de la falla.
+    2. Nombre o descripción concisa del test/aserción.
+    3. Valor esperado vs. valor recibido (acotado a escalares o claves relevantes).
+    4. Stack trace acotado y legible (sin bucles de inspección).
+* **Modo Silencioso / Compacto por Defecto:**
+  * La ejecución estándar del arnés (`luajit tests/run.lua` o `lua tests/run.lua`) debe operar en modo silencioso o conciso.
+  * La verbosidad detallada o volcados adicionales deben quedar condicionados a una bandera explícita (ej. `--verbose` o `-v`), garantizando que las invocaciones por defecto desde herramientas de automatización (`run_command`) preserven la ventana de contexto.
+
