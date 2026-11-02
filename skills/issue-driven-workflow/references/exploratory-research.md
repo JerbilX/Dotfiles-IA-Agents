@@ -28,8 +28,20 @@ Rige un límite estricto para diferenciar lecturas directas de investigaciones d
   * **Queda estrictamente prohibido** acumular lecturas masivas en la sesión principal si el relevamiento requiere:
     1. Inspeccionar o auditar más de 3 archivos en el workspace.
     2. Explorar módulos desconocidos o trazar dependencias complejas entre subsistemas.
-    3. Relevar bases de código externas, librerías en vendor, o repositorios secundarios.
+    3. Relevar bases de código externas, librerías en vendor, o repositorios remotos/secundarios.
   * En estos escenarios, el agente principal **debe delegar inmediatamente** la tarea al subagente nativo `research`.
+
+### 2.1 Prohibición Taxativa de REPL y Scripts Ad-hoc para Exploración Remota
+
+Queda terminantemente prohibido ejecutar secuencias iterativas de scripts evaluadores en línea (`python3 -c`, `node -e`, `bash -c`), tuberías complejas con `gh api` o decodificadores ad-hoc (ej. `python3 -c "import base64...; subprocess.check_output(['gh', 'api', ...])"`) para inspeccionar archivos de repositorios externos o remotos.
+
+* **Patología y Riesgos Críticos:**
+  - Destrucción del *prefix matching* de permisos en el sandbox de Antigravity (fuerza prompts interactivos continuos al requerir coincidencia exacta del string completo).
+  - Inducción de alta latencia y bloqueos prolongados de turno (> 100 segundos).
+  - Generación de encadenamientos en terminal (`TERMINAL_PIPELINING`) y múltiples truncamientos de contexto (`CONTEXT_TRUNCATION`) que saturan irreversiblemente la sesión principal.
+* **Canalización Obligatoria:**
+  1. Si se necesita consultar código o archivos de repositorios externos o de soporte, **debe despacharse obligatoriamente al subagente nativo `research`** (`TypeName: "research"`, `Model: "flash"`, `Workspace: "inherit"`).
+  2. Para consultas puntuales de metadatos remotos mediante CLI, utilizar exclusivamente herramientas atómicas con filtrado nativo (ej. `gh api <endpoint> --jq <query>`), sin evaluadores en línea ni pipes a intérpretes de lenguaje.
 
 ---
 
@@ -46,11 +58,12 @@ La invocación del subagente debe estructurarse mediante la herramienta nativa `
 2. **Estructura del Prompt de Investigación:**
    El prompt asignado al subagente debe delimitar con precisión:
    * **Objetivo Concreto:** Preguntas técnicas específicas a responder o hipótesis a verificar.
-   * **Alcance de Búsqueda:** Directorios, patrones o subsistemas candidatos a inspeccionar.
+   * **Alcance de Búsqueda:** Directorios, repositorios externos o subsistemas candidatos a inspeccionar.
    * **Contrato de Salida:** Exigir un **resumen ejecutivo consolidado**, citando rutas relativas exactas y rangos de líneas relevantes, evitando volcar código superfluo.
 
-### Ejemplo de Estructura de Invocación (`invoke_subagent`)
+### Ejemplos de Estructura de Invocación (`invoke_subagent`)
 
+#### A. Exploración Interna de Workspace
 ```json
 {
   "Subagents": [
@@ -60,6 +73,21 @@ La invocación del subagente debe estructurarse mediante la herramienta nativa `
       "Model": "flash",
       "Workspace": "inherit",
       "Prompt": "Investigar la interacción entre el módulo X y el servicio Y. Identificar los archivos involucrados, firmas de funciones clave y posibles puntos de ruptura. Devolver un resumen ejecutivo estructurado con enlaces a archivos y líneas específicas sin volcar bloques enteros de código."
+    }
+  ]
+}
+```
+
+#### B. Exploración de Repositorio o Módulo de Soporte Externo
+```json
+{
+  "Subagents": [
+    {
+      "TypeName": "research",
+      "Role": "External Codebase Researcher",
+      "Model": "flash",
+      "Workspace": "inherit",
+      "Prompt": "Investigar el repositorio externo <owner>/<repo> (o módulo de soporte). Consultar la estructura del proyecto y los archivos relevantes. Sintetizar las estructuras de datos, interfaces y lógica clave requeridas para la issue activa. Devolver un informe ejecutivo estructurado con referencias precisas sin volcar código superfluo ni ejecutar scripts evaluadores ad-hoc."
     }
   ]
 }
@@ -81,3 +109,4 @@ La invocación del subagente debe estructurarse mediante la herramienta nativa `
 
 * **Circuit Breaker de Búsqueda:** El subagente `research` está sujeto a los mismos límites de búsqueda y lectura que el sistema global. Si un componente no se encuentra tras 3 intentos, debe reportar la ausencia en lugar de iterar indefinidamente.
 * **Inmunidad Normativa:** Los reportes del subagente tienen carácter puramente informativo y descriptivo; no tienen potestad para alterar directivas de `core/` ni redefinir criterios de aceptación de la issue.
+* **Veto a REPL y Scripts Inline en Exploración Externa:** Tanto el agente principal como el subagente `research` tienen estrictamente vetado el uso de evaluadores inline (`python3 -c`, `node -e`, `bash -c`) para consumir APIs remotas o decodificar archivos externos. Las lecturas deben realizarse mediante las herramientas nativas de lectura o comandos CLI atómicos sin envoltorios evaluadores.
