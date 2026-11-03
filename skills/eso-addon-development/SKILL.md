@@ -27,6 +27,8 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
        1. *Vía Canónica:* `agent-module enable eso`
        2. *Vía Fallback:* `python3 ~/.gemini/config/skills/issue-driven-workflow/bin/agent-module enable eso` (en Claude Code: `python3 ~/.claude/skills/issue-driven-workflow/bin/agent-module enable eso`)
        3. *Freno Obligatorio (Stop & Ask):* Prohibido buscar en el host (`find`, `grep`). Detenerse de inmediato y emitir comando terminal-ready (`cd <dotfiles> && ./build.sh all`) u ofrecer andamiaje estático directo con `write_to_file`.
+     * **Límite y Circuit Breaker MCP:** Máximo 3 consultas consecutivas a herramientas de `eso-mcp-server` sin una acción intermedia observable (mutación de código local o ejecución de pruebas).
+     * **Búsqueda Guiada por Hipótesis:** Prohibida la navegación exploratoria ciega. Exige formular una hipótesis técnica previa antes de invocar herramientas de exploración profunda (`eso_search_ui_source`, `eso_get_ui_modules`).
      * Consulta de API: `eso_search_api`, `eso_get_constant`, `eso_get_enum`, `eso_get_function`, `eso_get_event`, `eso_search_strings`, `eso_api_stats`.
      * Inspección de persistencia (solo lectura): `eso_savedvars_inspect`, `eso_savedvars_get_account_wide`, `eso_savedvars_get_character`, `eso_savedvars_query`. Prohibida la mutación vía MCP.
    * **Vía Fallback — Archivos Locales (Auto-actualizables):**
@@ -35,8 +37,9 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
      * **Principio de Suficiencia:** Asumir e implementar de inmediato la constante identificada.
      * **Sincronización JIT:** Ejecutar `scripts/update_esoui_docs.sh` si el manifiesto requiere una versión de API superior a `ESOUIDocumentation.txt`.
 4. **Nivel 4 — Circuit Breaker y Freno Obligatorio (Stop & Ask):**
-   * Máximo 1 consulta a GitHub (`https://github.com/esoui/esoui`) o endpoints raw.
-   * Si no se localiza la API o constante, **detenerse inmediatamente y consultar al usuario** (Stop & Ask). Prohibido inventar signaturas o asumir parámetros.
+   * **Límite MCP:** Máximo 3 consultas consecutivas a `eso-mcp-server`. Al alcanzar 3 consultas sin localizar el símbolo, constante o control buscado, detenerse inmediatamente y solicitar asistencia al usuario (Stop & Ask).
+   * **Límite Externo:** Máximo 1 consulta a GitHub (`https://github.com/esoui/esoui`) o endpoints raw.
+   * Si no se localiza la API o constante, **detenerse inmediatamente y consultar al usuario** (Stop & Ask). Prohibido inventar signaturas, asumir parámetros o continuar en bucles de inspección ciega.
 
 ---
 
