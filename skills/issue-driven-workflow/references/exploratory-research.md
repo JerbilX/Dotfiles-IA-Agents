@@ -20,13 +20,13 @@ En arquitecturas de modelos de lenguaje, el contexto es **estrictamente acumulat
 
 Rige un límite estricto para diferenciar lecturas directas de investigaciones delegadas:
 
-* **Inspección Quirúrgica Confinada (≤ 3 archivos):**
-  * Permitida directamente en la sesión principal solo cuando se conozcan de antemano las rutas exactas y el alcance se restrinja a un máximo de **3 archivos**.
+* **Inspección Quirúrgica Confinada (≤ 8 archivos):**
+  * Permitida directamente en la sesión principal solo cuando se conozcan de antemano las rutas exactas y el alcance se restrinja a un máximo de **8 archivos**.
   * Se deben utilizar las APIs nativas de lectura (`view_file`, `grep_search`) con rangos de línea acotados.
 
-* **Delegación Obligatoria a Subagente Research (> 3 archivos o Bases Externas):**
+* **Delegación a Subagente Research (> 8 archivos, Bases Externas o a pedido del usuario):**
   * **Queda estrictamente prohibido** acumular lecturas masivas en la sesión principal si el relevamiento requiere:
-    1. Inspeccionar o auditar más de 3 archivos en el workspace.
+    1. Inspeccionar o auditar más de 8 archivos en el workspace.
     2. Explorar módulos desconocidos o trazar dependencias complejas entre subsistemas.
     3. Relevar bases de código externas, librerías en vendor, o repositorios remotos/secundarios.
   * En estos escenarios, el agente principal **debe delegar inmediatamente** la tarea al subagente nativo `research`.

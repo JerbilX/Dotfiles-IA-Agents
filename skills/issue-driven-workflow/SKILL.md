@@ -1,7 +1,7 @@
 ---
 name: issue-driven-workflow
 description: >-
-  Orchestrate task execution via GitHub Issues, Projects v2, branch lifecycles, and Pull Requests. ACTIVATE whenever creating issues, provisioning repos, implementing issues, querying the board, managing branches, opening PRs, closing audit tasks, or resolving Code Review comments. Operates with strict git hygiene and deterministic CLI tooling.
+  Orchestrate task execution via GitHub Issues, Projects v2, branch lifecycles, and Pull Requests. ACTIVATE whenever creating issues, provisioning repos, implementing issues, querying the board, managing branches, opening PRs, closing audit tasks, or resolving Code Review comments. Not for read-only queries or analysis. Operates with strict git hygiene and deterministic CLI tooling.
 ---
 
 # Issue-Driven Workflow and Pull Request Management
@@ -40,7 +40,7 @@ Procedimientos detallados y plantillas en `references/`:
 ## 3. Despacho y Recepción de Tareas
 
 > [!IMPORTANT]
-> Consultas de coordinación (*"¿qué hay en el board?"*, *"¿con qué seguimos?"*) no autorizan crear ramas ni modificar código. Sin embargo, la **higiene proactiva** (retornar a la rama base y podar ramas locales zombi si el PR previo fue fusionado o cerrado) es obligatoria ante cualquier interacción.
+> Consultas de coordinación (*"¿qué hay en el board?"*, *"¿con qué seguimos?"*) no autorizan crear ramas ni modificar código. La higiene (retornar a la rama base y podar ramas locales zombi si el PR previo fue fusionado o cerrado) se ejecuta al iniciar una tarea de desarrollo o tras un merge, no ante consultas.
 
 ### 3.1 Consultas de Tablero (*"¿qué hay en el board?"*)
 Filtrar activos del repo (Top 2-3 con justificación):
@@ -62,12 +62,12 @@ gh board-ready <owner>/<repo>
 2. Elegir ítem prioritario (Top 2-3) y proceder al ciclo E2E.
 
 ### 3.4 Investigaciones Exploratorias y Ahorro de Tokens
-Para relevamientos técnicos que requieran inspeccionar más de 3 archivos o explorar bases de código externas/desconocidas:
-1. **Delegación Mandatoria:** Prohibido acumular lecturas masivas en la sesión principal. Invocar subagente nativo `research` (`TypeName: "research"`, `Model: "flash"`, `Workspace: "inherit"`).
+Para relevamientos técnicos que requieran inspeccionar más de 8 archivos, explorar bases de código externas/desconocidas, o cuando el usuario lo pida:
+1. **Delegación:** Evitar acumular lecturas masivas en la sesión principal. Invocar subagente nativo `research` (`TypeName: "research"`, `Model: "flash"`, `Workspace: "inherit"`).
 2. **Consolidación:** El subagente entrega un resumen ejecutivo consolidado al hilo principal, protegiendo el contexto de la sesión. Ver [`references/exploratory-research.md`](references/exploratory-research.md).
 
 ### 3.5 Creación y Tipificación de Issues en Backlog
-Toda nueva tarea, bug o deuda técnica detectada debe registrarse formalmente en GitHub Issues tipificando su perfil de ejecución (`profile:<perfil>`):
+Toda tarea futura, bug o deuda técnica detectada se lista al usuario y, con su confirmación, se registra formalmente en GitHub Issues tipificando su perfil de ejecución (`profile:<perfil>`). Issue mínima (N1, ejecutada en el mismo turno): mismo comando con `.issue_body` de 1-2 líneas, sin `--label` de perfil ni plan/ADR:
 1. Redactar especificación técnica en `.issue_body` vía `write_to_file`.
 2. Crear issue determinista:
 ```bash
@@ -90,7 +90,7 @@ gh project item-add <project_number> --owner <project_owner> --url <issue_url>
 
 Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](references/branch-lifecycle.md) y [`references/state-machine.md`](references/state-machine.md).
 
-- [ ] **1. Ingesta:** `gh issue view <id>` (sin llamadas a `gh project item-edit`). Relevamientos exploratorios de > 3 archivos o repositorios externos se delegan obligatoriamente al subagente `research` (modelo `flash`, `Workspace: inherit`).
+- [ ] **1. Ingesta:** `gh issue view <id>` (sin llamadas a `gh project item-edit`). Relevamientos exploratorios de > 8 archivos o repositorios externos se delegan al subagente `research` (modelo `flash`, `Workspace: inherit`).
 - [ ] **2. Higiene:** Aislamiento preferente en ≤ 2 llamadas (`git fetch --prune origin` y `git switch --no-track -c <rama> origin/<base>`); poda diferida a Fase 8.
 - [ ] **3. Plan/ADR:** Fast-Track por defecto (sin pausa bloqueante en tickets con criterios claros en `Ready for Dev`); *Stop & Plan* con gate bloqueante ante ADRs nuevos/modificados, alternativas divergentes o diagnósticos inciertos.
 - [ ] **4. Desarrollo:** Promover ADR a `status: accepted` al iniciar desarrollo, I/O nativo con lectura paginada estricta (`view_file` con `StartLine`/`EndLine` ≤ 200, circuit breaker ≤ 3 lecturas consecutivas globales e inmunidad heurística), ediciones atómicas acotadas (`replace_file_content`) y verificar con `./build.sh check`.

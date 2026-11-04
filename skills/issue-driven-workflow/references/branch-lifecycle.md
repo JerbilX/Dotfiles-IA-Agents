@@ -41,8 +41,8 @@ Toda tarea despachada debe cumplir secuencialmente con las siguientes 8 fases:
    gh issue view <id>
    ```
 2. **Protocolo de Investigación Exploratoria (Ahorro de Contexto):**
-   * **Lecturas Acotadas (≤ 3 archivos):** Si la tarea requiere inspección quirúrgica de 1 a 3 archivos conocidos, realizar lecturas directas en la sesión principal mediante `view_file` o `grep_search`.
-   * **Exploración Extensa (> 3 archivos o repositorios externos):** Prohibido saturar la sesión principal con lecturas masivas. Es obligatorio delegar el relevamiento al subagente nativo `research` (`Model: "flash"`, `Workspace: "inherit"`), quien devuelve un resumen ejecutivo consolidado. Ver [`references/exploratory-research.md`](exploratory-research.md).
+   * **Lecturas Acotadas (≤ 8 archivos):** Si la tarea requiere inspección quirúrgica de hasta 8 archivos conocidos, realizar lecturas directas en la sesión principal mediante `view_file` o `grep_search`.
+   * **Exploración Extensa (> 8 archivos, repositorios externos o a pedido del usuario):** Evitar saturar la sesión principal con lecturas masivas. Delegar el relevamiento al subagente nativo `research` (`Model: "flash"`, `Workspace: "inherit"`), quien devuelve un resumen ejecutivo consolidado. Ver [`references/exploratory-research.md`](exploratory-research.md).
 3. El análisis sitúa la tarea operativamente en fase de planificación local (`📐 In Planning`), sin mutaciones CLI en GitHub Projects v2.
 
 ### Paso 2: Aislamiento e Higiene del Workspace
@@ -70,6 +70,7 @@ git-prune-gone --sync
 * **Fallback Determinista:** Si no está en `$PATH`, invocar `skills/issue-driven-workflow/bin/git-prune-gone`.
 
 ### Paso 3: Planificación y Refinamiento (📐 In Planning)
+* **Escala por Nivel:** N1 (cambio acotado, sin `core/`, `runtimes/` ni ADR) omite plan bloqueante, ADR y evaluación MBR escrita; N0 no entra al ciclo. Lo siguiente aplica a N2.
 * **Fast-Track por Defecto:** Para requerimientos con especificación técnica completa y criterios de aceptación claros en `🎯 Ready for Dev`, el agente no genera un `implementation_plan.md` bloqueante; avanza directamente al desarrollo activo (Paso 4), concentrando el control humano en el gate del Pull Request.
 * **Freno Obligatorio de Planificación (Stop & Plan):** Requieren obligatoriamente `implementation_plan.md` con pausa bloqueante (`RequestFeedback: true`) las tareas con ambigüedad de diseño, múltiples caminos técnicos posibles, cambios arquitectónicos que introduzcan o modifiquen un ADR (`docs/adr/`) con `status: proposed`, o diagnósticos donde la causa raíz aún no ha sido confirmada empíricamente.
 * **Evaluación de Minimal Blast Radius:** Registrar explícitamente el nivel de intervención más bajo posible (Nivel 0 a 4). Modificar directivas basales (`core/`) exige obligatoriamente la sección **"Justificación de Elevación Basal"**.
@@ -165,7 +166,7 @@ Si el issue cuenta con la etiqueta `automerge` en GitHub o la orden inicial del 
    ```
 3. Built-in Workflows avanza la tarjeta a `Done` automáticamente al detectarse el merge.
 
-* **Invariante de Higiene Proactiva:** Ante cualquier consulta o interacción subsiguiente, si el agente detecta que la rama actual trackea un PR ya fusionado/cerrado o tracking `[gone]`, ejecuta inmediatamente este paso de higiene sin esperar una nueva orden de desarrollo.
+* **Higiene Post-Merge:** Al iniciar la siguiente tarea de desarrollo o tras confirmarse un merge, si la rama actual trackea un PR fusionado/cerrado o `[gone]`, ejecutar este paso de higiene. No se ejecuta ante simples consultas.
 
 ---
 
