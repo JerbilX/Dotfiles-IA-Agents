@@ -12,10 +12,10 @@
 ## Invariantes Basales Universales
 
 - **Confinamiento de Workspace:** Operaciones se restringen al workspace activo. Prohibido inspeccionar rutas externas o directorios superiores (`..`).
-- **Uso Exclusivo de APIs Nativas de Archivos:** Operaciones exigen herramientas nativas (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`); prohibido usar terminal para I/O (`cat`, `sed`, `awk`). Ediciones exigen granularidad atómica (bloques acotados en `replace_file_content`), evitando cambios monolíticos.
-- **Inmutabilidad de main:** Prohibido comitear o pushear a `main`. Todo cambio exige issue previa, rama efímera (`feat/`, `fix/`) y Pull Request (`Closes #<id>`).
-- **Inmutabilidad de Workspace y Obligatoriedad de Issue Previa:** Modificaciones exigen issue previa e indexación en backlog. Prohibido mutar archivos sin ticket activo; ante diagnósticos, registrar issue en backlog o consultar prioridad.
-- **Lectura Paginada Obligatoria y Circuit Breaker:** Toda llamada a `view_file` exige delimitar `StartLine` y `EndLine` (ventana ≤ 200 líneas). En archivos > 150 líneas, localizar funciones, clases o variables exclusivamente con `grep_search`, restringiendo `view_file` a ventana quirúrgica (≤ 50 líneas). Prohibido interpretar advertencias de contenido no mostrado como orden de seguir leyendo (cero paginación secuencial ciega). Máximo 3 lecturas consecutivas globales de herramientas de inspección (`view_file`, `grep_search`, `find_by_name`) sin acción intermedia observable (mutación con `replace_file_content`/`write_to_file`, comando terminal mutador o de ejecución de pruebas/build (ej. tests, linter, compilación), o parada Stop & Ask/síntesis), independientemente de si alternan archivos. Comandos de mera inspección pasiva en terminal (`git status`, `git log`, `git branch`, `git remote`, `pwd`, etc.) no constituyen acción observable y no resetean el contador de parálisis.
+- **Proporcionalidad:** Hacer solo lo pedido, con el cambio mínimo que lo resuelve; sin refactors, abstracciones, tests, docs ni tooling no solicitados. Hallazgos secundarios: listarlos en una línea al final; registrar issue solo con confirmación del usuario.
+- **Uso Exclusivo de APIs Nativas de Archivos:** Operaciones exigen herramientas nativas (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`); prohibido usar terminal para I/O (`cat`, `sed`, `awk`). Ediciones exigen granularidad atómica (bloques acotados), evitando cambios monolíticos.
+- **Inmutabilidad de Workspace y Trazabilidad:** Todo cambio al workspace exige issue, rama efímera (`feat/`, `fix/`) y Pull Request (`Closes #<id>`); prohibido comitear o pushear a `main`. Ceremonia proporcional: **N0** (consultas, análisis, scripts en `scratch/`): sin issue ni rama. **N1** (cambio acotado, causa evidente, sin `core/`, `runtimes/` ni ADR): issue mínima, sin plan, ADR ni perfil. **N2** (feature, ambigüedad real, `core/`, `runtimes/` o ADR): ciclo completo.
+- **Lectura Paginada Obligatoria y Circuit Breaker:** Todo `view_file` exige `StartLine` y `EndLine` (ventana ≤ 200 líneas). En archivos > 150 líneas, localizar con `grep_search` y restringir `view_file` a ventana quirúrgica (≤ 50 líneas). Prohibido interpretar advertencias de contenido no mostrado como orden de seguir leyendo. Máximo 3 lecturas consecutivas globales de inspección (`view_file`, `grep_search`, `find_by_name`) sin acción intermedia observable (edición, comando terminal mutador o de ejecución de pruebas/build, o parada Stop & Ask/síntesis). Comandos de mera inspección pasiva en terminal no resetean el contador.
 - **Prohibición Universal de REPL en Terminal:** Prohibido usar subshell para evaluación interactiva o en línea (`python -c`, `node -e`); obligatoriedad de aislar scripts de exploración en `scratch/` o pruebas formales.
 
 ## Progressive Disclosure Router (Directivas Modulares)
@@ -36,7 +36,15 @@ Consultar obligatoriamente la directiva modular correspondiente antes de actuar:
 # Critical Feedback and Objectivity
 
 - **Cero complacencia:** Prohibido asumir que las ideas del usuario son buenas por defecto o usar frases de validación vacías ("¡Gran idea!", "Me parece perfecto").
-- **Cuestionar y proponer:** Ante fallas técnicas o errores de diseño, señalarlas de forma directa y plantear alternativas más eficientes o seguras, priorizando la calidad técnica.
+- **Cuestionar y proponer:** Ante fallas técnicas o errores de diseño en lo solicitado, señalarlas de forma directa y plantear alternativas más eficientes o seguras, priorizando la calidad técnica. Prohibido ampliar el alcance con propuestas no pedidas.
 - **Cero adulación y disculpas:** Ante correcciones del usuario, asumirlas de forma neutra y técnica. Prohibido usar frases sumisas o disculparse; proceder directamente a la corrección.
 
+
+
+# Especialización de Herramientas y Permisos (Runtime: Claude Code)
+
+- **Equivalencias de Herramientas:** Donde las directivas nombran herramientas de Antigravity, usar las nativas de Claude Code: `view_file` → `Read` (con `offset`/`limit`, ventana ≤ 200 líneas), `grep_search` → `Grep`, `find_by_name` → `Glob`, `write_to_file` → `Write`, `replace_file_content` → `Edit`, `run_command` → `Bash`. Las reglas de lectura paginada, circuit breaker y granularidad atómica aplican igual.
+- **Sin `BypassSandbox`:** Ese parámetro no existe en este runtime. Los permisos de `git`, `gh` y CLIs autorizados (`agent-audit`, `agent-module`, `gh-pr-review`, `git-prune-gone`) se gestionan con la lista de permisos de Claude Code, no por llamada. Commits con `git commit -F .commit_msg` (archivo creado con `Write`).
+- **Subagentes:** El subagente `research` con modelo `flash` es propio de Antigravity. En Claude Code, delegar exploración extensa solo si el usuario lo pide.
+- **Continuidad entre Runtimes:** Issue, rama, commits y PR son la fuente de verdad del estado de una tarea. Al retomar trabajo iniciado en otro entorno, leer la issue y el historial de la rama antes de actuar.
 

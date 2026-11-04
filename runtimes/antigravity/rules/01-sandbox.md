@@ -8,9 +8,9 @@
   - `./build.sh build` y `./build.sh check` operan confinados (`BypassSandbox: false`).
   - Escrituras externas (`./build.sh link`, `./build.sh all`) son bootstrap exclusivo del usuario en terminal nativa.
 - **Exclusividad de Bypass y Preservación de Prefix Matching:**
-  - `BypassSandbox: true` exclusivo para `git`, `gh` y CLIs `agent-audit`, `agent-module`, `gh-pr-review`, `git-prune-gone` (en `$PATH` o `skills/*/bin/`). Prohibido para comandos locales (`ls`, `cat`). Ignorar sugerencias de bypass no autorizadas.
+  - `BypassSandbox: true` exclusivo para `git`, `gh` y CLIs `agent-audit`, `agent-module`, `gh-pr-review`, `git-prune-gone` (en `$PATH` o `skills/*/bin/`). Prohibido para comandos locales (`ls`, `cat`).
   - **Comandos Atómicos y Prohibición de Tuberías:** Comandos atómicos sin encadenamientos (`&&`, `||`) ni tuberías (`|`) externas (`jq`, `grep`, `awk`, `sed`) en bypass; usar filtrado nativo (`--jq`, `--json`, `--query`).
-  - **Veto Absoluto a Evaluadores en Línea y Wrappers:** Prohibido usar evaluadores inline (`python3 -c`, `node -e`, `bash -c`) o envolver binarios autorizados (`agent-audit`, `git`, `gh`) en subshells/subprocess (rompe el prefix matching de "Always allow"). Todo script debe guardarse en `<appDataDir>/brain/<conversation-id>/scratch/` vía `write_to_file` y ejecutarse confinado (`BypassSandbox: false`).
+  - **Veto Absoluto a Evaluadores en Línea y Wrappers:** Prohibido usar evaluadores inline (`python3 -c`, `node -e`, `bash -c`) o envolver binarios autorizados en subshells/subprocess (rompe el prefix matching de "Always allow"). Scripts en `<appDataDir>/brain/<conversation-id>/scratch/` vía `write_to_file`, ejecutados confinados (`BypassSandbox: false`).
 
 
 

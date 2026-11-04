@@ -129,7 +129,7 @@ Al completar la creación e indexación, el agente debe reportar al usuario:
 ## 10. Control de Alcance (Scope Creep) y Tareas Derivadas
 
 - El agente **no debe inflar** el objetivo del ticket original con refactors, mejoras o arreglos colaterales no contemplados en la especificación de la issue.
-- Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **DEBE registrarla inmediatamente como una nueva GitHub Issue** (`gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"`), indexarla al tablero central (`gh project item-add <project_number> --owner <project_owner> --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
+- Si durante el desarrollo se detecta un bug, deuda técnica o necesidad secundaria, el agente **lo lista al usuario y, con su confirmación, lo registra como una nueva GitHub Issue** (`gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"`), indexarla al tablero central (`gh project item-add <project_number> --owner <project_owner> --url <issue-url>`) y continuar enfocado en el ticket asignado sin desviarse.
 - **Vinculación Múltiple en Tareas Derivadas:** Si una tarea de investigación, auditoría forense o spike genera una o más issues derivadas de corrección/implementación, cuando se resuelva la causa raíz y se abra el Pull Request respectivo, el cuerpo del PR (`.pr_body`) DEBE declarar explícitamente el cierre de todas las issues vinculadas:
   ```markdown
   Closes #<issue_derivada>
