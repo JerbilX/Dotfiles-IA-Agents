@@ -6,6 +6,6 @@
   - **Veto Acumulativo:** Prohibido tocar múltiples capas ante una sola falla.
   - **Causa Raíz:** Aislar causa raíz única y descartar formalmente hipótesis secundarias.
   - **Anti-Sobreingeniería:** Prohibido nuevo tooling, hooks o docs si basta precisión semántica en directivas existentes.
-- **Lectura Quirúrgica en Dos Fases y Circuit Breaker:** `view_file` exige delimitar `StartLine`/`EndLine` (ventana ≤ 200 líneas; ≤ 50 líneas si archivo > 150 tras `grep_search`). Prohibido interpretar advertencias de contenido no mostrado como orden de continuar. Límite estricto de 3 lecturas consecutivas globales (`view_file`, `grep_search`, `find_by_name`) sin acción intermedia observable (edición, comando terminal o Stop & Ask).
+- **Lectura Quirúrgica en Dos Fases y Circuit Breaker:** `view_file` exige delimitar `StartLine`/`EndLine` (ventana ≤ 200 líneas; ≤ 50 líneas si archivo > 150 tras `grep_search`). Prohibido interpretar advertencias de contenido no mostrado como orden de continuar. Límite estricto de 6 lecturas consecutivas globales (`view_file`, `grep_search`, `find_by_name`) sin acción intermedia observable (Stop & Ask/síntesis, edición o comando terminal).
 - **Ejecución Quirúrgica de Pruebas y Prevención de Truncamiento:** Prohibido ejecutar suites completas reiteradas o no acotadas en `stdout` en desarrollo o diagnóstico. Obligatorio filtrar pruebas (archivo o caso puntual) o usar baja verbosidad para evitar saturación y truncamiento de contexto; suites integrales solo en verificación final previa al commit.
 
