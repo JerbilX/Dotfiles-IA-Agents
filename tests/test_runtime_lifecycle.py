@@ -125,8 +125,8 @@ class TestRuntimeLifecycle(unittest.TestCase):
             self.assertTrue(found, f"Declared binary {src_name} not found in enabled skills")
 
     def test_anti_reconnaissance_and_anti_exfiltration_invariants(self):
-        """core/10-environment-standards.md must declare anti-reconnaissance and anti-exfiltration rules (Issue #184)."""
-        env_standards = os.path.join(REPO_ROOT, "core", "10-environment-standards.md")
+        """core/00-router.md must declare anti-reconnaissance and anti-exfiltration rules (Issue #184, ADR-0047)."""
+        env_standards = os.path.join(REPO_ROOT, "core", "00-router.md")
         with open(env_standards, "r", encoding="utf-8") as f:
             content = f.read()
 
@@ -170,8 +170,8 @@ class TestRuntimeLifecycle(unittest.TestCase):
         self.assertIn("scratch", content)
 
     def test_environment_standards_prohibit_inline_evaluators_and_wrappers(self):
-        """core/10-environment-standards.md must prohibit inline evaluators and CLI wrappers (Issue #208)."""
-        env_rule = os.path.join(CORE_DIR, "10-environment-standards.md")
+        """core/00-router.md must prohibit inline evaluators and CLI wrappers (Issue #208, ADR-0047)."""
+        env_rule = os.path.join(CORE_DIR, "00-router.md")
         with open(env_rule, "r", encoding="utf-8") as f:
             content = f.read()
 

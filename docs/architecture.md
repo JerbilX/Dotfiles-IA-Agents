@@ -29,16 +29,8 @@ flowchart TD
 ```
 Dotfiles-IA-Agents/
 ├── core/                                # Directivas agnósticas al runtime
-│   ├── 01-objectivity.md                # Feedback crítico, cero complacencia y calidad técnica
-│   ├── 02-git-lifecycle.md              # Ciclo de vida de Git, commit atómico y gates remotos
-│   ├── 03-agent-rules-convention.md     # Convención canónica de AGENTS.md y estándar MADR
-│   ├── 04-web-search-discipline.md      # Circuit breaker y disciplina de búsquedas web
-│   ├── 05-anti-rigidity.md              # Degradación elegante y protocolo de fallback
-│   ├── 06-engineering-standards.md      # Prevalencia de producción, lectura quirúrgica y blast radius
-│   ├── 07-anti-hallucination.md         # Estabilidad lógica, Stop & Ask y blindaje de planes
-│   ├── 08-task-backlog-management.md    # Backlog en GitHub Projects/Issues y control de scope creep
-│   ├── 09-issue-driven-workflow.md      # Flujo guiado por issues, ramas y Pull Requests obligatorios
-│   └── 10-environment-standards.md      # Confinamiento de workspace y uso de herramientas nativas
+│   ├── 00-router.md                     # Invariantes basales universales y activación obligatoria de skills (ADR-0047)
+│   └── 01-objectivity.md                # Feedback crítico, cero complacencia y calidad técnica
 ├── docs/                                # Documentación de ingeniería y arquitectura (Diátaxis)
 │   ├── setup.md                         # Guía de aprovisionamiento, PATH y bootstrap
 │   ├── cli.md                           # Referencia técnica exhaustiva del orquestador build.sh

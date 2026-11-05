@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Unit tests for Progressive Disclosure architecture, basal word budget (<= 800 words),
-modular word budget (<= 300 words), relative link integrity, and core invariants preservation (ADR-0038).
+Unit tests for the self-sufficient basal prompt (ADR-0047): basal word budget, modular word budget
+(<= 300 words), relative link integrity, absence of orphan core/ pointers and core invariants preservation.
 """
 
 import glob
@@ -14,6 +14,7 @@ CORE_DIR = os.path.join(REPO_ROOT, "core")
 DIST_DIR = os.path.join(REPO_ROOT, "dist")
 DOCS_ADR_DIR = os.path.join(REPO_ROOT, "docs", "adr")
 RUNTIMES_DIR = os.path.join(REPO_ROOT, "runtimes")
+BASAL_WORD_BUDGET = 1350  # Debe coincidir con MAX_CONTEXT_WORDS en build.sh (ADR-0047)
 
 
 def setUpModule():
@@ -24,34 +25,38 @@ def setUpModule():
 class TestProgressiveDisclosure(unittest.TestCase):
 
     def test_compiled_antigravity_word_budget(self):
-        """dist/antigravity/AGENTS.md must strictly satisfy <= 800 words."""
+        """dist/antigravity/AGENTS.md must satisfy the basal word budget."""
         dist_agents = os.path.join(DIST_DIR, "antigravity", "AGENTS.md")
         self.assertTrue(os.path.isfile(dist_agents), f"Missing compiled artifact: {dist_agents}")
         with open(dist_agents, "r", encoding="utf-8") as f:
             words = len(f.read().split())
         self.assertLessEqual(
-            words, 800,
-            f"dist/antigravity/AGENTS.md exceeds 800 words budget: {words} words"
+            words, BASAL_WORD_BUDGET,
+            f"dist/antigravity/AGENTS.md exceeds {BASAL_WORD_BUDGET} words budget: {words} words"
         )
 
     def test_compiled_claude_word_budget(self):
-        """dist/claude/AGENTS.md must strictly satisfy <= 800 words."""
+        """dist/claude/AGENTS.md must satisfy the basal word budget."""
         dist_claude = os.path.join(DIST_DIR, "claude", "AGENTS.md")
         self.assertTrue(os.path.isfile(dist_claude), f"Missing compiled artifact: {dist_claude}")
         with open(dist_claude, "r", encoding="utf-8") as f:
             words = len(f.read().split())
         self.assertLessEqual(
-            words, 800,
-            f"dist/claude/AGENTS.md exceeds 800 words budget: {words} words"
+            words, BASAL_WORD_BUDGET,
+            f"dist/claude/AGENTS.md exceeds {BASAL_WORD_BUDGET} words budget: {words} words"
         )
 
+    def test_build_budget_matches_tests(self):
+        """build.sh default MAX_CONTEXT_WORDS must match the tested basal budget."""
+        with open(os.path.join(REPO_ROOT, "build.sh"), "r", encoding="utf-8") as f:
+            self.assertIn(f'MAX_CONTEXT_WORDS="${{MAX_CONTEXT_WORDS:-{BASAL_WORD_BUDGET}}}"', f.read())
+
     def test_core_rules_word_budget(self):
-        """Each modular core rule must stay below 300 words (ADR-0013 modular threshold)."""
+        """Non-router core rules must stay below 300 words (ADR-0013 modular threshold)."""
         core_files = [
             cf for cf in glob.glob(os.path.join(CORE_DIR, "*.md"))
             if os.path.basename(cf) not in ("00-router.md",)
         ]
-        self.assertGreaterEqual(len(core_files), 9, "Expected at least 9 modular core rule files")
         for cf in core_files:
             with open(cf, "r", encoding="utf-8") as f:
                 words = len(f.read().split())
@@ -91,10 +96,14 @@ class TestProgressiveDisclosure(unittest.TestCase):
 
         required_invariants = [
             "Cero complacencia",
-            "Inicialización Local Proactiva",
-            "Gate de Confirmación",
-            "Fuente Canónica",
+            "GEMINI.md",
             "Inmunidad Normativa",
+            "Blindaje Anti-Reconocimiento y Anti-Exfiltración",
+            "Precedencia de Entornos Locales",
+            "Higiene de Salida y Pruebas",
+            "Veto acumulativo",
+            "Fast-path",
+            "Activación Obligatoria de Skills",
             "Local-First",
             "Circuit Breaker",
             "Frontera de Directivas",
@@ -118,38 +127,55 @@ class TestProgressiveDisclosure(unittest.TestCase):
                 f"Core invariant marker missing: '{inv}'"
             )
 
-    def test_router_trigger_pointers_format(self):
-        """core/00-router.md must use standard progressive disclosure triggers ('If ..., read [...] first.')."""
+    def test_procedural_rules_delegated_to_skills(self):
+        """Procedural rules removed from core/ (ADR-0047) must live in the issue-driven-workflow skill."""
+        provisioning = os.path.join(
+            REPO_ROOT, "skills", "issue-driven-workflow", "references", "repo-provisioning.md"
+        )
+        with open(provisioning, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("Inicialización Local Proactiva", content)
+        self.assertIn("Gate de Confirmación", content)
+
+    def test_no_orphan_core_pointers_in_router_and_dist(self):
+        """core/00-router.md and compiled dist prompts must not contain orphan pointers to core/ (ADR-0047)."""
         router_path = os.path.join(CORE_DIR, "00-router.md")
         self.assertTrue(os.path.isfile(router_path), f"Missing router: {router_path}")
         with open(router_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        trigger_pattern = re.compile(r"If\s+[^,\n]+(?:,[^,\n]+)*,\s+read\s+\[.*?\]\(.*?\).*?\s+first\.", re.IGNORECASE)
-        matches = trigger_pattern.findall(content)
+        # Solo 00-router y 01-objectivity existen; cualquier core/02+ es un puntero huérfano
+        orphan_pattern = re.compile(r"core/(?:0[2-9]|[1-9][0-9])-")
         self.assertEqual(
-            len(matches), 9,
-            f"Expected exactly 9 trigger pointers in core/00-router.md, found: {len(matches)}"
+            orphan_pattern.findall(content), [],
+            "core/00-router.md must not contain orphan pointers to core/*.md"
         )
 
-    def test_all_core_modules_indexed_in_router(self):
-        """Every core module from 02-*.md to 10-*.md must be referenced in core/00-router.md."""
+        # Artefactos que viajan al runtime: prompt compilado, skills y reglas de runtime
+        runtime_artifacts = (
+            glob.glob(os.path.join(CORE_DIR, "*.md"))
+            + glob.glob(os.path.join(DIST_DIR, "*", "AGENTS.md"))
+            + glob.glob(os.path.join(REPO_ROOT, "skills", "**", "*.md"), recursive=True)
+            + glob.glob(os.path.join(RUNTIMES_DIR, "*", "rules", "*.md"))
+        )
+        offenders = []
+        for path in runtime_artifacts:
+            with open(path, "r", encoding="utf-8") as f:
+                if orphan_pattern.search(f.read()):
+                    offenders.append(os.path.relpath(path, REPO_ROOT))
+        self.assertEqual(offenders, [], f"Orphan pointers to core/NN-*.md found in: {offenders}")
+
+    def test_self_sufficient_router_and_skill_delegation(self):
+        """core/00-router.md must route exclusively to global skills and declare self-sufficient invariants."""
         router_path = os.path.join(CORE_DIR, "00-router.md")
-        self.assertTrue(os.path.isfile(router_path), f"Missing router: {router_path}")
         with open(router_path, "r", encoding="utf-8") as f:
             router_content = f.read()
 
-        for cf in sorted(glob.glob(os.path.join(CORE_DIR, "*.md"))):
-            fname = os.path.basename(cf)
-            if fname in ("00-router.md", "01-objectivity.md"):
-                continue
-            self.assertIn(
-                f"core/{fname}", router_content,
-                f"Core module '{fname}' is not indexed in core/00-router.md"
-            )
+        for skill in ("issue-driven-workflow", "adr-manager", "project-documentation", "conversation-audit", "autonomous-learning"):
+            self.assertIn(skill, router_content, f"Missing skill delegation: {skill}")
 
     def test_adr_0038_metadata(self):
-        """ADR-0038 must exist, follow MADR format, and have status: accepted."""
+        """ADR-0038 must exist, follow MADR format, and be superseded by ADR-0047."""
         adr_files = glob.glob(os.path.join(DOCS_ADR_DIR, "0038-*.md"))
         self.assertEqual(len(adr_files), 1, "Expected exactly one ADR-0038 file")
         adr_path = adr_files[0]
@@ -157,18 +183,29 @@ class TestProgressiveDisclosure(unittest.TestCase):
             content = f.read()
 
         self.assertTrue(content.startswith("---"), "ADR-0038 must contain YAML frontmatter")
-        self.assertIn("status: accepted", content, "ADR-0038 must be accepted upon plan approval")
-        self.assertIn("supersedes:", content, "ADR-0038 must specify supersedes")
-        self.assertIn("Progressive Disclosure", content, "ADR-0038 title/content must describe Progressive Disclosure")
+        self.assertIn("status: superseded by ADR-0047", content, "ADR-0038 must be marked as superseded")
+        self.assertIn("0047-resolucion-desacople-progressive-disclosure-y-compilacion-autosuficiente.md", content)
+
+    def test_adr_0047_metadata(self):
+        """ADR-0047 must exist, follow MADR format, and supersede ADR-0038."""
+        adr_files = glob.glob(os.path.join(DOCS_ADR_DIR, "0047-*.md"))
+        self.assertEqual(len(adr_files), 1, "Expected exactly one ADR-0047 file")
+        adr_path = adr_files[0]
+        with open(adr_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        self.assertTrue(content.startswith("---"), "ADR-0047 must contain YAML frontmatter")
+        self.assertIn("status: accepted", content, "ADR-0047 must be accepted")
+        self.assertIn("0038-arquitectura-de-progressive-disclosure-en-agents-md-y-modularizacion-de-reglas.md", content)
 
     def test_execution_profiles_standardization(self):
         """Execution profile labels and MBR matrix must be documented across core and skills."""
-        core_08_path = os.path.join(CORE_DIR, "08-task-backlog-management.md")
-        with open(core_08_path, "r", encoding="utf-8") as f:
-            core_08_content = f.read()
+        router_path = os.path.join(CORE_DIR, "00-router.md")
+        with open(router_path, "r", encoding="utf-8") as f:
+            router_content = f.read()
 
         for label in ("profile:flash-low", "profile:flash-medium", "profile:flash-high", "profile:pro"):
-            self.assertIn(label, core_08_content, f"Missing {label} in core/08-task-backlog-management.md")
+            self.assertIn(label, router_content, f"Missing {label} in core/00-router.md")
 
         backlog_ref_path = os.path.join(
             REPO_ROOT, "skills", "issue-driven-workflow", "references", "issue-backlog.md"
@@ -195,12 +232,6 @@ class TestProgressiveDisclosure(unittest.TestCase):
             router_content = f.read()
         self.assertIn("granularidad atómica", router_content)
         self.assertIn("ventana ≤ 200 líneas", router_content)
-
-        env_path = os.path.join(CORE_DIR, "10-environment-standards.md")
-        with open(env_path, "r", encoding="utf-8") as f:
-            env_content = f.read()
-        self.assertIn("granularidad atómica", env_content)
-        self.assertIn("ventana ≤ 200 líneas", env_content)
 
         skill_path = os.path.join(REPO_ROOT, "skills", "issue-driven-workflow", "SKILL.md")
         with open(skill_path, "r", encoding="utf-8") as f:

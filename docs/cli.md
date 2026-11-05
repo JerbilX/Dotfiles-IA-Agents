@@ -113,7 +113,7 @@ Flujo completo por defecto. Ejecuta secuencialmente `build`, `link`, `skills`, `
 
 | Variable | Tipo | Por Defecto | Descripción |
 | :--- | :---: | :---: | :--- |
-| `MAX_CONTEXT_WORDS` | `integer` | `4000` | Presupuesto máximo de palabras para el prompt global compilado (`dist/<runtime>/AGENTS.md`). |
+| `MAX_CONTEXT_WORDS` | `integer` | `1350` | Presupuesto máximo de palabras para el prompt global compilado (`dist/<runtime>/AGENTS.md`). |
 | `MAX_MODULE_WORDS` | `integer` | `300` | Presupuesto modular por archivo individual en `core/*.md` y `rules/*.md`. |
 | `MAX_README_WORDS` | `integer` | `600` | Umbral máximo recomendado de palabras en el `README.md` raíz. |
 
@@ -123,7 +123,7 @@ Flujo completo por defecto. Ejecuta secuencialmente `build`, `link`, `skills`, `
 
 El subcomando `check` implementa una doble compuerta de auditoría para prevenir la degradación atencional por saturación del System Prompt ([ADR-0008](adr/0008-telemetria-de-presupuesto-de-contexto-y-subcomando-check.md), [ADR-0013](adr/0013-estrategia-de-modularizacion-de-directivas-extensas-a-skills.md) y [ADR-0017](adr/0017-principio-de-minima-intervencion-y-jerarquia-de-resolucion.md)):
 
-1. **Presupuesto Global (`MAX_CONTEXT_WORDS=4000`):**
+1. **Presupuesto Global (`MAX_CONTEXT_WORDS=1350`, [ADR-0047](adr/0047-resolucion-desacople-progressive-disclosure-y-compilacion-autosuficiente.md)):**
    Garantiza que la totalidad del System Prompt compilado mantenga un margen suficiente (<75% de la ventana útil) para reservar contexto disponible al razonamiento del agente.
 2. **Presupuesto Modular (`MAX_MODULE_WORDS=300`):**
    Audita individualmente cada directiva en `core/*.md` y `rules/*.md`. Si un archivo supera este umbral, emite una advertencia estática instando a evaluar la extracción del procedimiento a un skill bajo demanda (patrón *Trigger Directive + Dedicated Skill*).

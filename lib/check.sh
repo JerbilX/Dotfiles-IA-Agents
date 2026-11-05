@@ -38,26 +38,18 @@ for l in links:
         echo "  [✓] Directivas Core: Enlaces relativos verificados"
     fi
 
-    # Verificación de Progressive Disclosure Router
-    local router_file="${CORE_DIR}/00-router.md"
-    if [ -f "${router_file}" ]; then
-        local missing_modules=0
-        for f in "${CORE_DIR}"/*.md; do
-            [ ! -f "$f" ] && continue
-            local mod_name
-            mod_name="$(basename "$f")"
-            if [ "${mod_name}" = "00-router.md" ] || [ "${mod_name}" = "01-objectivity.md" ]; then
-                continue
-            fi
-            if ! grep -qF "${mod_name}" "${router_file}"; then
-                echo "  [✗] Módulo core no referenciado en el Router (00-router.md): ${mod_name}" >&2
-                CHECK_ERRORS=$((CHECK_ERRORS + 1))
-                missing_modules=$((missing_modules + 1))
-            fi
-        done
-        if [ "${missing_modules}" -eq 0 ]; then
-            echo "  [✓] Router de Progressive Disclosure: Todos los módulos core están indexados"
-        fi
+    # Verificación de autosuficiencia y ausencia de enlaces huérfanos a core/ (ADR-0047)
+    # Cualquier mención a un módulo core/02+ eliminado (enlace, backticks o texto plano) en artefactos que viajan al runtime
+    local orphan_core_refs=0
+    local orphan_file
+    while IFS= read -r orphan_file; do
+        [ -z "${orphan_file}" ] && continue
+        echo "  [✗] Referencia a módulo de core/ inexistente en runtime detectada en ${orphan_file#"${SCRIPT_DIR}"/}" >&2
+        CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        orphan_core_refs=$((orphan_core_refs + 1))
+    done < <(grep -rlE "core/(0[2-9]|[1-9][0-9])-""${CORE_DIR}" "${SCRIPT_DIR}/skills" "${SCRIPT_DIR}/runtimes" "${SCRIPT_DIR}/dist" --include='*.md' 2>/dev/null)
+    if [ "${orphan_core_refs}" -eq 0 ]; then
+        echo "  [✓] Autosuficiencia de Directivas Basales: Sin referencias huérfanas a core/"
     fi
 }
 
@@ -484,7 +476,7 @@ for l in links:
     if [ -f "${dist_file}" ]; then
         local w
         w="$(wc -w < "${dist_file}" | tr -d ' ')"
-        local max_w="${MAX_CONTEXT_WORDS:-800}"
+        local max_w="${MAX_CONTEXT_WORDS:-1350}"
         local pct=$(( w * 100 / max_w ))
         if [ "${w}" -gt "${max_w}" ]; then
             echo "  [!] Advertencia [${r}]: Presupuesto de contexto superado: ${w} / ${max_w} palabras (${pct}%)" >&2
