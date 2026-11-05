@@ -190,3 +190,40 @@ function Addon:Initialize()
 end
 ```
 
+---
+
+## 8. Jerarquía y Creación de Controles de Interfaz (`EsoUI Controls`)
+
+La creación dinámica de controles de interfaz mediante la API de Zenimax (`WINDOW_MANAGER:CreateControl` o `CreateControl`) exige respetar estrictamente la jerarquía del motor de interfaz de EsoUI:
+
+### 8.1 Jerarquía Obligatoria para `CT_TOPLEVELCONTROL`
+* **Parentesco Exclusivo con `GuiRoot`:** Todo control de tipo `CT_TOPLEVELCONTROL` debe crearse asignando invariablemente `GuiRoot` como su control padre (`parent`):
+  ```lua
+  local myWindow = WINDOW_MANAGER:CreateControl("MyAddonTopLevelWindow", GuiRoot, CT_TOPLEVELCONTROL)
+  ```
+* **Prohibición de Paneles Secundarios como Parent:** Queda estrictamente prohibido pasar controles secundarios o paneles nativos del juego (ej. `ZO_SharedRightPanelBackground`, paneles de inventario o árbol de habilidades) como argumento `parent` en la llamada a `CreateControl` de un `CT_TOPLEVELCONTROL`. Dicha asignación corrompe la jerarquía de ventanas y falla en el cliente de EsoUI.
+* **Integración Visual y Anclaje (`SetAnchor`):** Para posicionar o integrar visualmente una ventana o control a un panel nativo, se debe mantener a `GuiRoot` como padre y aplicar anclajes espaciales relativos mediante `:SetAnchor()`:
+  ```lua
+  myWindow:SetDimensions(350, 500)
+  myWindow:ClearAnchors()
+  myWindow:SetAnchor(TOPLEFT, ZO_SharedRightPanelBackground, TOPLEFT, 10, 10)
+  ```
+* **Controles Secundarios (`CT_CONTROL`):** Si se desea anidar controles directamente dentro de un contenedor o panel secundario existente sin crear una ventana independiente, se debe utilizar `CT_CONTROL` (o tipos derivados como `CT_LABEL`, `CT_BUTTON`, `CT_TEXTURE`), asignando el contenedor destino como `parent`.
+
+---
+
+## 9. Arneses de Prueba en Lua (`tests/`) y Prevención de Antipatrones
+
+Para garantizar un ciclo de retroalimentación ágil y determinista en suites de pruebas unitarias locales (bajo LuaJIT o Lua), se deben seguir los siguientes lineamientos:
+
+### 9.1 Diseño y Actualización Atómica de Mocks (Anti-Ping-Pong)
+* **Prevención de `PING_PONG_TOOL_LOOP`:** Queda prohibido incurrir en ciclos pendulares de edición fragmentaria (múltiples ediciones microscópicas consecutivas alternadas con ejecuciones de pruebas para descubrir gradualmente qué métodos faltan en el mock).
+* **Definición Coherente del Modelo de Objetos:** Los arneses de mock en `tests/` deben modelar desde su diseño inicial las entidades y métodos canónicos del subsistema bajo prueba (`WINDOW_MANAGER`, `GuiRoot`, métodos de control: `SetAnchor`, `ClearAnchors`, `SetDimensions`, `SetHidden`, `SetHandler`, etc.).
+* **Actualización en Bloque:** Ante discrepancias entre la API oficial y el arnés, el agente debe consultar la documentación oficial (`references/ESOUIDocumentation.txt`) y sincronizar el mock de forma atómica y completa en una sola edición.
+
+### 9.2 Ejecución Atómica de Pruebas (Anti-Terminal-Pipelining)
+* **Prohibición de Bucles Shell Inline:** Queda prohibido ejecutar suites de pruebas mediante bucles de terminal (ej. `for f in tests/test_*.lua; do luajit "$f"; done`), tuberías con wrappers o construcciones compuestas. Estas estructuras rompen el prefix matching de comandos en sandbox y degradan la trazabilidad de auditoría.
+* **Invocación Canónica:** Ejecutar las pruebas siempre mediante comandos o runners CLI atómicos:
+  * Runner centralizado: `luajit tests/run.lua`
+  * Test puntual específico: `luajit tests/test_journal.lua`
+
