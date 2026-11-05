@@ -20,6 +20,7 @@ from test_audit_engine import (
     TestTerminalReplLoopAntipattern,
     TestUnpaginatedFileReadAntipattern,
 )
+from test_circuit_breaker import TestAgentCircuitBreaker
 
 if __name__ == "__main__":
     unittest.main()
