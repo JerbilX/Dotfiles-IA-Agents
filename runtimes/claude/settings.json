@@ -1,6 +1,8 @@
 {
   "permissions": {
     "allow": [
+      "Read(~/.claude/core/**)",
+      "Read(~/.claude/skills/**)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
