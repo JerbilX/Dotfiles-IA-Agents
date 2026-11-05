@@ -3,6 +3,8 @@
     "allow": [
       "Read(~/.claude/core/**)",
       "Read(~/.claude/skills/**)",
+      "Read(/${DOTFILES_ROOT}/core/**)",
+      "Read(/${DOTFILES_ROOT}/skills/**)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
