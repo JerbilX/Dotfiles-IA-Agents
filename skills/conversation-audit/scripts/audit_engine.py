@@ -412,17 +412,19 @@ class AuditEngine:
                     )
                 )
 
-        # B. Truncamiento severo de contexto
+        # B. Truncamiento en el registro del transcript (#237): `truncated_fields` indica que el
+        # runtime recortó el campo al persistir el transcript, no que el modelo perdiera contexto.
+        # Se reporta como señal de volumen (BAJA), sin inferir pérdida de información.
         for s in steps:
             if s.truncated_fields:
                 antipatterns.append(
                     DetectedAntipattern(
-                        severity="ALTA",
+                        severity="BAJA",
                         code="CONTEXT_TRUNCATION",
-                        title="Truncamiento de Contexto Detectado",
+                        title="Campo Truncado en el Registro del Transcript",
                         step_index=s.step_index,
-                        description=f"El paso {s.step_index} sufrió truncamiento en campos: {', '.join(s.truncated_fields)}. Puede implicar pérdida de información crítica.",
-                        recommendation="Evitar comandos o volcados masivos en stdout; utilizar paginación nativa, filtros JSON o herramientas nativas de archivos con límites acotados.",
+                        description=f"El transcript guardó recortados los campos {', '.join(s.truncated_fields)} del paso {s.step_index}. Es un recorte del registro persistido; por sí solo no evidencia pérdida de contexto del modelo.",
+                        recommendation="Si el contenido es relevante, verificar en pasos posteriores si el modelo lo usó correctamente. Si hay recortes recurrentes, acotar las lecturas o salidas voluminosas que los originan.",
                     )
                 )
 

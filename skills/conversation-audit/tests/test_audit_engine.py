@@ -1089,6 +1089,71 @@ class TestStepRangesAndToolFiltering(unittest.TestCase):
         self.assertEqual(pp_antipatterns[0].step_index, 4)
 
 
+class TestAntigravityOutputPairing(unittest.TestCase):
+    """Regresión #237: emparejamiento llamada→salida sin IDs y con pasos de salida faltantes."""
+
+    def _parse(self, records):
+        import json
+        import tempfile
+        from adapters.antigravity import AntigravityAdapter
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "transcript.jsonl"
+            with open(path, "w", encoding="utf-8") as f:
+                for r in records:
+                    f.write(json.dumps(r) + "\n")
+            return {s.step_index: s for s in AntigravityAdapter().parse(path)}
+
+    @staticmethod
+    def _call(idx, name):
+        return {"step_index": idx, "source": "MODEL", "type": "PLANNER_RESPONSE",
+                "tool_calls": [{"name": name, "args": {}}]}
+
+    @staticmethod
+    def _out(idx, content):
+        return {"step_index": idx, "source": "MODEL", "type": "GENERIC", "content": content}
+
+    def test_missing_output_step_does_not_shift_later_pairs(self):
+        # Reproduce el transcript real: falta el paso 78 (salida del 77).
+        records = [
+            self._call(75, "call_mcp_tool"), self._out(76, "salida-75"),
+            self._call(77, "view_file"),
+            self._call(79, "view_file"), self._out(80, "salida-79"),
+            self._call(81, "grep_search"), self._out(82, "salida-81"),
+        ]
+        steps = self._parse(records)
+        self.assertEqual(steps[75].tool_calls[0].raw_output, "salida-75")
+        self.assertIsNone(steps[77].tool_calls[0].raw_output)
+        self.assertEqual(steps[79].tool_calls[0].raw_output, "salida-79")
+        self.assertEqual(steps[81].tool_calls[0].raw_output, "salida-81")
+
+    def test_unordered_records_pair_by_step_index(self):
+        records = [self._out(2, "salida-1"), self._call(1, "view_file")]
+        steps = self._parse(records)
+        self.assertEqual(steps[1].tool_calls[0].raw_output, "salida-1")
+
+    def test_parallel_calls_in_one_step_pair_in_order(self):
+        records = [
+            {"step_index": 1, "source": "MODEL", "type": "PLANNER_RESPONSE",
+             "tool_calls": [{"name": "view_file", "args": {}}, {"name": "grep_search", "args": {}}]},
+            self._out(2, "a"), self._out(3, "b"),
+        ]
+        steps = self._parse(records)
+        self.assertEqual([tc.raw_output for tc in steps[1].tool_calls], ["a", "b"])
+
+
+class TestTranscriptTruncationSeverity(unittest.TestCase):
+    """Regresión #237: truncated_fields es recorte del registro, no pérdida de contexto."""
+
+    def test_truncated_fields_reported_as_low_severity(self):
+        step = NormalizedStep(step_index=74, source="MODEL", step_type="GENERIC",
+                              content="x", truncated_fields=["content"])
+        found = [a for a in AuditEngine()._detect_antipatterns([step]) if a.code == "CONTEXT_TRUNCATION"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].severity, "BAJA")
+        self.assertIn("no evidencia pérdida de contexto", found[0].description)
+
+
 if __name__ == "__main__":
     unittest.main()
 

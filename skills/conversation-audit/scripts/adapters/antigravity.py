@@ -85,6 +85,11 @@ class AntigravityAdapter(TranscriptAdapter):
                 except json.JSONDecodeError:
                     continue
 
+        # El transcript no trae IDs que vinculen llamada y salida: cada GENERIC es la salida
+        # de las llamadas del paso no-salida inmediatamente anterior. Ordenar por step_index
+        # garantiza esa adyacencia (#237).
+        raw_records.sort(key=lambda r: r.get("step_index") if isinstance(r.get("step_index"), int) else 0)
+
         normalized_steps: List[NormalizedStep] = []
         pending_tool_calls: List[NormalizedToolCall] = []
 
@@ -131,10 +136,15 @@ class AntigravityAdapter(TranscriptAdapter):
                     status="DONE",
                 )
                 step_tool_calls.append(norm_tc)
-                pending_tool_calls.append(norm_tc)
+
+            is_output_step = step_type in ("GENERIC", "TOOL_OUTPUT")
+            if not is_output_step:
+                # Las llamadas previas sin salida registrada (pasos faltantes) se descartan
+                # para que no desplacen el emparejamiento de las siguientes (#237).
+                pending_tool_calls = list(step_tool_calls)
 
             # Si es un step de resultado de herramienta (ej. GENERIC con output/error)
-            if step_type in ("GENERIC", "TOOL_OUTPUT") and pending_tool_calls:
+            if is_output_step and pending_tool_calls:
                 last_call = pending_tool_calls.pop(0)
                 last_call.raw_output = content
 
