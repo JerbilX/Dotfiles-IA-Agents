@@ -3,7 +3,7 @@ status: accepted
 date: 2026-10-28
 decision-makers: [Usuario, Antigravity]
 supersedes: ["0008-telemetria-de-presupuesto-de-contexto-y-subcomando-check.md", "0016-poda-sustractiva-de-directivas-core-y-consolidacion-de-invariantes.md"]
-superseded-by: []
+superseded-by: ["0047-resolucion-desacople-progressive-disclosure-y-compilacion-autosuficiente.md"]
 ---
 
 # 0038 - Arquitectura de Progressive Disclosure en AGENTS.md y Modularización de Reglas

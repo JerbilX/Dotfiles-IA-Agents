@@ -118,38 +118,38 @@ class TestProgressiveDisclosure(unittest.TestCase):
                 f"Core invariant marker missing: '{inv}'"
             )
 
-    def test_router_trigger_pointers_format(self):
-        """core/00-router.md must use standard progressive disclosure triggers ('If ..., read [...] first.')."""
+    def test_no_orphan_core_pointers_in_router_and_dist(self):
+        """core/00-router.md and compiled dist prompts must not contain orphan pointers to core/ (ADR-0047)."""
         router_path = os.path.join(CORE_DIR, "00-router.md")
         self.assertTrue(os.path.isfile(router_path), f"Missing router: {router_path}")
         with open(router_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        trigger_pattern = re.compile(r"If\s+[^,\n]+(?:,[^,\n]+)*,\s+read\s+\[.*?\]\(.*?\).*?\s+first\.", re.IGNORECASE)
-        matches = trigger_pattern.findall(content)
+        orphan_pattern = re.compile(r"read\s+\[core/|\[core/[0-9]+", re.IGNORECASE)
         self.assertEqual(
-            len(matches), 9,
-            f"Expected exactly 9 trigger pointers in core/00-router.md, found: {len(matches)}"
+            orphan_pattern.findall(content), [],
+            "core/00-router.md must not contain orphan pointers to core/*.md"
         )
 
-    def test_all_core_modules_indexed_in_router(self):
-        """Every core module from 02-*.md to 10-*.md must be referenced in core/00-router.md."""
+        for dist_prompt in glob.glob(os.path.join(DIST_DIR, "*", "AGENTS.md")):
+            with open(dist_prompt, "r", encoding="utf-8") as f:
+                dist_content = f.read()
+            self.assertEqual(
+                orphan_pattern.findall(dist_content), [],
+                f"Compiled prompt {dist_prompt} must not contain orphan pointers to core/*.md"
+            )
+
+    def test_self_sufficient_router_and_skill_delegation(self):
+        """core/00-router.md must route exclusively to global skills and declare self-sufficient invariants."""
         router_path = os.path.join(CORE_DIR, "00-router.md")
-        self.assertTrue(os.path.isfile(router_path), f"Missing router: {router_path}")
         with open(router_path, "r", encoding="utf-8") as f:
             router_content = f.read()
 
-        for cf in sorted(glob.glob(os.path.join(CORE_DIR, "*.md"))):
-            fname = os.path.basename(cf)
-            if fname in ("00-router.md", "01-objectivity.md"):
-                continue
-            self.assertIn(
-                f"core/{fname}", router_content,
-                f"Core module '{fname}' is not indexed in core/00-router.md"
-            )
+        for skill in ("issue-driven-workflow", "adr-manager", "project-documentation", "conversation-audit", "autonomous-learning"):
+            self.assertIn(skill, router_content, f"Missing skill delegation: {skill}")
 
     def test_adr_0038_metadata(self):
-        """ADR-0038 must exist, follow MADR format, and have status: accepted."""
+        """ADR-0038 must exist, follow MADR format, and be superseded by ADR-0047."""
         adr_files = glob.glob(os.path.join(DOCS_ADR_DIR, "0038-*.md"))
         self.assertEqual(len(adr_files), 1, "Expected exactly one ADR-0038 file")
         adr_path = adr_files[0]
@@ -157,9 +157,20 @@ class TestProgressiveDisclosure(unittest.TestCase):
             content = f.read()
 
         self.assertTrue(content.startswith("---"), "ADR-0038 must contain YAML frontmatter")
-        self.assertIn("status: accepted", content, "ADR-0038 must be accepted upon plan approval")
-        self.assertIn("supersedes:", content, "ADR-0038 must specify supersedes")
-        self.assertIn("Progressive Disclosure", content, "ADR-0038 title/content must describe Progressive Disclosure")
+        self.assertIn("status: accepted", content, "ADR-0038 must be accepted")
+        self.assertIn("0047-resolucion-desacople-progressive-disclosure-y-compilacion-autosuficiente.md", content)
+
+    def test_adr_0047_metadata(self):
+        """ADR-0047 must exist, follow MADR format, and supersede ADR-0038."""
+        adr_files = glob.glob(os.path.join(DOCS_ADR_DIR, "0047-*.md"))
+        self.assertEqual(len(adr_files), 1, "Expected exactly one ADR-0047 file")
+        adr_path = adr_files[0]
+        with open(adr_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        self.assertTrue(content.startswith("---"), "ADR-0047 must contain YAML frontmatter")
+        self.assertIn("status: accepted", content, "ADR-0047 must be accepted")
+        self.assertIn("0038-arquitectura-de-progressive-disclosure-en-agents-md-y-modularizacion-de-reglas.md", content)
 
     def test_execution_profiles_standardization(self):
         """Execution profile labels and MBR matrix must be documented across core and skills."""
