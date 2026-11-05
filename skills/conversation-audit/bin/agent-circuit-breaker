@@ -2,13 +2,15 @@
 """
 agent-circuit-breaker - Lifecycle Hook PreToolUse para Antigravity.
 Interrumpe deterministamente bucles de lectura pasiva consecutiva (> 3)
-e impone un disyuntor de seguridad mecánico para evitar parálisis por inspección.
+y bucles cíclicos alternantes (ping-pong, profundidad 4-6) e impone un
+disyuntor de seguridad mecánico para evitar parálisis por inspección.
 """
 
 import json
 import os
 import sys
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 PASSIVE_TOOLS = {
     "view_file",
@@ -32,10 +34,61 @@ ACTIVE_TOOLS = {
 DEFAULT_MAX_PASSIVE_READS = 3
 
 
-def inspect_transcript_for_passive_reads(transcript_path: Path, max_reads: int = DEFAULT_MAX_PASSIVE_READS) -> int:
-    """Calcula la cantidad de llamadas pasivas consecutivas recientes en la transcripción."""
+def extract_file_target(args: Dict[str, Any]) -> str:
+    """Extrae la ruta del archivo objetivo desde los argumentos si está disponible."""
+    if not isinstance(args, dict):
+        return ""
+    for k in ("AbsolutePath", "TargetFile", "file_path", "filePath", "path", "filename", "file"):
+        if k in args and args[k]:
+            return str(args[k]).strip('\'"')
+    for k, v in args.items():
+        if k.lower().replace("_", "") in ("absolutepath", "targetfile", "filepath", "path", "file"):
+            if v:
+                return str(v).strip('\'"')
+    return ""
+
+
+def get_tool_signature(tool_name: str, args: Dict[str, Any]) -> str:
+    """Genera la firma canónica de la invocación de herramienta."""
+    target = extract_file_target(args)
+    target_base = Path(target).name if target else ""
+    return f"{tool_name}:{target_base}" if target_base else tool_name
+
+
+def detect_ping_pong_loop(events: List[str]) -> Optional[str]:
+    """
+    Detecta si una secuencia de eventos de herramientas recientes presenta
+    un patrón cíclico alternante (ping-pong) con profundidad de 4 a 6 eventos.
+    Retorna la representación del patrón (ej. 'A <-> B' o 'A -> B -> C') o None.
+    """
+    if len(events) < 4:
+        return None
+
+    # 1. Comprobar alternancia de 2 estados en los últimos 4 eventos (profundidad 4-6)
+    # ej: A, B, A, B o sufijo de A, B, A, B, A / A, B, A, B, A, B
+    w4 = events[-4:]
+    if w4[0] != w4[1] and w4[0] == w4[2] and w4[1] == w4[3]:
+        return f"{w4[0]} <-> {w4[1]}"
+
+    # 2. Comprobar alternancia de 3 estados en los últimos 6 eventos (profundidad 6)
+    # ej: A, B, C, A, B, C
+    if len(events) >= 6:
+        w6 = events[-6:]
+        if (
+            w6[0] == w6[3]
+            and w6[1] == w6[4]
+            and w6[2] == w6[5]
+            and len({w6[0], w6[1], w6[2]}) == 3
+        ):
+            return f"{w6[0]} -> {w6[1]} -> {w6[2]}"
+
+    return None
+
+
+def read_recent_transcript_records(transcript_path: Path) -> List[Dict[str, Any]]:
+    """Lee y parsea los registros recientes del transcript delimitados por la última intervención del usuario."""
     if not transcript_path.is_file():
-        return 0
+        return []
 
     try:
         with open(transcript_path, "rb") as f:
@@ -56,51 +109,118 @@ def inspect_transcript_for_passive_reads(transcript_path: Path, max_reads: int =
             except Exception:
                 continue
 
-        consecutive_passive_count = 0
-        for rec in reversed(records):
+        # Encontrar la última intervención del usuario
+        last_user_idx = -1
+        for idx, rec in enumerate(records):
             source = rec.get("source")
             rec_type = rec.get("type")
+            if source in ("USER", "USER_EXPLICIT") or rec_type == "USER_INPUT":
+                last_user_idx = idx
 
-            # La intervención del usuario reinicia la cuenta
-            if source == "USER_EXPLICIT" or rec_type == "USER_INPUT":
-                break
-
-            tcs = rec.get("tool_calls", [])
-            if not tcs:
-                continue
-
-            has_active = any(tc.get("name") in ACTIVE_TOOLS for tc in tcs)
-            if has_active:
-                break
-
-            has_passive = any(tc.get("name") in PASSIVE_TOOLS for tc in tcs)
-            if has_passive:
-                consecutive_passive_count += 1
-            else:
-                break
-
-        return consecutive_passive_count
+        return records[last_user_idx + 1:] if last_user_idx != -1 else records
     except Exception:
-        return 0
+        return []
+
+
+def extract_recent_tool_events(records: List[Dict[str, Any]]) -> List[str]:
+    """Extrae las firmas de las herramientas invocadas cronológicamente."""
+    events = []
+    for rec in records:
+        tcs = rec.get("tool_calls", [])
+        if not isinstance(tcs, list):
+            continue
+        for tc in tcs:
+            if not isinstance(tc, dict):
+                continue
+            tc_name = tc.get("name", "")
+            if not tc_name:
+                continue
+            tc_args = tc.get("args", {})
+            sig = get_tool_signature(tc_name, tc_args if isinstance(tc_args, dict) else {})
+            events.append(sig)
+    return events
+
+
+def inspect_transcript_for_passive_reads(
+    transcript_or_records: Union[Path, List[Dict[str, Any]]],
+    max_reads: int = DEFAULT_MAX_PASSIVE_READS
+) -> int:
+    """Calcula la cantidad de llamadas pasivas consecutivas recientes en la transcripción."""
+    if isinstance(transcript_or_records, (str, Path)):
+        records = read_recent_transcript_records(Path(transcript_or_records))
+    else:
+        records = transcript_or_records
+
+    consecutive_passive_count = 0
+    for rec in reversed(records):
+        source = rec.get("source")
+        rec_type = rec.get("type")
+
+        # La intervención del usuario reinicia la cuenta
+        if source in ("USER", "USER_EXPLICIT") or rec_type == "USER_INPUT":
+            break
+
+        tcs = rec.get("tool_calls", [])
+        if not tcs:
+            continue
+
+        has_active = any(tc.get("name") in ACTIVE_TOOLS for tc in tcs)
+        if has_active:
+            break
+
+        has_passive = any(tc.get("name") in PASSIVE_TOOLS for tc in tcs)
+        if has_passive:
+            consecutive_passive_count += 1
+        else:
+            break
+
+    return consecutive_passive_count
 
 
 def evaluate_pre_tool_use(payload: dict) -> dict:
     """Evalúa el payload de PreToolUse y retorna la decisión canónica."""
     tool_call = payload.get("toolCall", {})
     tool_name = tool_call.get("name", "")
+    tool_args = tool_call.get("args", {})
 
-    # Si no es una herramienta pasiva de inspección, permitir sin costo
-    if tool_name not in PASSIVE_TOOLS:
-        return {"decision": "allow"}
-
-    max_reads = int(os.environ.get("AGENT_CIRCUIT_BREAKER_MAX_READS", str(DEFAULT_MAX_PASSIVE_READS)))
     transcript_path_str = payload.get("transcriptPath")
-
     if not transcript_path_str:
         return {"decision": "allow"}
 
     tpath = Path(transcript_path_str)
-    consecutive_reads = inspect_transcript_for_passive_reads(tpath, max_reads)
+    if not tpath.is_file():
+        return {"decision": "allow"}
+
+    recent_records = read_recent_transcript_records(tpath)
+
+    # 1. Detección de bucle cíclico alternante (Ping-Pong)
+    candidate_sig = get_tool_signature(tool_name, tool_args if isinstance(tool_args, dict) else {})
+    transcript_events = extract_recent_tool_events(recent_records)
+    combined_events = transcript_events + [candidate_sig]
+
+    ping_pong_pattern = detect_ping_pong_loop(combined_events)
+    if not ping_pong_pattern and len(transcript_events) >= 4:
+        ping_pong_pattern = detect_ping_pong_loop(transcript_events)
+
+    if ping_pong_pattern:
+        reason = (
+            f"Hard Circuit Breaker Activado: Se detectó un bucle cíclico alternante ping-pong "
+            f"('{ping_pong_pattern}') en las herramientas recientes. "
+            f"Prohibido continuar en oscilación cíclica. Detén las herramientas repetitivas "
+            f"(Stop & Synthesize) y declara formalmente tu hipótesis técnica antes de continuar."
+        )
+        return {
+            "decision": "deny",
+            "reason": reason,
+        }
+
+    # 2. Si no es una herramienta pasiva de inspección, permitir sin costo
+    if tool_name not in PASSIVE_TOOLS:
+        return {"decision": "allow"}
+
+    # 3. Límite de lecturas pasivas consecutivas
+    max_reads = int(os.environ.get("AGENT_CIRCUIT_BREAKER_MAX_READS", str(DEFAULT_MAX_PASSIVE_READS)))
+    consecutive_reads = inspect_transcript_for_passive_reads(recent_records, max_reads)
 
     # Si ya se alcanzó o superó el umbral, la llamada actual excede el límite permitido
     if consecutive_reads >= max_reads:
