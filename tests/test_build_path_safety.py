@@ -18,6 +18,11 @@ BUILD_SH = os.path.join(REPO_ROOT, "build.sh")
 IGNORE = shutil.ignore_patterns(".git", "dist", "__pycache__", ".commit_msg", ".pr_body")
 
 
+def setUpModule():
+    from dist_support import ensure_dist
+    ensure_dist()
+
+
 class TestBuildPathSafety(unittest.TestCase):
 
     def setUp(self):

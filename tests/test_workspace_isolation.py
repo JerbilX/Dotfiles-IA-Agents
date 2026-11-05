@@ -17,6 +17,11 @@ DIST_DIR = os.path.join(REPO_ROOT, "dist")
 BUILD_SH = os.path.join(REPO_ROOT, "build.sh")
 
 
+def setUpModule():
+    from dist_support import ensure_dist
+    ensure_dist()
+
+
 class TestWorkspaceIsolation(unittest.TestCase):
 
     def setUp(self):

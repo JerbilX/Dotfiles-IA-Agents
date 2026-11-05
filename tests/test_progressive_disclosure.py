@@ -16,6 +16,11 @@ DOCS_ADR_DIR = os.path.join(REPO_ROOT, "docs", "adr")
 RUNTIMES_DIR = os.path.join(REPO_ROOT, "runtimes")
 
 
+def setUpModule():
+    from dist_support import ensure_dist
+    ensure_dist()
+
+
 class TestProgressiveDisclosure(unittest.TestCase):
 
     def test_compiled_antigravity_word_budget(self):

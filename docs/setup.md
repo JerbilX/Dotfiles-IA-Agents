@@ -65,7 +65,12 @@ Para ejecutar el aprovisionamiento completo de directivas, enlaces simbólicos, 
 3. **Enlaces Simbólicos Canónicos:** Crea enlaces atómicos `ln -sfn` hacia las rutas destino declaradas en `target.config_dir` y `target.skills_dir`.
 4. **Exposición de Binarios de Skills:** Enlaza los scripts ejecutables y binarios declarados en `~/.local/bin/` aplicando los alias configurados en cada runtime.
 5. **Configuración de Aliases de GitHub CLI:** Configura de forma idempotente los aliases `board` y `board-ready` en `gh` para consultas prefix-matchables al tablero de Projects v2 sin comillas.
-6. **Auditoría Estática:** Ejecuta automáticamente la suite de verificación (`check`) reportando el estado final de integridad.
+6. **Permisos de Claude Code:** Combina `runtimes/claude/settings.json` en `~/.claude/settings.json` (unión de `permissions.allow`, sin pisar otras claves).
+7. **Hooks de Git:** Activa `core.hooksPath=.githooks`. `dist/` no se versiona; los hooks `post-merge` y `post-checkout` lo regeneran con `./build.sh build all`. Como `~/.gemini/config/AGENTS.md` y `~/.claude/CLAUDE.md` apuntan a `dist/`, las directivas activas siguen a la rama en checkout.
+8. **Auditoría Estática:** Ejecuta automáticamente la suite de verificación (`check`) reportando el estado final de integridad.
+
+### Uso desde Claude Code (CLI y VS Code)
+Ambos comparten `~/.claude/`, así que no requieren pasos adicionales tras `./build.sh all`. El router se resuelve en `~/.claude/core/` y `~/.claude/skills/`. Los servidores MCP de dominio llegan por el `.mcp.json` del workspace (`./build.sh workspace`). Cowork y la web quedan fuera de alcance (ADR-0045).
 
 ### 4.1 Configuración de GitHub Projects v2 (Built-in Workflows)
 Para tableros centrales de proyectos gestionados con GitHub Projects v2, las automatizaciones de transición de estado se configuran una única vez en la interfaz web siguiendo la [Guía de Configuración de Workflows Nativos](setup/projects-v2-workflows.md).
