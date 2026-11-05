@@ -56,6 +56,9 @@ class TestAgentCircuitBreaker(unittest.TestCase):
                 {"source": "MODEL", "type": "PLANNER_RESPONSE", "tool_calls": [{"name": "view_file"}]},
                 {"source": "MODEL", "type": "PLANNER_RESPONSE", "tool_calls": [{"name": "grep_search"}]},
                 {"source": "MODEL", "type": "PLANNER_RESPONSE", "tool_calls": [{"name": "find_by_name"}]},
+                {"source": "MODEL", "type": "PLANNER_RESPONSE", "tool_calls": [{"name": "list_dir"}]},
+                {"source": "MODEL", "type": "PLANNER_RESPONSE", "tool_calls": [{"name": "grep_search"}]},
+                {"source": "MODEL", "type": "PLANNER_RESPONSE", "tool_calls": [{"name": "find_by_name"}]},
             ]
             with open(tfile, "w", encoding="utf-8") as f:
                 for l in lines:
@@ -63,12 +66,19 @@ class TestAgentCircuitBreaker(unittest.TestCase):
 
             payload = {
                 "toolCall": {"name": "view_file", "args": {}},
-                "stepIdx": 4,
+                "stepIdx": 7,
                 "transcriptPath": str(tfile),
             }
             res = cb_mod.evaluate_pre_tool_use(payload)
             self.assertEqual(res["decision"], "deny")
             self.assertIn("Hard Circuit Breaker Activado", res["reason"])
+            # ADR-0046: la salida prescrita es la síntesis, no una edición provisoria
+            self.assertIn("Detente y sintetiza", res["reason"])
+            self.assertIn("Prohibido usar ediciones provisorias", res["reason"])
+            self.assertNotIn("procede a editar", res["reason"])
+
+    def test_default_limit_is_six(self):
+        self.assertEqual(cb_mod.DEFAULT_MAX_PASSIVE_READS, 6)
 
     def test_active_tool_resets_counter(self):
         with tempfile.TemporaryDirectory() as tmpdir:

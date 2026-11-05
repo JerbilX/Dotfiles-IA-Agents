@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 agent-circuit-breaker - Lifecycle Hook PreToolUse para Antigravity.
-Interrumpe deterministamente bucles de lectura pasiva consecutiva (> 3)
+Interrumpe deterministamente bucles de lectura pasiva consecutiva (> 6, ADR-0046)
 y bucles cíclicos alternantes (ping-pong, profundidad 4-6) e impone un
 disyuntor de seguridad mecánico para evitar parálisis por inspección.
 """
@@ -31,7 +31,8 @@ ACTIVE_TOOLS = {
     "ask_question",
 }
 
-DEFAULT_MAX_PASSIVE_READS = 3
+# ADR-0046: 6 deja pasar el 89% de las rachas naturales de exploración y corta la cola de parálisis (10+).
+DEFAULT_MAX_PASSIVE_READS = 6
 
 
 def extract_file_target(args: Dict[str, Any]) -> str:
@@ -226,10 +227,11 @@ def evaluate_pre_tool_use(payload: dict) -> dict:
     if consecutive_reads >= max_reads:
         reason = (
             f"Hard Circuit Breaker Activado: Has alcanzado el límite de {max_reads} lecturas pasivas "
-            f"consecutivas ('{tool_name}') sin acción intermedia observable (mutación con "
-            f"replace_file_content/write_to_file o ejecución de comando en run_command). "
-            f"Prohibido continuar en parálisis por inspección. Formula tu hipótesis de trabajo y "
-            f"procede a editar código, ejecutar pruebas o detenerte con síntesis."
+            f"consecutivas ('{tool_name}') sin acción intermedia observable. "
+            f"Detente y sintetiza: resume hallazgos, hipótesis y plan, y consulta al usuario "
+            f"(Stop & Ask) si falta información. Edita o ejecuta pruebas solo si ya tienes "
+            f"evidencia suficiente para un cambio acotado. Prohibido usar ediciones provisorias "
+            f"o comandos irrelevantes para reiniciar el contador."
         )
         return {
             "decision": "deny",
