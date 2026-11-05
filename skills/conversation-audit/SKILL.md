@@ -77,6 +77,7 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
 - **Consumo Exclusivo de Opciones Nativas y Veto a Wrappers:**
   - Toda la extracción, filtrado e inspección de telemetría debe consumirse exclusivamente mediante las opciones nativas de `agent-audit` (`--format`, `--inspect-step`, `--inspect-steps`, `--filter-tool`, `--failed-steps`, `--metadata-only`, etc.).
   - Prohibido taxativamente envolver `agent-audit` en llamadas intermedias vía `subprocess` dentro de scripts en subshell o evaluadores (`python3 -c`, `bash -c`), así como canalizar su salida por tuberías hacia scripts ad-hoc. El procesamiento debe operar sobre la salida directa del CLI o aislarse en un script formal en `scratch/` confinado (`BypassSandbox: false`).
+  - Ante agregaciones cuantitativas no soportadas por el CLI, exportar a JSON (`--format json`) y procesar en una única ejecución en `scratch/` o delegar a subagente `flash`, evitando bucles interactivos o sobreanálisis ad-hoc en el hilo principal.
 
 #### Jerarquía Determinista de Invocación (Degradación Elegante):
 
@@ -109,6 +110,13 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
    - **Acción Externa:** Solicitar al usuario que posicione su terminal en la raíz de su repositorio de Dotfiles y ejecute `./build.sh all` para aprovisionar las herramientas en el anfitrión.
 
 #### Opciones Disponibles:
+
+- **Ejemplos Canónicos de Inspección Frecuente:**
+  - Pasos lentos: `agent-audit <id> --threshold-latency 30`
+  - Pasos fallidos: `agent-audit <id> --failed-steps`
+  - Filtrar por herramienta: `agent-audit <id> --filter-tool run_command`
+  - Rango acotado de pasos: `agent-audit <id> --inspect-steps 25-45`
+
 - Salida en texto tabular en consola (predeterminada):
   ```bash
   agent-audit <target>
