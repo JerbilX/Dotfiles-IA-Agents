@@ -70,4 +70,13 @@ Para mitigar desbordes de buffer (`CONTEXT_TRUNCATION`) y saturación de la vent
 * **Modo Silencioso / Compacto por Defecto:**
   * La ejecución estándar del arnés (`luajit tests/run.lua` o `lua tests/run.lua`) debe operar en modo silencioso o conciso.
   * La verbosidad detallada o volcados adicionales deben quedar condicionados a una bandera explícita (ej. `--verbose` o `-v`), garantizando que las invocaciones por defecto desde herramientas de automatización (`run_command`) preserven la ventana de contexto.
+* **Diseño y Actualización Atómica de Mocks (Anti-Ping-Pong):**
+  * Para prevenir ciclos pendulares de edición fragmentaria (`PING_PONG_TOOL_LOOP`), queda prohibido realizar ediciones microscópicas sucesivas alternadas con ejecuciones de prueba para inferir gradualmente las dependencias faltantes en el arnés.
+  * Los arneses de mock en `tests/` deben modelar desde su diseño inicial las entidades y métodos canónicos requeridos (`WINDOW_MANAGER`, `GuiRoot`, métodos de control: `SetAnchor`, `ClearAnchors`, `SetDimensions`, `SetHidden`, `SetHandler`, etc.).
+  * Ante discrepancias con el contrato oficial, consultar la documentación canónica (`references/ESOUIDocumentation.txt`) y sincronizar el mock de forma atómica y completa en una sola edición.
+* **Ejecución Atómica de Pruebas (Anti-Terminal-Pipelining):**
+  * Queda prohibido ejecutar suites de pruebas mediante bucles de terminal (`for f in tests/test_*.lua; do luajit "$f"; done`), tuberías con wrappers o construcciones complejas. Estas estructuras rompen el prefix matching de comandos en sandbox y degradan la trazabilidad de auditoría.
+  * Invocación Canónica: Ejecutar las pruebas siempre mediante comandos o runners CLI atómicos:
+    * Runner centralizado: `luajit tests/run.lua`
+    * Test puntual específico: `luajit tests/test_journal.lua`
 

@@ -27,6 +27,7 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
        1. *Vía Canónica:* `agent-module enable eso`
        2. *Vía Fallback:* `python3 ~/.gemini/config/skills/issue-driven-workflow/bin/agent-module enable eso` (en Claude Code: `python3 ~/.claude/skills/issue-driven-workflow/bin/agent-module enable eso`)
        3. *Freno Obligatorio (Stop & Ask):* Prohibido buscar en el host (`find`, `grep`). Detenerse de inmediato y emitir comando terminal-ready (`cd <dotfiles> && ./build.sh all`) u ofrecer andamiaje estático directo con `write_to_file`.
+     * **Blindaje Anti-Reconocimiento MCP:** Si `eso-mcp-server` no está activo en el entorno (herramientas no disponibles en la sesión), queda taxativamente prohibido inspeccionar el host (`~/.gemini/antigravity/mcp/...`, `~/.claude/...` o rutas internas afines) vía terminal (`ls`, `find`) o APIs de lectura para buscar esquemas o scripts. En su lugar, saltar directamente a la Vía Fallback — Archivos Locales (`references/ESOUIDocumentation.txt` y `references/localizegeneratedstrings.lua`).
      * **Límite y Circuit Breaker MCP:** Máximo 3 consultas consecutivas a herramientas de `eso-mcp-server` sin una acción intermedia observable (mutación de código local o ejecución de pruebas).
      * **Búsqueda Guiada por Hipótesis:** Prohibida la navegación exploratoria ciega. Exige formular una hipótesis técnica previa antes de invocar herramientas de exploración profunda (`eso_search_ui_source`, `eso_get_ui_modules`).
      * **Lectura de Código UI por Rango:** Firma `eso_get_ui_source(file_path, symbol?, start_line?, end_line?, max_lines=200)`. Los nombres canónicos son `start_line`/`end_line`. Las herramientas rechazan parámetros desconocidos con `Unknown parameter(s): ... Valid parameters: ...`: corregir el nombre según esa lista y reintentar, sin reformular la consulta.
@@ -40,6 +41,7 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
      * **Sincronización JIT:** Ejecutar `scripts/update_esoui_docs.sh` si el manifiesto requiere una versión de API superior a `ESOUIDocumentation.txt`.
 4. **Nivel 4 — Circuit Breaker y Freno Obligatorio (Stop & Ask):**
    * **Límite MCP:** Máximo 3 consultas consecutivas a `eso-mcp-server`. Al alcanzar 3 consultas sin localizar el símbolo, constante o control buscado, detenerse inmediatamente y solicitar asistencia al usuario (Stop & Ask).
+   * **Circuit Breaker ante Parálisis por Inspección (`READ_ONLY_LOOP`):** Máximo 3 lecturas pasivas consecutivas en archivos de referencia locales (`references/ESOUIDocumentation.txt`, `references/localizegeneratedstrings.lua`). Al alcanzar 3 lecturas sin formular mutaciones o pruebas, es mandatorio formular y declarar explícitamente una hipótesis técnica verificable antes de proceder con lecturas adicionales. Si la hipótesis no se sostiene o no hay avance, accionar Stop & Ask.
    * **Límite Externo:** Máximo 1 consulta a GitHub (`https://github.com/esoui/esoui`) o endpoints raw.
    * Si no se localiza la API o constante, **detenerse inmediatamente y consultar al usuario** (Stop & Ask). Prohibido inventar signaturas, asumir parámetros o continuar en bucles de inspección ciega.
 
@@ -59,8 +61,8 @@ Procedimientos detallados y normativas de ingeniería en `references/`:
 
 | Dominio | Contenido | Referencia Especializada |
 | :--- | :--- | :--- |
-| **Arquitectura Lua** | Aislamiento de namespace, ciclo `EVENT_ADD_ON_LOADED`, persistencia `SavedVariables` e inspección MCP, `ZO_PreHook`/`ZO_PostHook`, recolección de basura, tipado nativo y centralización de constantes/metadatos. | [`references/lua-architecture.md`](references/lua-architecture.md) |
-| **Build y Empaquetado** | Comandos slash en README, sincronización de dependencias (`## DependsOn:` vs README), inyección `@BUILD_VERSION@`, prevalencia del motor sobre mocks y estándares de arnés de pruebas (reporter conciso y anti-table-dumps). | [`references/build-and-packaging.md`](references/build-and-packaging.md) |
+| **Arquitectura Lua** | Aislamiento de namespace, ciclo `EVENT_ADD_ON_LOADED`, persistencia `SavedVariables` e inspección MCP, `ZO_PreHook`/`ZO_PostHook`, recolección de basura, tipado nativo, centralización de constantes/metadatos y jerarquía `CT_TOPLEVELCONTROL`. | [`references/lua-architecture.md`](references/lua-architecture.md) |
+| **Build y Empaquetado** | Comandos slash en README, sincronización de dependencias (`## DependsOn:` vs README), inyección `@BUILD_VERSION@`, prevalencia del motor sobre mocks y estándares de arnés de pruebas (reporter conciso, mocks atómicos, anti-table-dumps y anti-bucles shell). | [`references/build-and-packaging.md`](references/build-and-packaging.md) |
 | **Documentación API** | API oficial de C/Lua, funciones globales, enums, eventos y constantes del motor ZOS. | [`references/ESOUIDocumentation.txt`](references/ESOUIDocumentation.txt) |
 | **Strings y Localización** | Mapeo oficial de textos de interfaz/tooltips en inglés a IDs de strings y enums (`SI_*`). | [`references/localizegeneratedstrings.lua`](references/localizegeneratedstrings.lua) |
 

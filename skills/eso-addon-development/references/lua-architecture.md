@@ -190,3 +190,27 @@ function Addon:Initialize()
 end
 ```
 
+---
+
+## 8. Jerarquía y Creación de Controles de Interfaz (`EsoUI Controls`)
+
+La creación dinámica de controles de interfaz mediante la API de Zenimax exige respetar las convenciones del motor de interfaz de EsoUI:
+
+### 8.1 Creación y Jerarquía de Ventanas de Nivel Superior (`CT_TOPLEVELCONTROL`)
+* **Vía Canónica Recomendada (`CreateTopLevelWindow`):** Para instanciar una ventana o control de nivel superior, la API dedicada y directa provista por el motor es `CreateTopLevelWindow`:
+  ```lua
+  local myWindow = WINDOW_MANAGER:CreateTopLevelWindow("MyAddonTopLevelWindow")
+  ```
+* **Uso de `CreateControl` con `GuiRoot`:** Si se crea mediante `WINDOW_MANAGER:CreateControl` (o `CreateControl`) utilizando el tipo `CT_TOPLEVELCONTROL`, EsoUI requiere que el control padre (`parent`) sea `GuiRoot`:
+  ```lua
+  local myWindow = WINDOW_MANAGER:CreateControl("MyAddonTopLevelWindow", GuiRoot, CT_TOPLEVELCONTROL)
+  ```
+  Evitar pasar paneles secundarios o controles nativos como argumento `parent` al crear un `CT_TOPLEVELCONTROL`.
+* **Integración Visual y Anclaje (`SetAnchor`):** Para posicionar o integrar visualmente una ventana a un panel nativo (ej. `ZO_SharedRightPanelBackground`, paneles de inventario o diario), se debe mantener la ventana en el nivel superior y vincularla espacialmente mediante `:SetAnchor()`:
+  ```lua
+  myWindow:SetDimensions(350, 500)
+  myWindow:ClearAnchors()
+  myWindow:SetAnchor(TOPLEFT, ZO_SharedRightPanelBackground, TOPLEFT, 10, 10)
+  ```
+* **Controles Secundarios (`CT_CONTROL`):** Si se desea anidar controles directamente dentro de un contenedor o panel secundario existente sin crear una ventana independiente, se debe utilizar `CT_CONTROL` (o tipos derivados como `CT_LABEL`, `CT_BUTTON`, `CT_TEXTURE`), asignando el contenedor destino como `parent`.
+
