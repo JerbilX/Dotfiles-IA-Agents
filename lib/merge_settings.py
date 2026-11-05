@@ -12,6 +12,13 @@ import os
 import sys
 
 PERMISSION_LISTS = ("allow", "deny", "ask")
+# ${DOTFILES_ROOT} se expande a la ruta absoluta del repo. En reglas de permisos de
+# Claude Code, `//` inicia una ruta absoluta: "Read(/${DOTFILES_ROOT}/x)" -> "Read(//home/.../x)".
+DOTFILES_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def expand(entry):
+    return entry.replace("${DOTFILES_ROOT}", DOTFILES_ROOT)
 
 
 def load_json(path):
@@ -28,7 +35,7 @@ def merge(target, fragment):
         if key not in f_perms:
             continue
         current = t_perms.setdefault(key, [])
-        for entry in f_perms[key]:
+        for entry in map(expand, f_perms[key]):
             if entry not in current:
                 current.append(entry)
     return target
