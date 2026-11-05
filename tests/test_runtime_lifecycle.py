@@ -38,15 +38,15 @@ class TestRuntimeLifecycle(unittest.TestCase):
             cfg = json.load(f)
         self.assertEqual(cfg.get("status"), "active")
 
-    def test_claude_status_is_on_demand(self):
-        """runtimes/claude/config.json must have status set to 'on-demand'."""
+    def test_claude_status_is_active(self):
+        """runtimes/claude/config.json must have status set to 'active' (ADR-0045, #242)."""
         cfg_path = os.path.join(RUNTIMES_DIR, "claude", "config.json")
         with open(cfg_path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
-        self.assertEqual(cfg.get("status"), "on-demand")
+        self.assertEqual(cfg.get("status"), "active")
 
-    def test_default_build_only_targets_active_runtimes(self):
-        """./build.sh build (no args) must only compile active runtimes (antigravity), skipping claude."""
+    def test_default_build_targets_active_runtimes(self):
+        """./build.sh build (no args) must compile every active runtime (antigravity and claude)."""
         res = subprocess.run(
             [BUILD_SH, "build"],
             cwd=REPO_ROOT,
@@ -55,7 +55,7 @@ class TestRuntimeLifecycle(unittest.TestCase):
         )
         self.assertEqual(res.returncode, 0, f"build.sh build failed: {res.stderr}")
         self.assertIn("Telemetría de contexto [antigravity]", res.stdout)
-        self.assertNotIn("Telemetría de contexto [claude]", res.stdout)
+        self.assertIn("Telemetría de contexto [claude]", res.stdout)
 
     def test_explicit_build_compiles_on_demand_runtime(self):
         """./build.sh build claude must compile claude on-demand."""
