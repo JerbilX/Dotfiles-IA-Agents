@@ -80,6 +80,8 @@ gh project item-add <project_number> --owner <project_owner> --url <issue_url>
 ```
 *(Resueltos desde `.repo-config.json` o fallback `1` y `@me`).*
 
+**Atribución de Agente:** El cuerpo de toda issue (local o cruzada) y de todo PR termina con la línea `Creado por: <runtime> (<modelo>)`, con los valores que declara la regla del runtime activo (ej. `Creado por: Claude Code (claude-opus-5-5)`). Es informativa: sin labels.
+
 **Issues cruzadas (ADR-0045):** Si el hallazgo afecta a otro repositorio del owner, registrarlo allí desde el workspace actual, con confirmación del usuario y sin clonar ni leer archivos del repo destino. El cuerpo debe ser autocontenido (evidencia, origen y criterios de aceptación), porque el agente que lo ejecute no tendrá este contexto:
 ```bash
 gh issue create -R <owner>/<repo> --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"
@@ -103,7 +105,7 @@ Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](refe
 - [ ] **4. Desarrollo:** Promover ADR a `status: accepted` al iniciar desarrollo, I/O nativo con lectura paginada estricta (`view_file` con `StartLine`/`EndLine` ≤ 200, circuit breaker ≤ 3 lecturas consecutivas globales e inmunidad heurística), ediciones atómicas acotadas (`replace_file_content`) y verificar con `./build.sh check`.
 - [ ] **5. Commit:** Staging explícito (`git add <rutas>`; no usar `git add .`/`-A`), redactar en `.commit_msg`, `git commit -F .commit_msg` y limpiar `.commit_msg` en paralelo con la siguiente llamada en el mismo turno.
 - [ ] **6. Push:** Publicar con `git push -u origin <rama>`.
-- [ ] **7. PR:** PR con `Closes #<id>` vía `.pr_body` (ADR viaja como `accepted`); salvaguarda de indexación inmediata con `gh project item-add <project_number> --owner <project_owner> --url <pr_url>` (resueltos desde `.repo-config.json` o fallback `1` y `@me`); limpiar `.pr_body` en paralelo con el reporte del turno. Built-in Workflow avanza tarjeta a `👀 In Review / PR`.
+- [ ] **7. PR:** PR con `Closes #<id>` y línea de atribución (§3.5) vía `.pr_body` (ADR viaja como `accepted`); salvaguarda de indexación inmediata con `gh project item-add <project_number> --owner <project_owner> --url <pr_url>` (resueltos desde `.repo-config.json` o fallback `1` y `@me`); limpiar `.pr_body` en paralelo con el reporte del turno. Built-in Workflow avanza tarjeta a `👀 In Review / PR`.
 - [ ] **8. Cierre & Higiene (Done):** Fusión remota con `gh pr merge <id> --squash --delete-branch` (Riel 1 Default: orden humana en chat; Riel 2 Opt-in: autónomo si tiene label `automerge` y supera circuit breakers) o web; Built-in Workflows cierran issue y avanzan a `Done`. Higiene atómica post-merge en ≤ 2 llamadas con `git-prune-gone --sync`. Ver [`references/branch-lifecycle.md`](references/branch-lifecycle.md).
 
 ---
