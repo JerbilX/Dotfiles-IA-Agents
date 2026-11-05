@@ -17,3 +17,6 @@ __pycache__/
 # Artefactos compilados (ADR-0045): se regeneran con ./build.sh build y .githooks/
 dist/
 .githooks-build.log
+
+# Scripts de exploración (N0, router)
+scratch/
