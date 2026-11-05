@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Regenera dist/ (no versionado) tras un merge o pull (ADR-0045).
+cd "$(git rev-parse --show-toplevel)" || exit 0
+if ! ./build.sh build all >/dev/null 2>.githooks-build.log; then
+    echo "[githooks] ./build.sh build all falló; ver .githooks-build.log" >&2
+    exit 0
+fi
+rm -f .githooks-build.log
+echo "[githooks] dist/ regenerado."

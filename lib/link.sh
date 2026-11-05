@@ -45,6 +45,26 @@ link_runtime() {
 
     link_runtime_mcp "${r}"
     link_runtime_hooks "${r}"
+    merge_runtime_settings "${r}"
+}
+
+# Combina permisos del runtime en el settings del host sin pisar claves del usuario (ADR-0045)
+merge_runtime_settings() {
+    local r="$1"
+    local src="${RUNTIMES_BASE_DIR}/${r}/settings.json"
+    [ -f "${src}" ] || return 0
+    local target_dir
+    target_dir="$(get_runtime_target_dir "$r")"
+    echo "==> [link] Combinando permisos de '${r}' en ${target_dir}/settings.json..."
+    python3 -I "${SCRIPT_DIR}/lib/merge_settings.py" "${src}" "${target_dir}/settings.json"
+}
+
+# Activa hooks de git versionados que regeneran dist/ tras merge o checkout (ADR-0045)
+setup_git_hooks() {
+    if git -C "${SCRIPT_DIR}" rev-parse --git-dir >/dev/null 2>&1; then
+        git -C "${SCRIPT_DIR}" config core.hooksPath .githooks
+        echo "  [✓] Hooks de git activos (core.hooksPath=.githooks)."
+    fi
 }
 
 link_runtime_hooks() {
@@ -94,6 +114,7 @@ cmd_link() {
         link_runtime "$r"
     done
     setup_gh_aliases
+    setup_git_hooks
 }
 
 rollback_runtime() {

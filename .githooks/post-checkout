@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Regenera dist/ (no versionado) al cambiar de rama (ADR-0045). $3=1 indica checkout de rama.
+[ "${3:-0}" = "1" ] || exit 0
+[ "${1:-}" = "${2:-}" ] && exit 0
+exec "$(git rev-parse --show-toplevel)/.githooks/post-merge"

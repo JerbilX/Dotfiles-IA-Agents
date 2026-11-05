@@ -80,6 +80,13 @@ gh project item-add <project_number> --owner <project_owner> --url <issue_url>
 ```
 *(Resueltos desde `.repo-config.json` o fallback `1` y `@me`).*
 
+**Issues cruzadas (ADR-0045):** Si el hallazgo afecta a otro repositorio del owner, registrarlo allí desde el workspace actual, con confirmación del usuario y sin clonar ni leer archivos del repo destino. El cuerpo debe ser autocontenido (evidencia, origen y criterios de aceptación), porque el agente que lo ejecute no tendrá este contexto:
+```bash
+gh issue create -R <owner>/<repo> --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"
+gh project item-add <project_number> --owner <project_owner> --url <issue_url>
+```
+Si el label `profile:<perfil>` no existe en el repo destino, omitirlo y mencionarlo en el cuerpo.
+
 ---
 
 ## 4. Ciclo de Vida E2E (Resumen Ejecutivo)
