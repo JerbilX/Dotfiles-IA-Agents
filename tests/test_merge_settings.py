@@ -45,8 +45,9 @@ class TestMergeSettings(unittest.TestCase):
     def test_runtime_claude_settings_reference_real_paths(self):
         with open(os.path.join(REPO_ROOT, "runtimes", "claude", "settings.json"), encoding="utf-8") as f:
             allow = json.load(f)["permissions"]["allow"]
-        self.assertIn("Read(/${DOTFILES_ROOT}/core/**)", allow)
         self.assertIn("Read(/${DOTFILES_ROOT}/skills/**)", allow)
+        # ADR-0047: el prompt compilado es autosuficiente; no se habilitan lecturas sobre core/
+        self.assertFalse(any("/core/" in rule for rule in allow))
 
 
 if __name__ == "__main__":

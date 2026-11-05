@@ -36,11 +36,11 @@ link_runtime() {
 
     safe_symlink "${dist_file}" "${target_file}" "${r}"
 
-    # Enlace de directivas modulares core hacia target_dir para soporte multi-workspace
+    # Retira el symlink heredado de directivas modulares core (ADR-0047: el prompt compilado es autosuficiente)
     local target_core_dir="${target_dir}/core"
-    if [ ! -e "${target_core_dir}" ] && [ ! -L "${target_core_dir}" ]; then
-        echo "==> [link] [${r}] Creando symlink de directivas modulares: ${target_core_dir} -> ${CORE_DIR}..."
-        ln -sfn "${CORE_DIR}" "${target_core_dir}"
+    if [ -L "${target_core_dir}" ] && [ "$(readlink "${target_core_dir}")" = "${CORE_DIR}" ]; then
+        echo "==> [link] [${r}] Retirando symlink heredado de directivas modulares: ${target_core_dir}..."
+        rm -f "${target_core_dir}"
     fi
 
     link_runtime_mcp "${r}"

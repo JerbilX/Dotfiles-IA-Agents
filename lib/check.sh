@@ -39,23 +39,15 @@ for l in links:
     fi
 
     # Verificación de autosuficiencia y ausencia de enlaces huérfanos a core/ (ADR-0047)
+    # Cualquier mención a un módulo core/02+ eliminado (enlace, backticks o texto plano) en artefactos que viajan al runtime
     local orphan_core_refs=0
-    local router_file="${CORE_DIR}/00-router.md"
-    if [ -f "${router_file}" ]; then
-        if grep -qE "read\s+\[core/|\[core/[0-9]+" "${router_file}"; then
-            echo "  [✗] Referencia a archivo huérfano de core/ detectada en 00-router.md" >&2
-            CHECK_ERRORS=$((CHECK_ERRORS + 1))
-            orphan_core_refs=$((orphan_core_refs + 1))
-        fi
-    fi
-    for dist_prompt in "${SCRIPT_DIR}/dist"/*/AGENTS.md; do
-        [ ! -f "${dist_prompt}" ] && continue
-        if grep -qE "read\s+\[core/|\[core/[0-9]+" "${dist_prompt}"; then
-            echo "  [✗] Referencia a archivo huérfano de core/ detectada en ${dist_prompt}" >&2
-            CHECK_ERRORS=$((CHECK_ERRORS + 1))
-            orphan_core_refs=$((orphan_core_refs + 1))
-        fi
-    done
+    local orphan_file
+    while IFS= read -r orphan_file; do
+        [ -z "${orphan_file}" ] && continue
+        echo "  [✗] Referencia a módulo de core/ inexistente en runtime detectada en ${orphan_file#"${SCRIPT_DIR}"/}" >&2
+        CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        orphan_core_refs=$((orphan_core_refs + 1))
+    done < <(grep -rlE "core/(0[2-9]|[1-9][0-9])-""${CORE_DIR}" "${SCRIPT_DIR}/skills" "${SCRIPT_DIR}/runtimes" "${SCRIPT_DIR}/dist" --include='*.md' 2>/dev/null)
     if [ "${orphan_core_refs}" -eq 0 ]; then
         echo "  [✓] Autosuficiencia de Directivas Basales: Sin referencias huérfanas a core/"
     fi
@@ -484,7 +476,7 @@ for l in links:
     if [ -f "${dist_file}" ]; then
         local w
         w="$(wc -w < "${dist_file}" | tr -d ' ')"
-        local max_w="${MAX_CONTEXT_WORDS:-800}"
+        local max_w="${MAX_CONTEXT_WORDS:-1350}"
         local pct=$(( w * 100 / max_w ))
         if [ "${w}" -gt "${max_w}" ]; then
             echo "  [!] Advertencia [${r}]: Presupuesto de contexto superado: ${w} / ${max_w} palabras (${pct}%)" >&2

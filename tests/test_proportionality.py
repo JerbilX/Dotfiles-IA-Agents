@@ -23,11 +23,10 @@ class TestProportionality(unittest.TestCase):
         self.assertIn("rama efímera", router)
 
     def test_secondary_findings_require_confirmation(self):
-        backlog = _read("core", "08-task-backlog-management.md")
-        self.assertIn("con su confirmación", backlog)
+        self.assertIn("con su confirmación", _read("core", "00-router.md"))
 
     def test_stop_and_plan_is_scoped_to_n2(self):
-        self.assertIn("solo N2", _read("core", "07-anti-hallucination.md"))
+        self.assertIn("solo N2", _read("core", "00-router.md"))
 
     def test_hygiene_is_not_triggered_by_queries(self):
         skill = _read("skills", "issue-driven-workflow", "SKILL.md")

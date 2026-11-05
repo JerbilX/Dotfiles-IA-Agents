@@ -1,7 +1,7 @@
 # Especialización de Herramientas y Permisos (Runtime: Claude Code)
 
 - **Equivalencias de Herramientas:** Donde las directivas nombran herramientas de Antigravity, usar las nativas de Claude Code: `view_file` → `Read` (con `offset`/`limit`, ventana ≤ 200 líneas), `grep_search` → `Grep`, `find_by_name` → `Glob`, `write_to_file` → `Write`, `replace_file_content` → `Edit`, `run_command` → `Bash`. Las reglas de lectura paginada, circuit breaker y granularidad atómica aplican igual.
-- **Resolución de Rutas del Router:** Los enlaces `core/…` y `skills/…` de este documento se resuelven en `~/.claude/core/` y `~/.claude/skills/` desde cualquier workspace. El circuit breaker de lectura rige como regla (sin hook).
+- **Skills y Circuit Breaker:** Las skills se cargan con la herramienta `Skill` desde cualquier workspace. El circuit breaker de lectura rige como regla (sin hook).
 - **Atribución:** Runtime `Claude Code`; modelo: el ID del modelo en curso (ej. `claude-opus-5-5`).
 - **Sin `BypassSandbox`:** Ese parámetro no existe en este runtime. Los permisos de `git`, `gh` y CLIs autorizados (`agent-audit`, `agent-module`, `gh-pr-review`, `git-prune-gone`) se gestionan con la lista de permisos de Claude Code, no por llamada. Commits con `git commit -F .commit_msg` (archivo creado con `Write`).
 - **Subagentes:** El subagente `research` con modelo `flash` es propio de Antigravity. En Claude Code, delegar exploración extensa solo si el usuario lo pide.
