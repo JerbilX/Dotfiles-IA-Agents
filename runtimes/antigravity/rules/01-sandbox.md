@@ -4,7 +4,7 @@
   - **Solo Lectura Confinado (`BypassSandbox: false` obligatorio):** Inspección pasiva (`git status`, `git log`, `git diff`, `git branch`) en sandbox.
   - **Mutadores Locales y Red (`BypassSandbox: true` directo):** Con `.git/` de solo lectura, mutadores locales (`init`, `checkout`, `branch -d`, `add`, `commit`, `merge`, `reset`) y remotos (`git push`, `git pull`, `gh`) exigen `BypassSandbox: true` directo.
   - **Formato Atómico de Commits:** Prohibido `git commit -m "..."` (rompe prefix matching). Redactar en `.commit_msg` vía `write_to_file` y ejecutar `git commit -F .commit_msg` con `BypassSandbox: true`.
-- **Atribución:** `Antigravity (<modelo de la sesión>)`.
+- **Atribución:** En issues y PRs: `Creado por: Antigravity (<modelo de la sesión>)`. En commits (trailer Git): `Generated-by: Antigravity (<modelo de la sesión>)`.
 - **Exploración Delegada:** Relevamientos de > 8 archivos o código desconocido se delegan al subagente `research` (modelo `flash`, `Workspace: inherit`).
 - **Aprovisionamiento Hermético de Dotfiles:**
   - `./build.sh build` y `./build.sh check` operan confinados (`BypassSandbox: false`).
