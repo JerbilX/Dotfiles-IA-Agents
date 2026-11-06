@@ -30,7 +30,7 @@ Concatena en orden determinista los módulos de `core/*.md` con las especializac
 ```
 
 ### 2. `link`
-Verifica la existencia del directorio destino declarado en `target.config_dir`, genera respaldos con timestamp (`.bak.YYYYMMDD_HHMMSS`) de cualquier archivo preexistente, crea enlaces simbólicos atómicos (`ln -sfn`) hacia las ubicaciones canónicas del host y configura los aliases prefix-matchables de GitHub CLI (`board` y `board-ready`):
+Verifica la existencia del directorio destino declarado en `target.config_dir`, genera respaldos con timestamp (`.bak.YYYYMMDD_HHMMSS`) de cualquier archivo preexistente, crea enlaces simbólicos atómicos (`ln -sfn`) hacia las ubicaciones canónicas del host, aprovisiona los skills y sus binarios CLI en `~/.local/bin/` y configura los aliases prefix-matchables de GitHub CLI (`board` y `board-ready`):
 ```bash
 ./build.sh link             # Enlaza runtimes activos (antigravity)
 ./build.sh link claude      # Enlaza ~/.claude/ bajo demanda

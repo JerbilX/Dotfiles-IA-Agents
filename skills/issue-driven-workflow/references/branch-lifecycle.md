@@ -67,7 +67,7 @@ git-prune-gone --sync
 ```
 *(Conmuta a `<base_branch>`, ejecuta `git pull --prune --ff-only` y clasifica y poda ramas `[gone]`. Soporta `--base <rama>` para Categoría B, `--dry-run`, `--json` y `-f` / `--force`).*
 * Tras sincronizar, crear y cambiar a la rama: `git checkout -b <nombre-de-rama>`.
-* **Fallback Determinista:** Si no está en `$PATH`, invocar `skills/issue-driven-workflow/bin/git-prune-gone`.
+* **Fallback Determinista:** Si no está en `$PATH`, seguir el [Protocolo de Invocación y Resiliencia de git-prune-gone](#protocolo-de-invocación-y-resiliencia-de-git-prune-gone). Prohibido recurrir a búsquedas exploratorias (`find`, `which`).
 
 ### Paso 3: Planificación y Refinamiento (📐 In Planning)
 * **Escala por Nivel:** N1 (cambio acotado, sin `core/`, `runtimes/` ni ADR) omite plan bloqueante, ADR y evaluación MBR escrita; N0 no entra al ciclo. Lo siguiente aplica a N2.
@@ -148,6 +148,7 @@ Tras la apertura del PR en el flujo estándar de 1 Gate, el agente reporta el PR
    ```
    *(Conmuta a la base, ejecuta `git pull --prune --ff-only` y poda ramas zombi con detección de squash merge).*
    * Si se usó worktree efímero, desmontarlo: `git worktree remove .worktrees/issue-<id>`.
+   * Ante ausencia en `$PATH`, aplicar de inmediato el [Protocolo de Invocación y Resiliencia de git-prune-gone](#protocolo-de-invocación-y-resiliencia-de-git-prune-gone).
 3. **Cierre Automático y Verificación Condicional:**
    * La directiva `Closes #<id>` y el merge exitoso activan Built-in Workflows (*Pull request merged* e *Item closed*), cerrando la issue y avanzando la tarjeta a `Done` en Projects v2 de forma desatendida.
    * `gh issue view` o `gh issue close` queda reservado como fallback condicional ante errores de cierre remoto.
@@ -174,6 +175,40 @@ Si el issue cuenta con la etiqueta `automerge` en GitHub o la orden inicial del 
 3. Built-in Workflows avanza la tarjeta a `Done` automáticamente al detectarse el merge.
 
 * **Higiene Post-Merge:** Al iniciar la siguiente tarea de desarrollo o tras confirmarse un merge, si la rama actual trackea un PR fusionado/cerrado o `[gone]`, ejecutar este paso de higiene. No se ejecuta ante simples consultas.
+
+#### Protocolo de Invocación y Resiliencia de `git-prune-gone`
+
+Ante cualquier paso de saneamiento o higiene post-merge, seguir estrictamente este orden determinista:
+
+1. **Vía Primaria (Estándar en `$PATH`):**
+   ```bash
+   git-prune-gone --sync
+   ```
+2. **Vía de Fallback Determinista (Ruta Canónica de Skill):**
+   Si la terminal reporta `command not found` o ausencia en `$PATH`, resolver inmediatamente la ruta física sin exploraciones intermedias:
+   - **En este repositorio (`Dotfiles-IA-Agents`):**
+     ```bash
+     ./skills/issue-driven-workflow/bin/git-prune-gone --sync
+     ```
+   - **En workspaces externos:**
+     - En **Antigravity**:
+       ```bash
+       ${HOME}/.gemini/config/skills/issue-driven-workflow/bin/git-prune-gone --sync
+       ```
+     - En **Claude Code**:
+       ```bash
+       ${HOME}/.claude/skills/issue-driven-workflow/bin/git-prune-gone --sync
+       ```
+3. **Vía de Fallback Git Nativo y Detención Segura (*Stop & Ask*):**
+   Si el script no está disponible en el sistema en ninguna de las rutas canónicas anteriores:
+   - **Higiene Git Nativa Inmediata:**
+     ```bash
+     git checkout <base_branch>
+     git pull --prune --ff-only
+     git branch -d <rama-local-fusionada>
+     ```
+   - **Alerta al Usuario (Actionable Fallback):** Notificar al usuario en el chat que ejecute `./build.sh link` (o `./build.sh skills`) en su terminal nativa dentro de `Dotfiles-IA-Agents` para restablecer los binarios en `~/.local/bin/`.
+   - **Prohibición Expresa de Búsquedas Ciegas:** Prohibido iniciar búsquedas exploratorias (`find_by_name`, `find /`, `grep`, `which`, `ls`) para localizar `git-prune-gone` u otros binarios de skills.
 
 ---
 

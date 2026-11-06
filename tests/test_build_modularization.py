@@ -147,6 +147,34 @@ json_get "{data_file}" ".nested.val"
         self.assertEqual(res_jq.returncode, 0)
         self.assertEqual(res_jq.stdout.strip(), "123")
 
+    def test_cmd_link_invokes_skills_runtime(self):
+        """cmd_link must call skills_runtime for each target runtime (Issue #277)."""
+        bash_cmd = f"""
+export RUNTIMES_BASE_DIR="{REPO_ROOT}/runtimes"
+source "{REPO_ROOT}/lib/common.sh"
+source "{REPO_ROOT}/lib/link.sh"
+
+invoked_skills=()
+skills_runtime() {{
+    invoked_skills+=("$1")
+}}
+link_runtime() {{
+    :
+}}
+setup_gh_aliases() {{
+    :
+}}
+setup_git_hooks() {{
+    :
+}}
+
+cmd_link "antigravity"
+echo "Skills invoked: ${{invoked_skills[*]}}"
+"""
+        res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("Skills invoked: antigravity", res.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
