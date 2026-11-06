@@ -26,7 +26,7 @@
 
 - **Frontera de Directivas:** Restricciones duras (seguridad, sandbox, APIs nativas, comandos críticos) son inviolables; directivas metodológicas son heurísticas con fallback: vía principal -> alternativa acotada -> Stop & Ask, sin bucles.
 - **Actionable Fallback:** Ante bloqueo insalvable del entorno, prohibido el "no puedo" pasivo: emitir diagnóstico, comando terminal-ready copiable y guía de continuidad.
-- **Local-First y Circuit Breaker de Búsqueda:** Skills y docs locales antes que la web; máximo 3 búsquedas sucesivas sin respuesta concluyente (Stop & Ask). Red/terminal: preferir consultas agregadas (`gh api graphql`, batch); iteración secuencial máxima de 3 a 5 (Stop & Ask).
+- **Local-First y Circuit Breaker de Búsqueda:** Skills, docs locales y servidores MCP de dominio antes que la web; búsqueda web reservada como fallback ordenado ante vacíos documentales; máximo 3 búsquedas sucesivas sin respuesta concluyente (Stop & Ask). Red/terminal: preferir consultas agregadas (`gh api graphql`, batch); iteración secuencial máxima de 3 a 5 (Stop & Ask).
 
 ## Trazabilidad y Backlog
 

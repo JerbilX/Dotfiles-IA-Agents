@@ -254,6 +254,24 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("comando terminal mutador o de ejecución de pruebas/build", router_content)
         self.assertIn("Comandos de mera inspección pasiva en terminal", router_content)
 
+    def test_domain_mcp_precedence_over_web_search_invariants(self):
+        """core/00-router.md and skills/eso-addon-development/SKILL.md must enforce MCP precedence over web search (#266)."""
+        router_path = os.path.join(CORE_DIR, "00-router.md")
+        with open(router_path, "r", encoding="utf-8") as f:
+            router_content = f.read()
+
+        self.assertIn("servidores MCP de dominio antes que la web", router_content)
+        self.assertIn("fallback ordenado", router_content)
+
+        eso_skill_path = os.path.join(REPO_ROOT, "skills", "eso-addon-development", "SKILL.md")
+        with open(eso_skill_path, "r", encoding="utf-8") as f:
+            eso_skill_content = f.read()
+
+        self.assertIn("Precedencia sobre Búsqueda Web", eso_skill_content)
+        self.assertIn("eso-mcp-server", eso_skill_content)
+        self.assertIn("search_web", eso_skill_content)
+        self.assertIn("fallback ordenado", eso_skill_content)
+
 
 if __name__ == "__main__":
     unittest.main()
