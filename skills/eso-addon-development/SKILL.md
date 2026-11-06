@@ -28,7 +28,7 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
        2. *Vía Fallback:* `python3 ~/.gemini/config/skills/issue-driven-workflow/bin/agent-module enable eso` (en Claude Code: `python3 ~/.claude/skills/issue-driven-workflow/bin/agent-module enable eso`)
        3. *Freno Obligatorio (Stop & Ask):* Prohibido buscar en el host (`find`, `grep`). Detenerse de inmediato y emitir comando terminal-ready (`cd <dotfiles> && ./build.sh all`) u ofrecer andamiaje estático directo con `write_to_file`.
      * **Blindaje Anti-Reconocimiento MCP:** Si `eso-mcp-server` no está activo en el entorno (herramientas no disponibles en la sesión), queda taxativamente prohibido inspeccionar el host (`~/.gemini/antigravity/mcp/...`, `~/.claude/...` o rutas internas afines) vía terminal (`ls`, `find`) o APIs de lectura para buscar esquemas o scripts. En su lugar, saltar directamente a la Vía Fallback — Archivos Locales (`references/ESOUIDocumentation.txt` y `references/localizegeneratedstrings.lua`).
-     * **Límite y Circuit Breaker MCP:** Máximo 3 consultas consecutivas a herramientas de `eso-mcp-server` sin una acción intermedia observable (mutación de código local o ejecución de pruebas).
+     * **Límite y Circuit Breaker MCP:** Máximo 3 consultas a herramientas de `eso-mcp-server` por ciclo de investigación. Prohibido reiniciar el contador mediante acciones intermedias automáticas (mutación de código local o ejecución de pruebas); el límite solo se reinicia tras un gate humano (confirmación explícita del usuario vía Stop & Ask). Al alcanzar 3 consultas sin localizar el símbolo o constante buscado, accionar Stop & Ask.
      * **Búsqueda Guiada por Hipótesis:** Prohibida la navegación exploratoria ciega. Exige formular una hipótesis técnica previa antes de invocar herramientas de exploración profunda (`eso_search_ui_source`, `eso_get_ui_modules`).
      * **Lectura de Código UI por Rango:** Firma `eso_get_ui_source(file_path, symbol?, start_line?, end_line?, max_lines=200)`. Los nombres canónicos son `start_line`/`end_line`. Las herramientas rechazan parámetros desconocidos con `Unknown parameter(s): ... Valid parameters: ...`: corregir el nombre según esa lista y reintentar, sin reformular la consulta.
      * **Salida MCP No Paginable:** Las salidas grandes se persisten (ej. `.system_generated/steps/<n>/output.txt`) como JSON de pocas líneas, con el código en una sola cadena. Paginar ese archivo por líneas (`view_file` con `StartLine`/`EndLine`) no acota el contenido. Pedir rangos chicos al MCP (`start_line`/`end_line`, `max_lines`) en lugar de releer el archivo.
@@ -40,13 +40,17 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
      * **Principio de Suficiencia:** Asumir e implementar de inmediato la constante identificada.
      * **Sincronización JIT:** Ejecutar `scripts/update_esoui_docs.sh` si el manifiesto requiere una versión de API superior a `ESOUIDocumentation.txt`.
    * **Vía Contingencia — Búsqueda Web:**
-     * Prohibido realizar búsquedas web o consultas externas de forma prematura. Reservado exclusivamente ante vacíos documentales confirmados tras consultar sin éxito el MCP y las referencias locales (o si no están disponibles en el entorno).
+     * Prohibido realizar búsquedas web o consultas externas de forma prematura. Reservado exclusivamente ante vacíos documentales confirmados tras consultar sin éxito el MCP (o las referencias locales si el MCP no está disponible en el entorno).
 4. **Nivel 4 — Circuit Breaker y Freno Obligatorio (Stop & Ask):**
    * **Flujo Ordenado de Inspección y Fallback:**
-     1. Hasta 3 consultas consecutivas a herramientas de `eso-mcp-server` sin una acción intermedia observable (mutación de código local o pruebas), guiadas por hipótesis técnica.
-     2. Si el MCP no resuelve o no está disponible: hasta 3 lecturas consecutivas en archivos de referencia locales (`references/ESOUIDocumentation.txt`, `references/localizegeneratedstrings.lua`) sin formular mutaciones o pruebas.
-     3. Si persiste un vacío documental confirmado: máximo 1 búsqueda web acotada o consulta externa (endpoints raw o repositorio oficial de EsoUI).
-     4. Si no se localiza la API o constante tras agotar este orden: **detenerse inmediatamente y consultar al usuario (Stop & Ask)**. Prohibido inventar signaturas, asumir parámetros o reiniciar bucles de inspección ciega.
+     * **Con Servidor MCP Disponible:**
+       1. Hasta 3 consultas a herramientas de `eso-mcp-server`, guiadas por hipótesis técnica. Prohibido reiniciar el contador mediante acciones intermedias automáticas (mutación de código local o pruebas); el límite solo se reinicia tras un gate humano (confirmación explícita del usuario vía Stop & Ask).
+       2. Si persiste un vacío documental confirmado: máximo 1 búsqueda web acotada o consulta externa (endpoints raw o repositorio oficial de EsoUI).
+       3. Si no se localiza la API o constante tras agotar esta vía: **detenerse inmediatamente y consultar al usuario (Stop & Ask)**. Prohibido inventar signaturas, asumir parámetros o reiniciar bucles de inspección ciega.
+     * **Si el MCP No Está Disponible (Fallback Local y Web):**
+       1. Hasta 3 lecturas pasivas en archivos de referencia locales (`references/ESOUIDocumentation.txt`, `references/localizegeneratedstrings.lua`). Al alcanzar 3 lecturas sin formular mutaciones o pruebas, es mandatorio formular y declarar explícitamente una hipótesis técnica verificable antes de proceder con lecturas adicionales. Si la hipótesis no se sostiene o no hay avance, accionar Stop & Ask.
+       2. Si persiste un vacío documental confirmado: máximo 1 búsqueda web acotada o consulta externa (endpoints raw o repositorio oficial de EsoUI).
+       3. Si no se localiza la API o constante tras agotar esta vía: **detenerse inmediatamente y consultar al usuario (Stop & Ask)**. Prohibido inventar signaturas, asumir parámetros o reiniciar bucles de inspección ciega.
 
 ---
 
