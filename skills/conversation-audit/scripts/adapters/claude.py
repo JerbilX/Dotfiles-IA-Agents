@@ -130,10 +130,6 @@ class ClaudeAdapter(TranscriptAdapter):
                     parts.append(sub.get("text", ""))
                 elif isinstance(sub, str):
                     parts.append(sub)
-                elif isinstance(sub, dict) and "text" in sub:
-                    parts.append(str(sub["text"]))
-                elif sub is not None:
-                    parts.append(str(sub))
             return "\n".join(parts)
         if content is None:
             return ""
