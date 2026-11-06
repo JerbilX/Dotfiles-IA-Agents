@@ -100,11 +100,13 @@ class AuditEngine:
         "read_file",
         "readfile",
         "read_local_file",
+        "read",
         "grep_search",
         "grep",
         "search",
         "find_by_name",
         "find",
+        "glob",
         "list_dir",
         "list_directory",
         "read_url_content",
@@ -115,7 +117,9 @@ class AuditEngine:
         "replace_file_content",
         "write_to_file",
         "write_file",
+        "write",
         "edit_file",
+        "edit",
         "run_command",
         "bash",
         "execute_command",
@@ -699,7 +703,10 @@ class AuditEngine:
                 continue
 
             if s.tool_calls:
-                has_active = any(tc.name in self.ACTIVE_MUTATION_TOOLS for tc in s.tool_calls)
+                has_active = any(
+                    tc.name in self.ACTIVE_MUTATION_TOOLS or tc.name.lower() in self.ACTIVE_MUTATION_TOOLS
+                    for tc in s.tool_calls
+                )
                 if has_active:
                     if len(current_passive_steps) >= 4:
                         start_step = current_passive_steps[0].step_index
@@ -725,7 +732,10 @@ class AuditEngine:
                             )
                         )
                     current_passive_steps = []
-                elif all(tc.name in self.PASSIVE_INSPECTION_TOOLS for tc in s.tool_calls):
+                elif all(
+                    tc.name in self.PASSIVE_INSPECTION_TOOLS or tc.name.lower() in self.PASSIVE_INSPECTION_TOOLS
+                    for tc in s.tool_calls
+                ):
                     current_passive_steps.append(s)
 
         if len(current_passive_steps) >= 4:
