@@ -704,7 +704,7 @@ class AuditEngine:
 
             if s.tool_calls:
                 has_active = any(
-                    tc.name in self.ACTIVE_MUTATION_TOOLS or tc.name.lower() in self.ACTIVE_MUTATION_TOOLS
+                    tc.name.lower() in self.ACTIVE_MUTATION_TOOLS
                     for tc in s.tool_calls
                 )
                 if has_active:
@@ -733,7 +733,7 @@ class AuditEngine:
                         )
                     current_passive_steps = []
                 elif all(
-                    tc.name in self.PASSIVE_INSPECTION_TOOLS or tc.name.lower() in self.PASSIVE_INSPECTION_TOOLS
+                    tc.name.lower() in self.PASSIVE_INSPECTION_TOOLS
                     for tc in s.tool_calls
                 ):
                     current_passive_steps.append(s)
