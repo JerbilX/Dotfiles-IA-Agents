@@ -261,16 +261,17 @@ class TestProgressiveDisclosure(unittest.TestCase):
             router_content = f.read()
 
         self.assertIn("servidores MCP de dominio antes que la web", router_content)
-        self.assertIn("fallback ordenado", router_content)
+        self.assertIn("fallback ordenado ante vacíos documentales confirmados", router_content)
 
         eso_skill_path = os.path.join(REPO_ROOT, "skills", "eso-addon-development", "SKILL.md")
         with open(eso_skill_path, "r", encoding="utf-8") as f:
             eso_skill_content = f.read()
 
-        self.assertIn("Precedencia sobre Búsqueda Web", eso_skill_content)
+        self.assertIn("Vía Contingencia — Búsqueda Web", eso_skill_content)
+        self.assertIn("Flujo Ordenado de Inspección y Fallback", eso_skill_content)
         self.assertIn("eso-mcp-server", eso_skill_content)
         self.assertIn("search_web", eso_skill_content)
-        self.assertIn("fallback ordenado", eso_skill_content)
+        self.assertIn("vacíos documentales confirmados", eso_skill_content)
 
 
 if __name__ == "__main__":

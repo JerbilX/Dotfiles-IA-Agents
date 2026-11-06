@@ -1,7 +1,7 @@
 ---
 name: eso-addon-development
 description: >-
-  MANDATORY: You MUST read this skill BEFORE starting any task, lookup, or code change related to Elder Scrolls Online (ESO) addons. It defines the API lookup hierarchy (prioritizing eso-mcp-server tools and local references before web search fallback), canonical reference paths, and strict guidelines for Zenimax (EsoUI) addon development. Do NOT skip reading this.
+  MANDATORY: You MUST read this skill BEFORE starting any task, lookup, or code change related to Elder Scrolls Online (ESO) addons. It defines the API lookup hierarchy (prioritizing eso-mcp-server tools before local fallback, and reserving web search as last-resort contingency), canonical reference paths, and strict guidelines for Zenimax (EsoUI) addon development. Do NOT skip reading this.
 ---
 
 # Elder Scrolls Online (ESO) Addon Engineering
@@ -39,10 +39,16 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
      * **Flujo para textos en pantalla:** Buscar string en `localizegeneratedstrings.lua` -> contrastar constante/enum en `ESOUIDocumentation.txt`.
      * **Principio de Suficiencia:** Asumir e implementar de inmediato la constante identificada.
      * **Sincronización JIT:** Ejecutar `scripts/update_esoui_docs.sh` si el manifiesto requiere una versión de API superior a `ESOUIDocumentation.txt`.
+   * **Vía Contingencia — Búsqueda Web (`search_web`):**
+     * Prohibido invocar `search_web` o búsquedas externas de forma prematura. Reservado exclusivamente ante vacíos documentales confirmados tras consultar sin éxito el MCP y las referencias locales (o si no están disponibles en el entorno).
 4. **Nivel 4 — Circuit Breaker y Freno Obligatorio (Stop & Ask):**
-   * **Precedencia sobre Búsqueda Web:** Prohibido invocar `search_web` o búsquedas externas de forma prematura. Ante dudas sobre APIs, contratos, constantes o estructuras de UI, es mandatorio consultar primero las herramientas de `eso-mcp-server` (o archivos locales si el MCP no está disponible). `search_web` queda reservado exclusivamente como contingencia/fallback ordenado ante vacíos confirmados en el MCP y referencias locales.
-   * **Límite MCP:** Máximo 3 consultas consecutivas a `eso-mcp-server`. Al alcanzar 3 consultas sin localizar el símbolo, constante o control buscado, detenerse inmediatamente y solicitar asistencia al usuario (Stop & Ask).
-   * **Circuit Breaker ante Parálisis por Inspección (`READ_ONLY_LOOP`):** Máximo 3 lecturas pasivas consecutivas en archivos de referencia locales (`references/ESOUIDocumentation.txt`, `references/localizegeneratedstrings.lua`). Al alcanzar 3 lecturas sin formular mutaciones o pruebas, es mandatorio formular y declarar explícitamente una hipótesis técnica verificable antes de proceder con lecturas adicionales. Si la hipótesis no se sostiene o no hay avance, accionar Stop & Ask.
+   * **Flujo Ordenado de Inspección y Fallback:**
+     1. Hasta 3 consultas a `eso-mcp-server` guiadas por hipótesis.
+     2. Si el MCP no resuelve o no está disponible: hasta 3 lecturas en archivos de referencia locales (`references/ESOUIDocumentation.txt`, `references/localizegeneratedstrings.lua`).
+     3. Si persiste un vacío documental confirmado: máximo 1 búsqueda web acotada (`search_web` o endpoint raw de GitHub).
+     4. Si no se localiza la API o constante tras agotar este orden: **detenerse inmediatamente y consultar al usuario (Stop & Ask)**. Prohibido inventar signaturas, asumir parámetros o reiniciar bucles de inspección ciega.
+   * **Límite MCP:** Máximo 3 consultas consecutivas a `eso-mcp-server` sin una acción intermedia observable (mutación de código local o ejecución de pruebas).
+   * **Circuit Breaker ante Parálisis por Inspección (`READ_ONLY_LOOP`):** Máximo 3 lecturas pasivas consecutivas en archivos de referencia locales sin formular mutaciones o pruebas; exige formular hipótesis verificable antes de continuar o accionar Stop & Ask.
    * **Límite Externo:** Máximo 1 consulta a GitHub (`https://github.com/esoui/esoui`) o endpoints raw.
    * Si no se localiza la API o constante, **detenerse inmediatamente y consultar al usuario** (Stop & Ask). Prohibido inventar signaturas, asumir parámetros o continuar en bucles de inspección ciega.
 
