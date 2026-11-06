@@ -636,6 +636,110 @@ class TestStepInspectionAndFailedSteps(unittest.TestCase):
         self.assertEqual(len(failed), 1)
         self.assertEqual(failed[0].step_index, 5)
 
+    def test_get_failed_steps_dedup_parallel_tool_calls(self):
+        from audit_engine import get_failed_steps
+
+        # Paso 1: Modelo llama a 2 herramientas en paralelo (tool_1 ok, tool_2 error)
+        step_model = NormalizedStep(
+            step_index=1,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            status="DONE",
+            tool_calls=[
+                NormalizedToolCall(
+                    name="view_file",
+                    call_id="call_01",
+                    status="DONE",
+                    raw_output="content of file",
+                ),
+                NormalizedToolCall(
+                    name="run_command",
+                    call_id="call_02",
+                    status="ERROR",
+                    error="command failed with exit code 1",
+                ),
+            ],
+        )
+
+        # Paso 2: TOOL_OUTPUT con las respuestas unificadas (s.content une ambas)
+        # s.content no coincide con ningún tc.error individual
+        step_output = NormalizedStep(
+            step_index=2,
+            source="SYSTEM",
+            step_type="TOOL_OUTPUT",
+            content="content of file\ncommand failed with exit code 1",
+            status="ERROR",
+            raw={
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_01",
+                        "content": "content of file",
+                        "is_error": False,
+                    },
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_02",
+                        "content": "command failed with exit code 1",
+                        "is_error": True,
+                    },
+                ],
+            },
+        )
+
+        steps = [step_model, step_output]
+        failed = get_failed_steps(steps)
+        # Debe deduplicar por call_id/tool_use_id y retornar solo el paso 1
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(failed[0].step_index, 1)
+
+    def test_get_failed_steps_dedup_list_content_tool_result(self):
+        from audit_engine import get_failed_steps
+
+        step_model = NormalizedStep(
+            step_index=3,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            status="DONE",
+            tool_calls=[
+                NormalizedToolCall(
+                    name="run_command",
+                    call_id="call_list_01",
+                    status="ERROR",
+                    error="Error text from block\nSecond line",
+                ),
+            ],
+        )
+
+        step_output = NormalizedStep(
+            step_index=4,
+            source="SYSTEM",
+            step_type="TOOL_OUTPUT",
+            content="Error text from block\nSecond line",
+            status="ERROR",
+            raw={
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_list_01",
+                        "content": [
+                            {"type": "text", "text": "Error text from block"},
+                            {"type": "text", "text": "Second line"},
+                        ],
+                        "is_error": True,
+                    },
+                ],
+            },
+        )
+
+        steps = [step_model, step_output]
+        failed = get_failed_steps(steps)
+        # Deduplica basándose en call_id/tool_use_id
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(failed[0].step_index, 3)
+
     def test_format_failed_steps_text_markdown_json(self):
         from audit_engine import (
             format_json_failed_steps,

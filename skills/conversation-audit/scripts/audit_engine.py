@@ -1027,6 +1027,33 @@ def format_args(args: Any, max_chars: int = 1000) -> str:
     return formatted
 
 
+def _extract_step_call_ids(step: NormalizedStep, only_errors: bool = False) -> set:
+    """Extrae los identificadores de llamada (call_id / tool_use_id) asociados a un paso."""
+    ids = set()
+    for tc in step.tool_calls:
+        if only_errors and tc.status != "ERROR" and not tc.error:
+            continue
+        if tc.call_id:
+            ids.add(str(tc.call_id))
+
+    raw = step.raw
+    if isinstance(raw, dict):
+        top_id = raw.get("call_id") or raw.get("tool_use_id")
+        if top_id:
+            if not only_errors or raw.get("is_error") or step.status == "ERROR":
+                ids.add(str(top_id))
+
+        content_blocks = raw.get("content")
+        if isinstance(content_blocks, list):
+            for b in content_blocks:
+                if isinstance(b, dict):
+                    b_id = b.get("tool_use_id") or b.get("call_id")
+                    if b_id:
+                        if not only_errors or b.get("is_error"):
+                            ids.add(str(b_id))
+    return ids
+
+
 def get_failed_steps(steps: List[NormalizedStep]) -> List[NormalizedStep]:
     """Filtra y devuelve exclusivamente los pasos que arrojaron errores o excepciones en herramientas."""
     failed: List[NormalizedStep] = []
@@ -1039,8 +1066,19 @@ def get_failed_steps(steps: List[NormalizedStep]) -> List[NormalizedStep]:
             # evitar duplicación si el paso inmediatamente anterior ya registró el error en sus tool_calls
             if s.step_type in ("GENERIC", "TOOL_OUTPUT") and failed:
                 prev = failed[-1]
-                if prev.step_index == s.step_index - 1 and any(tc.error == s.content for tc in prev.tool_calls):
-                    continue
+                if prev.step_index == s.step_index - 1:
+                    prev_failed_ids = {
+                        tc.call_id for tc in prev.tool_calls
+                        if (tc.status == "ERROR" or tc.error) and tc.call_id
+                    }
+                    s_error_ids = _extract_step_call_ids(s, only_errors=True)
+                    if s_error_ids and prev_failed_ids and (s_error_ids & prev_failed_ids):
+                        continue
+                    s_all_ids = _extract_step_call_ids(s, only_errors=False)
+                    if s_all_ids and prev_failed_ids and (s_all_ids & prev_failed_ids):
+                        continue
+                    if not s_all_ids and any(tc.error == s.content for tc in prev.tool_calls):
+                        continue
             failed.append(s)
     return failed
 

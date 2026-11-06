@@ -146,6 +146,124 @@ class TestClaudeAdapterToolResult(unittest.TestCase):
         finally:
             f_path.unlink(missing_ok=True)
 
+    def test_tool_result_list_content_extracted_cleanly_and_deduped(self):
+        """tc.error y tc.raw_output extraen texto limpio de content en lista y get_failed_steps no duplica."""
+        from audit_engine import get_failed_steps
+
+        events = [
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_list_01",
+                        "name": "run_command",
+                        "input": {"CommandLine": "make test"},
+                    }
+                ],
+                "timestamp": "2026-11-06T00:00:01Z",
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_list_01",
+                        "content": [
+                            {"type": "text", "text": "Error: Command failed with exit code 2"},
+                            {"type": "text", "text": "Details: missing dependency"},
+                        ],
+                        "is_error": True,
+                    }
+                ],
+                "timestamp": "2026-11-06T00:00:02Z",
+            },
+        ]
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
+            for ev in events:
+                f.write(json.dumps(ev) + "\n")
+            f_path = Path(f.name)
+
+        try:
+            steps = self.adapter.parse(f_path)
+            self.assertEqual(len(steps), 2)
+
+            # Verificar que tc.error no es str(lista) sino el texto extraído
+            model_tc = steps[0].tool_calls[0]
+            self.assertEqual(model_tc.status, "ERROR")
+            expected_err = "Error: Command failed with exit code 2\nDetails: missing dependency"
+            self.assertEqual(model_tc.error, expected_err)
+            self.assertNotIn("[{'type':", model_tc.error)
+
+            # Verificar deduplicación en get_failed_steps
+            failed = get_failed_steps(steps)
+            self.assertEqual(len(failed), 1)
+            self.assertEqual(failed[0].step_index, 0)
+        finally:
+            f_path.unlink(missing_ok=True)
+
+    def test_parallel_tool_results_failed_steps_dedup(self):
+        """Llamadas en paralelo en un mismo evento no duplican errores en get_failed_steps."""
+        from audit_engine import get_failed_steps
+
+        events = [
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_p1",
+                        "name": "view_file",
+                        "input": {"AbsolutePath": "/a.txt"},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_p2",
+                        "name": "run_command",
+                        "input": {"CommandLine": "exit 1"},
+                    },
+                ],
+                "timestamp": "2026-11-06T00:00:01Z",
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_p1",
+                        "content": "file contents",
+                        "is_error": False,
+                    },
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_p2",
+                        "content": "failed execution",
+                        "is_error": True,
+                    },
+                ],
+                "timestamp": "2026-11-06T00:00:02Z",
+            },
+        ]
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
+            for ev in events:
+                f.write(json.dumps(ev) + "\n")
+            f_path = Path(f.name)
+
+        try:
+            steps = self.adapter.parse(f_path)
+            self.assertEqual(len(steps), 2)
+            tool_output_step = steps[1]
+            self.assertEqual(tool_output_step.status, "ERROR")
+            self.assertIn("file contents", tool_output_step.content or "")
+            self.assertIn("failed execution", tool_output_step.content or "")
+
+            # get_failed_steps debe retornar solo el paso 0
+            failed = get_failed_steps(steps)
+            self.assertEqual(len(failed), 1)
+            self.assertEqual(failed[0].step_index, 0)
+        finally:
+            f_path.unlink(missing_ok=True)
+
     def test_read_only_loop_and_user_turns_with_claude_code_fixture(self):
         """Fixture con eventos planos ({"role", "content"})."""
         self._assert_read_only_loop_fixture(nested=False)
