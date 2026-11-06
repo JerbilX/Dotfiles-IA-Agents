@@ -518,6 +518,69 @@ class TestAgentAuditCli(unittest.TestCase):
                 code = self.agent_audit.main()
                 self.assertEqual(code, 2)
 
+    def test_cli_detects_excessive_web_search_with_custom_threshold(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            transcript_file = Path(tmpdir) / "transcript.jsonl"
+            lines = [
+                {"step_index": 0, "source": "USER", "type": "USER_INPUT", "content": "search"},
+                {
+                    "step_index": 1,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "tool_calls": [{"name": "search_web", "args": {"query": "q1"}}],
+                },
+                {
+                    "step_index": 2,
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "tool_calls": [{"name": "search_web", "args": {"query": "q2"}}],
+                },
+            ]
+            with open(transcript_file, "w", encoding="utf-8") as f:
+                for line in lines:
+                    f.write(json.dumps(line) + "\n")
+
+            test_argv_default = ["agent-audit", str(transcript_file), "--fail-on-antipattern"]
+            with patch("sys.argv", test_argv_default):
+                code = self.agent_audit.main()
+                self.assertEqual(code, 0)
+
+            test_argv_custom = ["agent-audit", str(transcript_file), "--threshold-web-search", "1", "--fail-on-antipattern"]
+            with patch("sys.argv", test_argv_custom):
+                code = self.agent_audit.main()
+                self.assertEqual(code, 2)
+
+    def test_cli_detects_runaway_turns_with_custom_threshold(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            transcript_file = Path(tmpdir) / "transcript.jsonl"
+            lines = [
+                {"step_index": 0, "source": "USER", "type": "USER_INPUT", "content": "start"},
+                {"step_index": 1, "source": "MODEL", "type": "PLANNER_RESPONSE", "content": "step 1"},
+                {"step_index": 2, "source": "MODEL", "type": "PLANNER_RESPONSE", "content": "step 2"},
+                {"step_index": 3, "source": "MODEL", "type": "PLANNER_RESPONSE", "content": "step 3"},
+            ]
+            with open(transcript_file, "w", encoding="utf-8") as f:
+                for line in lines:
+                    f.write(json.dumps(line) + "\n")
+
+            test_argv_default = ["agent-audit", str(transcript_file), "--fail-on-antipattern"]
+            with patch("sys.argv", test_argv_default):
+                code = self.agent_audit.main()
+                self.assertEqual(code, 0)
+
+            test_argv_custom = ["agent-audit", str(transcript_file), "--threshold-runaway-turns", "2", "--fail-on-antipattern"]
+            with patch("sys.argv", test_argv_custom):
+                code = self.agent_audit.main()
+                self.assertEqual(code, 2)
+
 
 class TestStepInspectionAndFailedSteps(unittest.TestCase):
     """Pruebas unitarias para las funcionalidades quirúrgicas --inspect-step y --failed-steps."""
@@ -1152,6 +1215,282 @@ class TestTranscriptTruncationSeverity(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0].severity, "BAJA")
         self.assertIn("no evidencia pérdida de contexto", found[0].description)
+
+
+class TestExcessiveWebSearchAntipattern(unittest.TestCase):
+    """Pruebas unitarias para la detección del antipatrón EXCESSIVE_WEB_SEARCH (Issue #264)."""
+
+    def test_excessive_web_search_detected_above_threshold(self):
+        """Verifica que más de 3 búsquedas web consecutivas disparen EXCESSIVE_WEB_SEARCH."""
+        steps = [
+            NormalizedStep(
+                step_index=i,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="search_web", args={"query": f"query {i}"})],
+            )
+            for i in range(1, 5)
+        ]
+        engine = AuditEngine(web_search_threshold=3)
+        antipatterns = engine._detect_antipatterns(steps)
+        found = [ap for ap in antipatterns if ap.code == "EXCESSIVE_WEB_SEARCH"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].severity, "ALTA")
+        self.assertEqual(found[0].step_index, 4)
+        self.assertIn("4 búsquedas web consecutivas", found[0].description)
+        self.assertIn("search_web", found[0].description)
+
+    def test_web_search_within_threshold_not_detected(self):
+        """Verifica que 3 búsquedas (umbral máximo permitido) no disparen el antipatrón."""
+        steps = [
+            NormalizedStep(
+                step_index=i,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="search_web", args={"query": f"query {i}"})],
+            )
+            for i in range(1, 4)
+        ]
+        steps.append(
+            NormalizedStep(
+                step_index=4,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="view_file", args={"AbsolutePath": "/test.py"})],
+            )
+        )
+        engine = AuditEngine(web_search_threshold=3)
+        antipatterns = engine._detect_antipatterns(steps)
+        found = [ap for ap in antipatterns if ap.code == "EXCESSIVE_WEB_SEARCH"]
+        self.assertEqual(len(found), 0)
+
+    def test_intermediate_non_search_tool_resets_web_search_counter(self):
+        """Una acción intermedia con otra herramienta reinicia el contador y evita el antipatrón."""
+        steps = [
+            NormalizedStep(
+                step_index=1,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="search_web", args={"query": "q1"})],
+            ),
+            NormalizedStep(
+                step_index=2,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="search_web", args={"query": "q2"})],
+            ),
+            NormalizedStep(
+                step_index=3,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="view_file", args={"AbsolutePath": "/test.py"})],
+            ),
+            NormalizedStep(
+                step_index=4,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="search_web", args={"query": "q3"})],
+            ),
+            NormalizedStep(
+                step_index=5,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="search_web", args={"query": "q4"})],
+            ),
+        ]
+        engine = AuditEngine(web_search_threshold=3)
+        antipatterns = engine._detect_antipatterns(steps)
+        found = [ap for ap in antipatterns if ap.code == "EXCESSIVE_WEB_SEARCH"]
+        self.assertEqual(len(found), 0)
+
+    def test_user_interaction_resets_web_search_counter(self):
+        """Un turno de usuario interrumpe la racha de búsquedas consecutivas."""
+        steps = [
+            NormalizedStep(
+                step_index=1,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="search_web", args={"query": "q1"})],
+            ),
+            NormalizedStep(
+                step_index=2,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="search_web", args={"query": "q2"})],
+            ),
+            NormalizedStep(
+                step_index=3,
+                source="USER",
+                step_type="USER_INPUT",
+                content="continuar",
+            ),
+            NormalizedStep(
+                step_index=4,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="search_web", args={"query": "q3"})],
+            ),
+            NormalizedStep(
+                step_index=5,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="search_web", args={"query": "q4"})],
+            ),
+        ]
+        engine = AuditEngine(web_search_threshold=3)
+        antipatterns = engine._detect_antipatterns(steps)
+        found = [ap for ap in antipatterns if ap.code == "EXCESSIVE_WEB_SEARCH"]
+        self.assertEqual(len(found), 0)
+
+    def test_various_search_tool_names_recognized(self):
+        """Herramientas equivalentes (WebSearch, brave_web_search) son contabilizadas."""
+        steps = [
+            NormalizedStep(
+                step_index=1,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="WebSearch", args={"query": "q1"})],
+            ),
+            NormalizedStep(
+                step_index=2,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="search_web", args={"query": "q2"})],
+            ),
+            NormalizedStep(
+                step_index=3,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="web_search", args={"query": "q3"})],
+            ),
+            NormalizedStep(
+                step_index=4,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="brave_web_search", args={"query": "q4"})],
+            ),
+        ]
+        engine = AuditEngine(web_search_threshold=3)
+        antipatterns = engine._detect_antipatterns(steps)
+        found = [ap for ap in antipatterns if ap.code == "EXCESSIVE_WEB_SEARCH"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].severity, "ALTA")
+
+
+class TestRunawayTurnsAntipattern(unittest.TestCase):
+    """Pruebas unitarias para la detección del antipatrón RUNAWAY_TURNS (Issue #264)."""
+
+    def test_runaway_turns_detected_at_session_end(self):
+        """Verifica que turnos continuos del modelo > 40 sin intervención del usuario disparen RUNAWAY_TURNS."""
+        steps = [
+            NormalizedStep(
+                step_index=i,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+                tool_calls=[NormalizedToolCall(name="run_command", args={"CommandLine": "echo test"})],
+            )
+            for i in range(1, 45)
+        ]
+        engine = AuditEngine(runaway_turns_threshold=40)
+        antipatterns = engine._detect_antipatterns(steps)
+        found = [ap for ap in antipatterns if ap.code == "RUNAWAY_TURNS"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].severity, "ALTA")
+        self.assertEqual(found[0].step_index, 44)
+        self.assertIn("44 turnos consecutivos", found[0].description)
+
+    def test_runaway_turns_detected_before_user_input(self):
+        """Verifica que una ráfaga > 40 turnos del modelo seguida de input de usuario sea detectada."""
+        steps = [
+            NormalizedStep(
+                step_index=i,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+            )
+            for i in range(1, 43)
+        ]
+        steps.append(
+            NormalizedStep(
+                step_index=43,
+                source="USER",
+                step_type="USER_INPUT",
+                content="detente",
+            )
+        )
+        steps.append(
+            NormalizedStep(
+                step_index=44,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+            )
+        )
+        engine = AuditEngine(runaway_turns_threshold=40)
+        antipatterns = engine._detect_antipatterns(steps)
+        found = [ap for ap in antipatterns if ap.code == "RUNAWAY_TURNS"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].step_index, 42)
+        self.assertIn("42 turnos consecutivos", found[0].description)
+
+    def test_model_turns_within_threshold_not_detected(self):
+        """Verifica que hasta 40 turnos consecutivos no disparen RUNAWAY_TURNS."""
+        steps = [
+            NormalizedStep(
+                step_index=i,
+                source="MODEL",
+                step_type="PLANNER_RESPONSE",
+            )
+            for i in range(1, 41)
+        ]
+        engine = AuditEngine(runaway_turns_threshold=40)
+        antipatterns = engine._detect_antipatterns(steps)
+        found = [ap for ap in antipatterns if ap.code == "RUNAWAY_TURNS"]
+        self.assertEqual(len(found), 0)
+
+    def test_user_interaction_breaks_consecutive_model_turns(self):
+        """Intervenciones del usuario resetean el acumulador impidiendo el falso positivo."""
+        steps = []
+        # Bloque 1: 30 pasos de modelo
+        for i in range(1, 31):
+            steps.append(NormalizedStep(step_index=i, source="MODEL", step_type="PLANNER_RESPONSE"))
+        # Intervención usuario en paso 31
+        steps.append(NormalizedStep(step_index=31, source="USER", step_type="USER_INPUT", content="ok"))
+        # Bloque 2: 30 pasos de modelo
+        for i in range(32, 62):
+            steps.append(NormalizedStep(step_index=i, source="MODEL", step_type="PLANNER_RESPONSE"))
+
+        engine = AuditEngine(runaway_turns_threshold=40)
+        antipatterns = engine._detect_antipatterns(steps)
+        found = [ap for ap in antipatterns if ap.code == "RUNAWAY_TURNS"]
+        self.assertEqual(len(found), 0)
+
+    def test_system_steps_do_not_reset_model_turns_chain(self):
+        """Pasos intermedios del sistema (salidas de herramientas) no se consideran intervención del usuario."""
+        steps = []
+        idx = 1
+        for _ in range(45):
+            steps.append(NormalizedStep(step_index=idx, source="MODEL", step_type="PLANNER_RESPONSE"))
+            idx += 1
+            steps.append(NormalizedStep(step_index=idx, source="SYSTEM", step_type="TOOL_OUTPUT"))
+            idx += 1
+
+        engine = AuditEngine(runaway_turns_threshold=40)
+        antipatterns = engine._detect_antipatterns(steps)
+        found = [ap for ap in antipatterns if ap.code == "RUNAWAY_TURNS"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].severity, "ALTA")
+        self.assertIn("45 turnos consecutivos", found[0].description)
+
+    def test_configurable_threshold(self):
+        """Verifica que el umbral sea configurable en el constructor."""
+        steps = [
+            NormalizedStep(step_index=i, source="MODEL", step_type="PLANNER_RESPONSE")
+            for i in range(1, 15)
+        ]
+        engine = AuditEngine(runaway_turns_threshold=10)
+        antipatterns = engine._detect_antipatterns(steps)
+        found = [ap for ap in antipatterns if ap.code == "RUNAWAY_TURNS"]
+        self.assertEqual(len(found), 1)
+        self.assertIn("14 turnos consecutivos", found[0].description)
 
 
 if __name__ == "__main__":

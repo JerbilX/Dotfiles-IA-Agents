@@ -85,6 +85,18 @@ def parse_arguments() -> argparse.Namespace:
         help="Umbral de líneas para alertar lecturas masivas de archivos (predeterminado: 200).",
     )
     parser.add_argument(
+        "--threshold-web-search",
+        type=int,
+        default=3,
+        help="Umbral de búsquedas web consecutivas para alertar el antipatrón EXCESSIVE_WEB_SEARCH (predeterminado: 3).",
+    )
+    parser.add_argument(
+        "--threshold-runaway-turns",
+        type=int,
+        default=40,
+        help="Umbral de turnos continuos del modelo sin interacción del usuario para alertar el antipatrón RUNAWAY_TURNS (predeterminado: 40).",
+    )
+    parser.add_argument(
         "--fail-on-antipattern",
         action="store_true",
         help="Retorna código de salida 2 si se detecta al menos un antipatrón de severidad CRÍTICA o ALTA.",
@@ -305,6 +317,8 @@ def main() -> int:
     engine = AuditEngine(
         latency_threshold_seconds=args.threshold_latency,
         file_lines_threshold=args.threshold_file_lines,
+        web_search_threshold=args.threshold_web_search,
+        runaway_turns_threshold=args.threshold_runaway_turns,
     )
     report = engine.analyze(metadata, steps)
 

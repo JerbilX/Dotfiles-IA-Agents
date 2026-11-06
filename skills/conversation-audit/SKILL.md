@@ -54,6 +54,8 @@ Guía metodológica, catálogo de métricas y protocolo operativo para la audito
 | `UNPAGINATED_FILE_READ` | **ALTA** | Lectura No Paginada de Archivos | Invocación de herramientas de lectura de archivos (`view_file` o equivalentes) sin delimitar `StartLine`/`EndLine` o con ventanas excesivas (> 200 líneas). | Utilizar `grep_search` para localización previa y acotamiento de ventana mediante `StartLine` y `EndLine`. |
 | `READ_ONLY_LOOP` | **ALTA** | Bucle de Solo Lectura / Parálisis | Secuencia de 4 o más lecturas pasivas consecutivas (`view_file`, `grep_search`, `find_by_name`, `list_dir`) sin acción observable intermedia (mutación o comando). | Detener lecturas exploratorias, formular hipótesis y proceder a mutar código, ejecutar pruebas o detenerse con síntesis. |
 | `PING_PONG_TOOL_LOOP` | **ALTA** | Bucle Cíclico Alternante | Patrón cíclico repetitivo entre 2 o 3 llamadas alternantes (ej. A -> B -> A -> B) eludiendo límites por archivo. | Romper la alternancia ciega entre archivos; aplicar disyuntor de seguridad y solicitar clarificación o validar hipótesis en tests. |
+| `EXCESSIVE_WEB_SEARCH` | **ALTA** | Búsqueda Web Excesiva | Secuencia de más de 3 búsquedas web consecutivas (`search_web`, `WebSearch`) sin validación intermedia ni acción observable, violando el Circuit Breaker de búsqueda. | Aplicar Circuit Breaker de Búsqueda: suspender consultas tras un máximo de 3 búsquedas sucesivas sin resultado concluyente y proceder con Stop & Ask o formular hipótesis basada en contexto local. |
+| `RUNAWAY_TURNS` | **ALTA** | Sesión Desbocada / Turnos Desatendidos | Secuencia ininterrumpida de turnos del modelo sin interacción del usuario (`USER`) superior al umbral configurado (ej. > 40 pasos). | Establecer puntos de control periódicos o interacción con el usuario (Stop & Ask, checkpoints) para prevenir ejecuciones desatendidas prolongadas. |
 | `COMPLACENCY_DETECTED` | **BAJA** | Complacencia o Adulación Vacía | Respuestas del modelo con frases serviles ("¡Gran idea!", "tienes toda la razón", "disculpa las molestias"). | Cumplir estrictamente `core/01-critical-feedback.md`. Mantener tono asertivo, objetivo y neutro. |
 
 ---
@@ -178,6 +180,14 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
   ```bash
   agent-audit <target> --threshold-file-lines 150
   ```
+- Ajuste de umbral de búsquedas web consecutivas:
+  ```bash
+  agent-audit <target> --threshold-web-search 3
+  ```
+- Ajuste de umbral de turnos continuos del modelo (runaway session):
+  ```bash
+  agent-audit <target> --threshold-runaway-turns 40
+  ```
 - Retorno estricto para CI (código 2 ante antipatrones críticos):
   ```bash
   agent-audit <target> --fail-on-antipattern
@@ -185,7 +195,7 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
 
 ### Paso 3: Evaluación de Hallazgos
 - Contrastar el desglose de herramientas: identificar si herramientas pesadas como `search_web` o `run_command` monopolizan el tiempo de ejecución.
-- Inspeccionar si existen antipatrones de `CONSECUTIVE_TOOL_ERRORS`, `REPETITIVE_TOOL_LOOP`, `TERMINAL_REPL_LOOP` o `UNPAGINATED_FILE_READ`.
+- Inspeccionar si existen antipatrones de `CONSECUTIVE_TOOL_ERRORS`, `REPETITIVE_TOOL_LOOP`, `TERMINAL_REPL_LOOP`, `UNPAGINATED_FILE_READ`, `EXCESSIVE_WEB_SEARCH` o `RUNAWAY_TURNS`.
 - Revisar los pasos de mayor latencia y contrastarlos con las operaciones realizadas.
 
 ### Paso 4: Registro y Retroalimentación

@@ -111,6 +111,13 @@ class AuditEngine:
         "read_browser_page",
     }
 
+    WEB_SEARCH_TOOLS = {
+        "search_web",
+        "web_search",
+        "WebSearch",
+        "brave_web_search",
+    }
+
     ACTIVE_MUTATION_TOOLS = {
         "replace_file_content",
         "write_to_file",
@@ -284,9 +291,17 @@ class AuditEngine:
 
         return start_line, end_line
 
-    def __init__(self, latency_threshold_seconds: float = 60.0, file_lines_threshold: int = 200):
+    def __init__(
+        self,
+        latency_threshold_seconds: float = 60.0,
+        file_lines_threshold: int = 200,
+        web_search_threshold: int = 3,
+        runaway_turns_threshold: int = 40,
+    ):
         self.latency_threshold = latency_threshold_seconds
         self.file_lines_threshold = int(file_lines_threshold) if file_lines_threshold is not None else 200
+        self.web_search_threshold = int(web_search_threshold) if web_search_threshold is not None else 3
+        self.runaway_turns_threshold = int(runaway_turns_threshold) if runaway_turns_threshold is not None else 40
 
     def analyze(self, metadata: ConversationMetadata, steps: List[NormalizedStep]) -> AuditReport:
         """Calcula todas las métricas y detecta antipatrones a partir de los pasos."""
@@ -794,6 +809,90 @@ class AuditEngine:
                         ),
                     )
                 )
+
+        # K. Búsqueda Web Excesiva (EXCESSIVE_WEB_SEARCH)
+        current_web_searches: List[Dict[str, Any]] = []
+
+        def _flush_web_searches():
+            nonlocal current_web_searches
+            if len(current_web_searches) > self.web_search_threshold:
+                start_step = current_web_searches[0]["step_index"]
+                end_step = current_web_searches[-1]["step_index"]
+                count = len(current_web_searches)
+                tools_used = sorted(set(item["tool_name"] for item in current_web_searches))
+                tools_str = ", ".join(tools_used)
+                antipatterns.append(
+                    DetectedAntipattern(
+                        severity="ALTA",
+                        code="EXCESSIVE_WEB_SEARCH",
+                        title="Búsqueda Web Excesiva / Bucle de Navegación",
+                        step_index=end_step,
+                        description=(
+                            f"Se detectaron {count} búsquedas web consecutivas mediante '{tools_str}' "
+                            f"sin acción intermedia ni validación observable (entre los pasos {start_step} y {end_step}), "
+                            f"superando el umbral de {self.web_search_threshold} búsquedas sucesivas (Circuit Breaker de Búsqueda)."
+                        ),
+                        recommendation=(
+                            "Aplicar Circuit Breaker de Búsqueda: suspender consultas tras un máximo de 3 búsquedas "
+                            "sucesivas sin resultado concluyente y proceder con Stop & Ask o formular hipótesis basada en contexto local."
+                        ),
+                    )
+                )
+            current_web_searches = []
+
+        for s in steps:
+            if s.source == "USER" or s.step_type == "USER_INPUT":
+                _flush_web_searches()
+                continue
+
+            if not s.tool_calls:
+                if s.content and s.content.strip():
+                    _flush_web_searches()
+                continue
+
+            for tc in s.tool_calls:
+                if tc.name in self.WEB_SEARCH_TOOLS:
+                    current_web_searches.append({"step_index": s.step_index, "tool_name": tc.name})
+                else:
+                    _flush_web_searches()
+
+        _flush_web_searches()
+
+        # L. Sesión Desbocada / Turnos Desatendidos (RUNAWAY_TURNS)
+        current_model_steps: List[NormalizedStep] = []
+
+        def _flush_model_steps():
+            nonlocal current_model_steps
+            if len(current_model_steps) > self.runaway_turns_threshold:
+                start_step = current_model_steps[0].step_index
+                end_step = current_model_steps[-1].step_index
+                count = len(current_model_steps)
+                antipatterns.append(
+                    DetectedAntipattern(
+                        severity="ALTA",
+                        code="RUNAWAY_TURNS",
+                        title="Sesión Desbocada / Turnos Desatendidos",
+                        step_index=end_step,
+                        description=(
+                            f"Se detectaron {count} turnos consecutivos del modelo sin interacción del usuario "
+                            f"(entre los pasos {start_step} y {end_step}), superando el umbral de "
+                            f"{self.runaway_turns_threshold} turnos continuos sin puntos de control."
+                        ),
+                        recommendation=(
+                            "Establecer puntos de control periódicos o interacción con el usuario "
+                            "(Stop & Ask, checkpoints o solicitud de confirmación) para evitar ejecuciones desatendidas prolongadas."
+                        ),
+                    )
+                )
+            current_model_steps = []
+
+        for s in steps:
+            if s.source == "USER" or s.step_type == "USER_INPUT":
+                _flush_model_steps()
+            elif s.source == "MODEL" or s.step_type == "PLANNER_RESPONSE":
+                current_model_steps.append(s)
+
+        _flush_model_steps()
 
         return antipatterns
 
