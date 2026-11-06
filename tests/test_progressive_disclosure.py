@@ -14,7 +14,8 @@ CORE_DIR = os.path.join(REPO_ROOT, "core")
 DIST_DIR = os.path.join(REPO_ROOT, "dist")
 DOCS_ADR_DIR = os.path.join(REPO_ROOT, "docs", "adr")
 RUNTIMES_DIR = os.path.join(REPO_ROOT, "runtimes")
-BASAL_WORD_BUDGET = 1350  # Debe coincidir con MAX_CONTEXT_WORDS en build.sh (ADR-0047)
+BASAL_WORD_BUDGET = 2000  # Debe coincidir con MAX_CONTEXT_WORDS en build.sh (ADR-0048)
+TARGET_WORD_BUDGET = 1100  # Debe coincidir con TARGET_CONTEXT_WORDS en build.sh (ADR-0048)
 
 
 def setUpModule():
@@ -47,9 +48,11 @@ class TestProgressiveDisclosure(unittest.TestCase):
         )
 
     def test_build_budget_matches_tests(self):
-        """build.sh default MAX_CONTEXT_WORDS must match the tested basal budget."""
+        """build.sh default MAX_CONTEXT_WORDS and TARGET_CONTEXT_WORDS must match the tested basal budget."""
         with open(os.path.join(REPO_ROOT, "build.sh"), "r", encoding="utf-8") as f:
-            self.assertIn(f'MAX_CONTEXT_WORDS="${{MAX_CONTEXT_WORDS:-{BASAL_WORD_BUDGET}}}"', f.read())
+            content = f.read()
+            self.assertIn(f'MAX_CONTEXT_WORDS="${{MAX_CONTEXT_WORDS:-{BASAL_WORD_BUDGET}}}"', content)
+            self.assertIn(f'TARGET_CONTEXT_WORDS="${{TARGET_CONTEXT_WORDS:-{TARGET_WORD_BUDGET}}}"', content)
 
     def test_core_rules_word_budget(self):
         """Non-router core rules must stay below 300 words (ADR-0013 modular threshold)."""

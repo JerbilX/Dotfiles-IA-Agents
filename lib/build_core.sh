@@ -165,9 +165,14 @@ EOF
     size_kb="$(awk "BEGIN {printf \"%.1f\", ${bytes}/1024}")"
 
     echo "==> [build] Telemetría de contexto [${r}]: ${lines} líneas | ${words} palabras | ~${approx_tokens} tokens estimados (${size_kb} KB)"
-    if [ "${words}" -gt "${MAX_CONTEXT_WORDS}" ]; then
-        echo "  [!] Advertencia [${r}]: El contexto compilado supera el límite recomendado (${words} > ${MAX_CONTEXT_WORDS} palabras)." >&2
-        echo "      Considera modularizar directivas extensas hacia skills bajo demanda." >&2
+    local target_words="${TARGET_CONTEXT_WORDS:-1100}"
+    local max_words="${MAX_CONTEXT_WORDS:-2000}"
+    if [ "${words}" -gt "${max_words}" ]; then
+        echo "  [!] Advertencia [${r}]: El contexto compilado supera el techo máximo (${words} > ${max_words} palabras)." >&2
+        echo "      ADVERTENCIA: './build.sh check' fallará con error hasta reducir el prompt." >&2
+    elif [ "${words}" -gt "${target_words}" ]; then
+        echo "  [!] Advertencia [${r}]: El contexto compilado supera la banda objetivo (${words} > ${target_words} palabras, techo: ${max_words})." >&2
+        echo "      Considera modularizar directivas extensas hacia skills bajo demanda o aplicar enforcement P0." >&2
     fi
 
     # Compilación modular de configuración MCP

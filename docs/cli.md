@@ -113,18 +113,20 @@ Flujo completo por defecto. Ejecuta secuencialmente `build`, `link`, `skills`, `
 
 | Variable | Tipo | Por Defecto | Descripción |
 | :--- | :---: | :---: | :--- |
-| `MAX_CONTEXT_WORDS` | `integer` | `1350` | Presupuesto máximo de palabras para el prompt global compilado (`dist/<runtime>/AGENTS.md`). |
+| `MAX_CONTEXT_WORDS` | `integer` | `2000` | Techo duro de palabras para el prompt global compilado (`dist/<runtime>/AGENTS.md`). Provoca error estático en `check`. |
+| `TARGET_CONTEXT_WORDS` | `integer` | `1100` | Banda objetivo (~55% del techo) para el prompt compilado. Superarla emite advertencia en `build` y `check`. |
 | `MAX_MODULE_WORDS` | `integer` | `300` | Presupuesto modular por archivo individual en `core/*.md` y `rules/*.md`. |
 | `MAX_README_WORDS` | `integer` | `600` | Umbral máximo recomendado de palabras en el `README.md` raíz. |
 
 ---
 
-## 4. Auditoría de Presupuesto de Contexto (Doble Compuerta)
+## 4. Auditoría de Presupuesto de Contexto (Compuerta Dual)
 
-El subcomando `check` implementa una doble compuerta de auditoría para prevenir la degradación atencional por saturación del System Prompt ([ADR-0008](adr/0008-telemetria-de-presupuesto-de-contexto-y-subcomando-check.md), [ADR-0013](adr/0013-estrategia-de-modularizacion-de-directivas-extensas-a-skills.md) y [ADR-0017](adr/0017-principio-de-minima-intervencion-y-jerarquia-de-resolucion.md)):
+El subcomando `check` implementa una compuerta de auditoría para prevenir la degradación atencional por saturación del System Prompt ([ADR-0008](adr/0008-telemetria-de-presupuesto-de-contexto-y-subcomando-check.md), [ADR-0013](adr/0013-estrategia-de-modularizacion-de-directivas-extensas-a-skills.md), [ADR-0017](adr/0017-principio-de-minima-intervencion-y-jerarquia-de-resolucion.md), [ADR-0047](adr/0047-resolucion-desacople-progressive-disclosure-y-compilacion-autosuficiente.md) y [ADR-0048](adr/0048-niveles-de-enforcement-admision-de-reglas-y-presupuesto-de-contexto.md)):
 
-1. **Presupuesto Global (`MAX_CONTEXT_WORDS=1350`, [ADR-0047](adr/0047-resolucion-desacople-progressive-disclosure-y-compilacion-autosuficiente.md)):**
-   Garantiza que la totalidad del System Prompt compilado mantenga un margen suficiente (<75% de la ventana útil) para reservar contexto disponible al razonamiento del agente.
+1. **Presupuesto Global Dual ([ADR-0048](adr/0048-niveles-de-enforcement-admision-de-reglas-y-presupuesto-de-contexto.md)):**
+   - **Techo Duro (`MAX_CONTEXT_WORDS=2000`):** Límite estricto que aborta con error estático (`exit 1`) si el prompt compilado supera este valor.
+   - **Banda Objetivo (`TARGET_CONTEXT_WORDS=1100`):** Umbral operativo recomendado (~55% del techo). Superarlo emite una advertencia estática en `build` y `check`, obligando a justificar en el PR por qué la directiva no reside en enforcement mecánico (P0) o skill bajo demanda (P1).
 2. **Presupuesto Modular (`MAX_MODULE_WORDS=300`):**
    Audita individualmente cada directiva en `core/*.md` y `rules/*.md`. Si un archivo supera este umbral, emite una advertencia estática instando a evaluar la extracción del procedimiento a un skill bajo demanda (patrón *Trigger Directive + Dedicated Skill*).
 
