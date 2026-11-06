@@ -175,6 +175,27 @@ echo "Skills invoked: ${{invoked_skills[*]}}"
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertIn("Skills invoked: antigravity", res.stdout)
 
+    def test_cmd_link_skills_failure_is_not_fatal(self):
+        """A skills_runtime failure must not abort aliases/hooks setup under set -e."""
+        bash_cmd = f"""
+set -euo pipefail
+export RUNTIMES_BASE_DIR="{REPO_ROOT}/runtimes"
+source "{REPO_ROOT}/lib/common.sh"
+source "{REPO_ROOT}/lib/link.sh"
+
+skills_runtime() {{ return 1; }}
+link_runtime() {{ :; }}
+setup_gh_aliases() {{ echo "aliases-ok"; }}
+setup_git_hooks() {{ echo "hooks-ok"; }}
+
+cmd_link "antigravity"
+"""
+        res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("aliases-ok", res.stdout)
+        self.assertIn("hooks-ok", res.stdout)
+        self.assertIn("Falló el aprovisionamiento de skills", res.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

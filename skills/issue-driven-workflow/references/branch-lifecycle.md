@@ -205,8 +205,9 @@ Ante cualquier paso de saneamiento o higiene post-merge, seguir estrictamente es
      ```bash
      git checkout <base_branch>
      git pull --prune --ff-only
-     git branch -d <rama-local-fusionada>
+     git branch -D <rama-local-fusionada>
      ```
+     *(Usar `-D` solo si `gh pr view <rama> --json state --jq .state` devuelve `MERGED`: tras un squash merge `git branch -d` falla con `not fully merged` porque la rama no es ancestro de la base. Si el estado no es `MERGED`, no borrar y reportar al usuario).*
    - **Alerta al Usuario (Actionable Fallback):** Notificar al usuario en el chat que ejecute `./build.sh link` (o `./build.sh skills`) en su terminal nativa dentro de `Dotfiles-IA-Agents` para restablecer los binarios en `~/.local/bin/`.
    - **Prohibición Expresa de Búsquedas Ciegas:** Prohibido iniciar búsquedas exploratorias (`find_by_name`, `find /`, `grep`, `which`, `ls`) para localizar `git-prune-gone` u otros binarios de skills.
 
