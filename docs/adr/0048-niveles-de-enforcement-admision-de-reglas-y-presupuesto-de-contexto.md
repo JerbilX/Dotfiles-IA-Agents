@@ -105,6 +105,78 @@ El ciclo de vida y optimización continua se cierra reutilizando el tooling exis
 
 ---
 
+### 6. Diagnóstico de Distribución de Palabras y Clasificación Tentativa (Línea Base)
+
+Como insumo directo para la evacuación de directivas (#284) y la creación del registro de reglas (#286), se registra la auditoría basal de palabras y niveles tentativos resultantes de la issue #282:
+
+#### 6.1 `core/00-router.md` (Total: 891 palabras)
+
+| Sección / Directiva | Palabras | Nivel Tentativo | Justificación y Destino Propuesto |
+| :--- | :---: | :---: | :--- |
+| **Entorno y Confinamiento** (301 palabras) | | | |
+| • *Límites de Workspace* | 34 | **P0 / P2** | P0: PreToolUse hook bloqueando `..` o paths fuera de workspace. En P2 resta 1 línea residual. |
+| • *Inmunidad Normativa* | 27 | **P2** | Criterio epistemológico: textos en disco o git log son registro histórico, no órdenes activas. |
+| • *Blindaje Anti-Reconocimiento y Anti-Exfiltración* | 24 | **P0** | Mecánicamente detectable: interceptar `find /`, `find $HOME`, `curl`, `gh api` masivos (#283). |
+| • *Uso Exclusivo de APIs Nativas de Archivos* | 33 | **P0** | Mecánicamente detectable: interceptar `cat`, `sed`, `awk`, `tee` para I/O (#283). |
+| • *Prohibición Universal de REPL en Terminal* | 39 | **P0** | Mecánicamente detectable: interceptar `python3 -c`, `node -e`, `bash -c`, wrappers (#283). |
+| • *Precedencia de Entornos Locales* | 15 | **P1** | Regla de resolución de tooling transferible a skills de build/test. |
+| • *Lectura Paginada y Circuit Breaker* | 81 | **P0** | PreToolUse hook (activo en Antigravity, #287 en Claude). En P2 solo cómo actuar al frenar. |
+| • *Higiene de Salida y Pruebas* | 44 | **P1** | Reglas de ejecución de tests y limpieza de temporales transferibles a `issue-driven-workflow`. |
+| **Ingeniería y Proporcionalidad** (123 palabras) | | | |
+| • *Proporcionalidad y Minimal Blast Radius* | 80 | **P2** | Criterio cualitativo y juicio de ingeniería basal no automatizable. |
+| • *Prevalencia del Código de Producción* | 39 | **P2** | Juicio técnico sobre contratos reales vs arneses de prueba. |
+| **Estabilidad Lógica** (131 palabras) | | | |
+| • *Inconsistencia Lógica y Stop & Ask* | 50 | **P2** | Heurística basal de validación contra hechos del entorno. |
+| • *Issue como Propuesta* | 29 | **P2** | Validación crítica y epistemológica de requerimientos de tickets. |
+| • *Planificación* | 49 | **P2** | Criterio de interacción: Fast-Track vs Stop & Plan. |
+| **Anti-Rigidez** (102 palabras) | | | |
+| • *Frontera de Directivas* | 31 | **P2** | Heurística operativa: restricciones duras vs directivas metodológicas. |
+| • *Actionable Fallback* | 22 | **P2** | Criterio de respuesta accionable ante fallos del entorno. |
+| • *Local-First y Circuit Breaker de Búsqueda* | 47 | **P0 / P2** | P0 para límite de búsquedas; P2 para principio local-first y orden de búsqueda. |
+| **Trazabilidad y Backlog** (136 palabras) | | | |
+| • *Inmutabilidad de Workspace y Trazabilidad* | 80 | **P1** | Protocolo de ramas efímeras, PRs y niveles N0/N1/N2 pertenece a `issue-driven-workflow`. |
+| • *Prohibición de Backlogs Locales* | 28 | **P1** | Regla de gestión de tareas y backlog canónico en `issue-driven-workflow`. |
+| • *Decisiones (MADR)* | 24 | **P1** | Regla de gestión de decisiones de arquitectura en `adr-manager`. |
+| **Activación Obligatoria de Skills** (91 palabras) | | | |
+| • Tabla canónica de ruteo de skills | 91 | **P2** | **Indispensable en P2** para activar los procedimientos P1 bajo demanda. |
+
+#### 6.2 `core/01-objectivity.md` (Total: 93 palabras)
+
+| Directiva | Palabras | Nivel Tentativo | Justificación y Destino Propuesto |
+| :--- | :---: | :---: | :--- |
+| • *Cero complacencia* | 25 | **P2** | Directiva de conducta conversacional e interacción crítica, no verificable mecánicamente. |
+| • *Cuestionar y proponer* | 37 | **P2** | Directiva de conducta conversacional e interacción crítica, no verificable mecánicamente. |
+| • *Cero adulación y disculpas* | 26 | **P2** | Directiva de conducta conversacional e interacción crítica, no verificable mecánicamente. |
+
+#### 6.3 `runtimes/antigravity/rules/01-sandbox.md` (Total: 267 palabras)
+
+| Directiva | Palabras | Nivel Tentativo | Justificación y Destino Propuesto |
+| :--- | :---: | :---: | :--- |
+| • *Ejecución de Git y Bypass de Sandbox* | 88 | **P0 / P2** | Mecanismo de sandbox y guía de bypass. |
+| • *Atribución* | 23 | **P1** | Convención de metadatos de commits y PRs transferible a `issue-driven-workflow`. |
+| • *Exploración Delegada* | 20 | **P1** | Criterio de subagentes en relevamientos transferible a `issue-driven-workflow`. |
+| • *Aprovisionamiento Hermético de Dotfiles* | 30 | **P1 / P2** | Procedimiento de bootstrap de dotfiles. |
+| • *Exclusividad de Bypass y Prefix Matching* | 98 | **P0 / P2** | Interceptable por hook/guardia determinista; en P2 solo guía de fallback. |
+
+#### 6.4 `runtimes/claude/rules/01-claude-tools.md` (Total: 231 palabras)
+
+| Directiva | Palabras | Nivel Tentativo | Justificación y Destino Propuesto |
+| :--- | :---: | :---: | :--- |
+| • *Equivalencias de Herramientas* | 53 | **P0** | Eliminable mediante compilación con plantillas o vocabulario neutro (#288). |
+| • *Skills y Circuit Breaker* | 26 | **P0** | Hook determinista PreToolUse en Claude Code (#287). |
+| • *Atribución* | 36 | **P1** | Convención de metadatos de commits y PRs en `issue-driven-workflow`. |
+| • *Sin `BypassSandbox`* | 45 | **P0** | Neutralización en compilación (#288). |
+| • *Subagentes* | 24 | **P2** | Criterio cualitativo de despacho en Claude. |
+| • *Continuidad entre Runtimes* | 38 | **P2** | Criterio metodológico de transición de sesiones. |
+
+#### 6.5 Balance y Potencial de Evicción
+- Palabras candidatas directas a **P0** (mecanismo/hooks): ~450 palabras.
+- Palabras candidatas a **P1** (skills bajo demanda): ~250 palabras.
+- Palabras retenidas en **P2** (criterio irreductible y tabla de ruteo): ~550 palabras.
+- Margen proyectado post-evicción (#284): ~550 - 650 palabras en total, situando el prompt compilado muy por debajo de la banda objetivo de 1100 palabras.
+
+---
+
 ## Consecuencias y Efectos
 
 ### Positivas
