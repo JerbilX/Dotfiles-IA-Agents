@@ -92,6 +92,13 @@ git-prune-gone --sync
    *(Indicar rutas explícitas; no usar `git add .` ni `git add -A`).*
 2. **Redacción y Commit Atómico:**
    * Evitar `git commit -m "..."` (anula el prefix matching de permisos al contener comillas). Redactar mensaje convencional en `.commit_msg` con `write_to_file`.
+   * Incluir obligatoriamente al final del mensaje (separado por una línea en blanco) el trailer canónico de atribución:
+     ```gitcommit
+     <tipo>(<alcance>): <descripción>
+
+     Generated-by: <runtime> (<modelo>)
+     ```
+     *(Con el formato y valor exacto declarado en la directiva del runtime activo: `Antigravity (<modelo de la sesión>)` o `Claude Code (<modelo>)`).*
    * Ejecutar el commit:
      ```bash
      git commit -F .commit_msg
