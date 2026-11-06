@@ -254,6 +254,54 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("comando terminal mutador o de ejecución de pruebas/build", router_content)
         self.assertIn("Comandos de mera inspección pasiva en terminal", router_content)
 
+    def test_domain_mcp_precedence_over_web_search_invariants(self):
+        """core/00-router.md and skills/eso-addon-development/SKILL.md must enforce MCP precedence over web search (#266)."""
+        router_path = os.path.join(CORE_DIR, "00-router.md")
+        with open(router_path, "r", encoding="utf-8") as f:
+            router_content = f.read()
+
+        self.assertIn("servidores MCP de dominio antes que la web", router_content)
+
+        eso_skill_path = os.path.join(REPO_ROOT, "skills", "eso-addon-development", "SKILL.md")
+        with open(eso_skill_path, "r", encoding="utf-8") as f:
+            eso_skill_content = f.read()
+
+        self.assertIn("Vía Contingencia — Búsqueda Web", eso_skill_content)
+        self.assertIn("Flujo Ordenado de Inspección y Fallback", eso_skill_content)
+        self.assertIn("Con Servidor MCP Disponible", eso_skill_content)
+        self.assertIn("Si el MCP No Está Disponible", eso_skill_content)
+        self.assertIn("gate humano", eso_skill_content)
+        self.assertIn("hipótesis técnica verificable", eso_skill_content)
+        self.assertIn("eso-mcp-server", eso_skill_content)
+        self.assertIn("búsqueda web", eso_skill_content.lower())
+        self.assertIn("vacíos documentales confirmados", eso_skill_content)
+        self.assertNotIn("Límite Externo", eso_skill_content)
+
+    def test_eso_lookup_flow_order_and_single_circuit_breaker(self):
+        """skills/eso-addon-development/SKILL.md must consult local references before web and define the circuit breaker once (#266)."""
+        eso_skill_path = os.path.join(REPO_ROOT, "skills", "eso-addon-development", "SKILL.md")
+        with open(eso_skill_path, "r", encoding="utf-8") as f:
+            eso_skill_content = f.read()
+
+        self.assertIn(
+            "**Con Servidor MCP Disponible:** MCP -> Referencias Locales -> Web -> Stop & Ask.",
+            eso_skill_content,
+        )
+        self.assertIn(
+            "**Si el MCP No Está Disponible:** Referencias Locales -> Web -> Stop & Ask.",
+            eso_skill_content,
+        )
+        self.assertIn("tras consultar sin éxito el MCP y las referencias locales", eso_skill_content)
+        self.assertIn("o tras agotar su límite sin localizar el símbolo", eso_skill_content)
+
+        self.assertEqual(eso_skill_content.count("Límites por Etapa (fuente única del circuit breaker)"), 1)
+        self.assertEqual(eso_skill_content.count("Prohibido reiniciar el contador"), 1)
+        self.assertEqual(eso_skill_content.count("Máximo 1 búsqueda web acotada"), 1)
+        self.assertLess(
+            eso_skill_content.index("Límites por Etapa"),
+            eso_skill_content.index("Flujo Ordenado de Inspección y Fallback"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

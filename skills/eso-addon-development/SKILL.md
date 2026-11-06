@@ -1,7 +1,7 @@
 ---
 name: eso-addon-development
 description: >-
-  MANDATORY: You MUST read this skill BEFORE starting any task, lookup, or code change related to Elder Scrolls Online (ESO) addons. It defines the API lookup hierarchy (prioritizing eso-mcp-server tools before local fallback or text search), canonical reference paths, and strict guidelines for Zenimax (EsoUI) addon development. Do NOT skip reading this.
+  MANDATORY: You MUST read this skill BEFORE starting any task, lookup, or code change related to Elder Scrolls Online (ESO) addons. It defines the API lookup hierarchy (prioritizing eso-mcp-server tools before local fallback, and reserving web search as last-resort contingency), canonical reference paths, and strict guidelines for Zenimax (EsoUI) addon development. Do NOT skip reading this.
 ---
 
 # Elder Scrolls Online (ESO) Addon Engineering
@@ -28,22 +28,28 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
        2. *Vía Fallback:* `python3 ~/.gemini/config/skills/issue-driven-workflow/bin/agent-module enable eso` (en Claude Code: `python3 ~/.claude/skills/issue-driven-workflow/bin/agent-module enable eso`)
        3. *Freno Obligatorio (Stop & Ask):* Prohibido buscar en el host (`find`, `grep`). Detenerse de inmediato y emitir comando terminal-ready (`cd <dotfiles> && ./build.sh all`) u ofrecer andamiaje estático directo con `write_to_file`.
      * **Blindaje Anti-Reconocimiento MCP:** Si `eso-mcp-server` no está activo en el entorno (herramientas no disponibles en la sesión), queda taxativamente prohibido inspeccionar el host (`~/.gemini/antigravity/mcp/...`, `~/.claude/...` o rutas internas afines) vía terminal (`ls`, `find`) o APIs de lectura para buscar esquemas o scripts. En su lugar, saltar directamente a la Vía Fallback — Archivos Locales (`references/ESOUIDocumentation.txt` y `references/localizegeneratedstrings.lua`).
-     * **Límite y Circuit Breaker MCP:** Máximo 3 consultas consecutivas a herramientas de `eso-mcp-server` sin una acción intermedia observable (mutación de código local o ejecución de pruebas).
+     * **Límite y Circuit Breaker MCP:** Rige el límite MCP definido en el Nivel 4 (Límites por Etapa).
      * **Búsqueda Guiada por Hipótesis:** Prohibida la navegación exploratoria ciega. Exige formular una hipótesis técnica previa antes de invocar herramientas de exploración profunda (`eso_search_ui_source`, `eso_get_ui_modules`).
      * **Lectura de Código UI por Rango:** Firma `eso_get_ui_source(file_path, symbol?, start_line?, end_line?, max_lines=200)`. Los nombres canónicos son `start_line`/`end_line`. Las herramientas rechazan parámetros desconocidos con `Unknown parameter(s): ... Valid parameters: ...`: corregir el nombre según esa lista y reintentar, sin reformular la consulta.
      * **Salida MCP No Paginable:** Las salidas grandes se persisten (ej. `.system_generated/steps/<n>/output.txt`) como JSON de pocas líneas, con el código en una sola cadena. Paginar ese archivo por líneas (`view_file` con `StartLine`/`EndLine`) no acota el contenido. Pedir rangos chicos al MCP (`start_line`/`end_line`, `max_lines`) en lugar de releer el archivo.
      * Consulta de API: `eso_search_api`, `eso_get_constant`, `eso_get_enum`, `eso_get_function`, `eso_get_event`, `eso_search_strings`, `eso_api_stats`.
      * Inspección de persistencia (solo lectura): `eso_savedvars_inspect`, `eso_savedvars_get_account_wide`, `eso_savedvars_get_character`, `eso_savedvars_query`. Prohibida la mutación vía MCP.
    * **Vía Fallback — Archivos Locales (Auto-actualizables):**
-     * Si el MCP no está disponible, consultar en `references/ESOUIDocumentation.txt` (API/constantes C/Lua) y `references/localizegeneratedstrings.lua` (strings a `SI_*`).
+     * Si el MCP no está disponible, o tras agotar su límite sin localizar el símbolo, consultar en `references/ESOUIDocumentation.txt` (API/constantes C/Lua) y `references/localizegeneratedstrings.lua` (strings a `SI_*`).
      * **Flujo para textos en pantalla:** Buscar string en `localizegeneratedstrings.lua` -> contrastar constante/enum en `ESOUIDocumentation.txt`.
      * **Principio de Suficiencia:** Asumir e implementar de inmediato la constante identificada.
      * **Sincronización JIT:** Ejecutar `scripts/update_esoui_docs.sh` si el manifiesto requiere una versión de API superior a `ESOUIDocumentation.txt`.
+   * **Vía Contingencia — Búsqueda Web:**
+     * Prohibido realizar búsquedas web o consultas externas de forma prematura. Reservado exclusivamente ante vacíos documentales confirmados tras consultar sin éxito el MCP y las referencias locales (solo las referencias locales si el MCP no está disponible en el entorno).
 4. **Nivel 4 — Circuit Breaker y Freno Obligatorio (Stop & Ask):**
-   * **Límite MCP:** Máximo 3 consultas consecutivas a `eso-mcp-server`. Al alcanzar 3 consultas sin localizar el símbolo, constante o control buscado, detenerse inmediatamente y solicitar asistencia al usuario (Stop & Ask).
-   * **Circuit Breaker ante Parálisis por Inspección (`READ_ONLY_LOOP`):** Máximo 3 lecturas pasivas consecutivas en archivos de referencia locales (`references/ESOUIDocumentation.txt`, `references/localizegeneratedstrings.lua`). Al alcanzar 3 lecturas sin formular mutaciones o pruebas, es mandatorio formular y declarar explícitamente una hipótesis técnica verificable antes de proceder con lecturas adicionales. Si la hipótesis no se sostiene o no hay avance, accionar Stop & Ask.
-   * **Límite Externo:** Máximo 1 consulta a GitHub (`https://github.com/esoui/esoui`) o endpoints raw.
-   * Si no se localiza la API o constante, **detenerse inmediatamente y consultar al usuario** (Stop & Ask). Prohibido inventar signaturas, asumir parámetros o continuar en bucles de inspección ciega.
+   * **Límites por Etapa (fuente única del circuit breaker):**
+     * **MCP:** Máximo 3 consultas a herramientas de `eso-mcp-server`, guiadas por hipótesis técnica. Prohibido reiniciar el contador mediante acciones intermedias automáticas (mutación de código local o ejecución de pruebas); el límite solo se reinicia tras un gate humano (confirmación explícita del usuario vía Stop & Ask).
+     * **Referencias Locales:** Al alcanzar 3 lecturas pasivas en `references/ESOUIDocumentation.txt` o `references/localizegeneratedstrings.lua` sin formular mutaciones o pruebas, es mandatorio formular y declarar explícitamente una hipótesis técnica verificable antes de proceder con lecturas adicionales. La etapa queda agotada cuando la hipótesis no se sostiene o no hay avance.
+     * **Web:** Máximo 1 búsqueda web acotada o consulta externa (endpoints raw o repositorio oficial de EsoUI), solo ante vacío documental confirmado.
+   * **Flujo Ordenado de Inspección y Fallback:** Cada etapa opera dentro de su límite y, si no localiza la API o constante, cede a la siguiente.
+     * **Con Servidor MCP Disponible:** MCP -> Referencias Locales -> Web -> Stop & Ask.
+     * **Si el MCP No Está Disponible:** Referencias Locales -> Web -> Stop & Ask.
+     * **Stop & Ask:** Si no se localiza la API o constante tras agotar el flujo, **detenerse inmediatamente y consultar al usuario**. Prohibido inventar signaturas, asumir parámetros o reiniciar bucles de inspección ciega.
 
 ---
 
