@@ -59,6 +59,29 @@ class ClaudeAdapter(TranscriptAdapter):
             return False
         return False
 
+    @staticmethod
+    def _unwrap_event(event: Dict[str, Any]) -> Dict[str, Any]:
+        """Aplana el formato JSONL de Claude Code ({"type", "message": {role, content, usage}, "timestamp"})."""
+        msg = event.get("message")
+        if isinstance(msg, dict) and "role" in msg:
+            flat = {k: v for k, v in event.items() if k != "message"}
+            flat.update(msg)
+            return flat
+        return event
+
+    @staticmethod
+    def _is_tool_result_event(event: Dict[str, Any]) -> bool:
+        """Determina si un evento corresponde exclusivamente a resultados de herramientas."""
+        role = event.get("role")
+        if role in ("tool_result", "tool"):
+            return True
+        if role != "user":
+            return False
+        raw_content = event.get("content")
+        if isinstance(raw_content, list) and raw_content:
+            return all(isinstance(b, dict) and b.get("type") == "tool_result" for b in raw_content)
+        return False
+
     def parse(self, path: Path) -> List[NormalizedStep]:
         """Parsea logs de Claude Code a NormalizedStep."""
         resolved = self.resolve_path(path)
@@ -70,13 +93,18 @@ class ClaudeAdapter(TranscriptAdapter):
             content = f.read().strip()
             if not content:
                 return []
-            if content.startswith("[") and content.endswith("]"):
-                try:
-                    raw_events = json.loads(content)
-                except Exception:
-                    raw_events = []
-            elif content.startswith("{") and not content.endswith("}"):
-                # Tratar como JSONL
+            try:
+                data = json.loads(content)
+                if isinstance(data, list):
+                    raw_events = data
+                elif isinstance(data, dict):
+                    if "messages" in data and isinstance(data["messages"], list):
+                        raw_events = data["messages"]
+                    else:
+                        raw_events = [data]
+            except Exception:
+                # Tratar como JSONL (un objeto JSON por línea)
+                raw_events = []
                 for line in content.splitlines():
                     line = line.strip()
                     if line:
@@ -84,15 +112,10 @@ class ClaudeAdapter(TranscriptAdapter):
                             raw_events.append(json.loads(line))
                         except Exception:
                             pass
-            elif content.startswith("{") and content.endswith("}"):
-                try:
-                    data = json.loads(content)
-                    if isinstance(data, dict) and "messages" in data:
-                        raw_events = data["messages"]
-                    else:
-                        raw_events = [data]
-                except Exception:
-                    pass
+
+        # Aplanar eventos anidados y descartar registros sin mensaje (snapshots, summaries, metadatos)
+        raw_events = [self._unwrap_event(e) for e in raw_events if isinstance(e, dict)]
+        raw_events = [e for e in raw_events if "role" in e]
 
         normalized_steps: List[NormalizedStep] = []
         tool_results_by_id: Dict[str, Dict[str, Any]] = {}
@@ -110,8 +133,21 @@ class ClaudeAdapter(TranscriptAdapter):
         step_idx = 0
         for event in raw_events:
             role = event.get("role", "unknown")
-            source = "USER" if role == "user" else ("MODEL" if role == "assistant" else "SYSTEM")
-            step_type = "USER_INPUT" if role == "user" else "PLANNER_RESPONSE"
+            raw_content = event.get("content", "")
+
+            is_tool_result = self._is_tool_result_event(event)
+            if is_tool_result:
+                source = "SYSTEM"
+                step_type = "TOOL_OUTPUT"
+            elif role == "user":
+                source = "USER"
+                step_type = "USER_INPUT"
+            elif role == "assistant":
+                source = "MODEL"
+                step_type = "PLANNER_RESPONSE"
+            else:
+                source = "SYSTEM"
+                step_type = "SYSTEM"
 
             ts_raw = event.get("timestamp") or event.get("created_at") or event.get("ts")
             created_at: Optional[datetime] = None
@@ -125,7 +161,6 @@ class ClaudeAdapter(TranscriptAdapter):
             thinking_parts: List[str] = []
             tool_calls: List[NormalizedToolCall] = []
 
-            raw_content = event.get("content", "")
             if isinstance(raw_content, str):
                 text_content.append(raw_content)
             elif isinstance(raw_content, list):
@@ -154,6 +189,16 @@ class ClaudeAdapter(TranscriptAdapter):
                             raw_output=res_content if not is_error else None,
                         )
                         tool_calls.append(norm_tc)
+                    elif b_type == "tool_result":
+                        res_c = block.get("content", "")
+                        if isinstance(res_c, str):
+                            text_content.append(res_c)
+                        elif isinstance(res_c, list):
+                            for sub in res_c:
+                                if isinstance(sub, dict) and sub.get("type") == "text":
+                                    text_content.append(sub.get("text", ""))
+                                elif isinstance(sub, str):
+                                    text_content.append(sub)
 
             usage = event.get("usage", {})
             tokens = {
@@ -161,6 +206,11 @@ class ClaudeAdapter(TranscriptAdapter):
                 "output": usage.get("output_tokens", 0),
                 "cache_read": usage.get("cache_read_input_tokens", 0),
             }
+
+            status = "DONE"
+            if is_tool_result and isinstance(raw_content, list):
+                if any(isinstance(b, dict) and b.get("is_error") for b in raw_content):
+                    status = "ERROR"
 
             norm_step = NormalizedStep(
                 step_index=step_idx,
@@ -170,6 +220,7 @@ class ClaudeAdapter(TranscriptAdapter):
                 content="\n".join(text_content) if text_content else None,
                 thinking="\n".join(thinking_parts) if thinking_parts else None,
                 tool_calls=tool_calls,
+                status=status,
                 tokens=tokens,
                 raw=event,
             )
@@ -231,6 +282,7 @@ class ClaudeAdapter(TranscriptAdapter):
                     continue
 
                 if isinstance(record, dict):
+                    record = self._unwrap_event(record)
                     ts_raw = record.get("timestamp") or record.get("created_at") or record.get("ts")
                     if ts_raw and start_time is None:
                         try:
