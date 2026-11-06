@@ -169,6 +169,15 @@ class TestRuntimeLifecycle(unittest.TestCase):
         self.assertIn("prefix matching", content)
         self.assertIn("scratch", content)
 
+    def test_antigravity_rules_mandate_bypass_for_gh_commands(self):
+        """runtimes/antigravity/rules/01-sandbox.md must mandate BypassSandbox: true for all gh commands (Issue #261)."""
+        sandbox_rule = os.path.join(RUNTIMES_DIR, "antigravity", "rules", "01-sandbox.md")
+        with open(sandbox_rule, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        self.assertIn("Toda Invocación de `gh` (`BypassSandbox: true` directo):", content)
+        self.assertIn("Inspección pasiva exclusivamente local de `git`", content)
+
     def test_environment_standards_prohibit_inline_evaluators_and_wrappers(self):
         """core/00-router.md must prohibit inline evaluators and CLI wrappers (Issue #208, ADR-0047)."""
         env_rule = os.path.join(CORE_DIR, "00-router.md")

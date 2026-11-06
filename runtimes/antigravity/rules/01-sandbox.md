@@ -1,8 +1,9 @@
 # Especialización de Sandbox y Ejecución (Runtime: Antigravity)
 
-- **Ejecución de Git y Bypass de Sandbox:**
-  - **Solo Lectura Confinado (`BypassSandbox: false` obligatorio):** Inspección pasiva (`git status`, `git log`, `git diff`, `git branch`) en sandbox.
-  - **Mutadores Locales y Red (`BypassSandbox: true` directo):** Con `.git/` de solo lectura, mutadores locales (`init`, `checkout`, `branch -d`, `add`, `commit`, `merge`, `reset`) y remotos (`git push`, `git pull`, `gh`) exigen `BypassSandbox: true` directo.
+- **Ejecución de Git/GitHub y Bypass de Sandbox:**
+  - **Solo Lectura Confinado (`BypassSandbox: false` obligatorio):** Inspección pasiva exclusivamente local de `git` (`git status`, `git log`, `git diff`, `git branch`) en sandbox.
+  - **Mutadores Locales y Red (`BypassSandbox: true` directo):** Con `.git/` de solo lectura, mutadores locales (`init`, `checkout`, `branch -d`, `add`, `commit`, `merge`, `reset`) y remotos (`git push`, `git pull`) exigen `BypassSandbox: true` directo.
+  - **Toda Invocación de `gh` (`BypassSandbox: true` directo):** Toda llamada a `gh` (tanto consultas de lectura `view`, `list` como mutaciones) interactúa en red con la API de GitHub y exige `BypassSandbox: true`.
   - **Formato Atómico de Commits:** Prohibido `git commit -m "..."` (rompe prefix matching). Redactar en `.commit_msg` vía `write_to_file` y ejecutar `git commit -F .commit_msg` con `BypassSandbox: true`.
 - **Atribución:** `Antigravity (<modelo de la sesión>)`.
 - **Exploración Delegada:** Relevamientos de > 8 archivos o código desconocido se delegan al subagente `research` (modelo `flash`, `Workspace: inherit`).
