@@ -118,6 +118,23 @@ class ClaudeAdapter(TranscriptAdapter):
             return all(isinstance(b, dict) and b.get("type") == "tool_result" for b in raw_content)
         return False
 
+    @staticmethod
+    def _extract_content_text(content: Any) -> str:
+        """Extrae el contenido textual limpio de un campo content (str o lista de bloques)."""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: List[str] = []
+            for sub in content:
+                if isinstance(sub, dict) and sub.get("type") == "text":
+                    parts.append(sub.get("text", ""))
+                elif isinstance(sub, str):
+                    parts.append(sub)
+            return "\n".join(parts)
+        if content is None:
+            return ""
+        return str(content)
+
     def parse(self, path: Path) -> List[NormalizedStep]:
         """Parsea logs de Claude Code a NormalizedStep."""
         resolved = self.resolve_path(path)
@@ -216,7 +233,7 @@ class ClaudeAdapter(TranscriptAdapter):
                         t_input = block.get("input", {})
                         res = tool_results_by_id.get(t_id, {})
                         is_error = res.get("is_error", False)
-                        res_content = str(res.get("content", ""))
+                        res_content = self._extract_content_text(res.get("content", ""))
 
                         norm_tc = NormalizedToolCall(
                             name=t_name,
@@ -228,15 +245,9 @@ class ClaudeAdapter(TranscriptAdapter):
                         )
                         tool_calls.append(norm_tc)
                     elif b_type == "tool_result":
-                        res_c = block.get("content", "")
-                        if isinstance(res_c, str):
-                            text_content.append(res_c)
-                        elif isinstance(res_c, list):
-                            for sub in res_c:
-                                if isinstance(sub, dict) and sub.get("type") == "text":
-                                    text_content.append(sub.get("text", ""))
-                                elif isinstance(sub, str):
-                                    text_content.append(sub)
+                        extracted = self._extract_content_text(block.get("content", ""))
+                        if extracted:
+                            text_content.append(extracted)
 
             usage = event.get("usage", {})
             tokens = {
