@@ -70,6 +70,42 @@ class ClaudeAdapter(TranscriptAdapter):
         return event
 
     @staticmethod
+    def _merge_message_blocks(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Fusiona registros JSONL consecutivos que comparten `message.id`.
+
+        Claude Code escribe cada bloque (thinking, text, tool_use) de una misma respuesta
+        como una línea aparte, repitiendo `usage`. Se conservan los metadatos del primer
+        registro, se concatenan los bloques en orden y se toma el `usage` de la última línea
+        (una sola vez). Los eventos sin `message.id` se devuelven intactos.
+        """
+        merged: List[Dict[str, Any]] = []
+        last_id: Optional[str] = None
+        for ev in events:
+            msg = ev.get("message")
+            msg_id = msg.get("id") if isinstance(msg, dict) else None
+            if msg_id and msg_id == last_id:
+                prev_msg = merged[-1]["message"]
+                content = msg.get("content")
+                if isinstance(content, str):
+                    content = [{"type": "text", "text": content}]
+                if isinstance(content, list):
+                    prev_msg["content"] = prev_msg["content"] + content
+                if "usage" in msg:
+                    prev_msg["usage"] = msg["usage"]
+                continue
+            if msg_id:
+                first_content = msg.get("content")
+                if isinstance(first_content, str):
+                    first_content = [{"type": "text", "text": first_content}]
+                elif not isinstance(first_content, list):
+                    first_content = []
+                ev = {**ev, "message": {**msg, "content": list(first_content)}}
+            merged.append(ev)
+            last_id = msg_id
+        return merged
+
+    @staticmethod
     def _is_tool_result_event(event: Dict[str, Any]) -> bool:
         """Determina si un evento corresponde exclusivamente a resultados de herramientas."""
         role = event.get("role")
@@ -114,7 +150,9 @@ class ClaudeAdapter(TranscriptAdapter):
                             pass
 
         # Aplanar eventos anidados y descartar registros sin mensaje (snapshots, summaries, metadatos)
-        raw_events = [self._unwrap_event(e) for e in raw_events if isinstance(e, dict)]
+        raw_events = [e for e in raw_events if isinstance(e, dict)]
+        raw_events = self._merge_message_blocks(raw_events)
+        raw_events = [self._unwrap_event(e) for e in raw_events]
         raw_events = [e for e in raw_events if "role" in e]
 
         normalized_steps: List[NormalizedStep] = []

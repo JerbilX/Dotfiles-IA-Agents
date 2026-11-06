@@ -310,5 +310,60 @@ class TestClaudeAdapterToolResult(unittest.TestCase):
             f_path.unlink(missing_ok=True)
 
 
+class TestClaudeAdapterMessageMerge(unittest.TestCase):
+    """Fusión de bloques de una misma respuesta del modelo (Ref: Issue #275)."""
+
+    def setUp(self):
+        self.adapter = ClaudeAdapter()
+        self.engine = AuditEngine()
+
+    def test_split_response_counts_as_single_model_turn(self):
+        """Una respuesta partida en 3 líneas con el mismo message.id cuenta como 1 model_turn sin duplicar tokens."""
+        usage = {"input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 1000}
+
+        def assistant_line(block, ts):
+            return {
+                "type": "assistant",
+                "timestamp": ts,
+                "uuid": ts,
+                "message": {"id": "msg_01", "role": "assistant", "content": [block], "usage": usage},
+            }
+
+        records = [
+            {"type": "user", "timestamp": "2026-11-06T00:00:00Z", "uuid": "u0",
+             "message": {"role": "user", "content": "Lee main.py"}},
+            assistant_line({"type": "thinking", "thinking": "Debo leer el archivo."}, "2026-11-06T00:00:01Z"),
+            assistant_line({"type": "text", "text": "Leo el archivo."}, "2026-11-06T00:00:05Z"),
+            assistant_line({"type": "tool_use", "id": "t1", "name": "Read",
+                            "input": {"file_path": "main.py"}}, "2026-11-06T00:00:06Z"),
+            {"type": "user", "timestamp": "2026-11-06T00:00:07Z", "uuid": "u1",
+             "message": {"role": "user", "content": [
+                 {"type": "tool_result", "tool_use_id": "t1", "content": "print('hi')"}]}},
+        ]
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
+            for rec in records:
+                f.write(json.dumps(rec) + "\n")
+            f_path = Path(f.name)
+
+        try:
+            steps = self.adapter.parse(f_path)
+            self.assertEqual(len(steps), 3)
+            model = steps[1]
+            self.assertEqual(model.source, "MODEL")
+            self.assertEqual(model.thinking, "Debo leer el archivo.")
+            self.assertEqual(model.content, "Leo el archivo.")
+            self.assertEqual([tc.name for tc in model.tool_calls], ["Read"])
+            self.assertEqual(model.tokens, {"input": 100, "output": 50, "cache_read": 1000})
+            self.assertEqual(model.duration_seconds, 6.0)
+            self.assertEqual(sum(s.tokens.get("output", 0) for s in steps), 50)
+
+            meta = self.adapter.extract_metadata(f_path, steps)
+            report = self.engine.analyze(meta, steps)
+            self.assertEqual(report.model_turns, 1)
+            self.assertEqual(report.system_steps, 1)
+        finally:
+            f_path.unlink(missing_ok=True)
+
+
 if __name__ == "__main__":
     unittest.main()
