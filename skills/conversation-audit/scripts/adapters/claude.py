@@ -60,6 +60,16 @@ class ClaudeAdapter(TranscriptAdapter):
         return False
 
     @staticmethod
+    def _unwrap_event(event: Dict[str, Any]) -> Dict[str, Any]:
+        """Aplana el formato JSONL de Claude Code ({"type", "message": {role, content, usage}, "timestamp"})."""
+        msg = event.get("message")
+        if isinstance(msg, dict) and "role" in msg:
+            flat = {k: v for k, v in event.items() if k != "message"}
+            flat.update(msg)
+            return flat
+        return event
+
+    @staticmethod
     def _is_tool_result_event(event: Dict[str, Any]) -> bool:
         """Determina si un evento corresponde exclusivamente a resultados de herramientas."""
         role = event.get("role")
@@ -102,6 +112,10 @@ class ClaudeAdapter(TranscriptAdapter):
                             raw_events.append(json.loads(line))
                         except Exception:
                             pass
+
+        # Aplanar eventos anidados y descartar registros sin mensaje (snapshots, summaries, metadatos)
+        raw_events = [self._unwrap_event(e) for e in raw_events if isinstance(e, dict)]
+        raw_events = [e for e in raw_events if "role" in e]
 
         normalized_steps: List[NormalizedStep] = []
         tool_results_by_id: Dict[str, Dict[str, Any]] = {}
@@ -268,6 +282,7 @@ class ClaudeAdapter(TranscriptAdapter):
                     continue
 
                 if isinstance(record, dict):
+                    record = self._unwrap_event(record)
                     ts_raw = record.get("timestamp") or record.get("created_at") or record.get("ts")
                     if ts_raw and start_time is None:
                         try:

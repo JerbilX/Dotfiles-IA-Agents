@@ -147,6 +147,20 @@ class TestClaudeAdapterToolResult(unittest.TestCase):
             f_path.unlink(missing_ok=True)
 
     def test_read_only_loop_and_user_turns_with_claude_code_fixture(self):
+        """Fixture con eventos planos ({"role", "content"})."""
+        self._assert_read_only_loop_fixture(nested=False)
+
+    def test_read_only_loop_and_user_turns_with_real_claude_code_format(self):
+        """Fixture con el formato JSONL real de Claude Code ({"type", "message": {...}, "timestamp"})."""
+        self._assert_read_only_loop_fixture(nested=True)
+
+    @staticmethod
+    def _to_claude_code_record(ev):
+        """Envuelve un evento plano en el formato JSONL real de Claude Code."""
+        msg = {k: v for k, v in ev.items() if k != "timestamp"}
+        return {"type": ev["role"], "message": msg, "timestamp": ev["timestamp"], "uuid": "u"}
+
+    def _assert_read_only_loop_fixture(self, nested):
         """
         Test E2E con fixture de Claude Code:
         5 lecturas pasivas consecutivas intercaladas con sus respectivos tool_result
@@ -258,6 +272,12 @@ class TestClaudeAdapterToolResult(unittest.TestCase):
             },
         ]
 
+        if nested:
+            events = [self._to_claude_code_record(ev) for ev in events]
+            # Registros sin mensaje presentes en transcripts reales: deben descartarse
+            events.insert(0, {"type": "file-history-snapshot", "messageId": "m0", "snapshot": {}})
+            events.append({"type": "summary", "summary": "Investigación de auth", "leafUuid": "u"})
+
         with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
             for ev in events:
                 f.write(json.dumps(ev) + "\n")
@@ -266,6 +286,8 @@ class TestClaudeAdapterToolResult(unittest.TestCase):
         try:
             steps = self.adapter.parse(f_path)
             meta = self.adapter.extract_metadata(f_path, steps)
+            fast_meta = self.adapter.fast_extract_metadata(f_path)
+            self.assertIn("investiga el error", (fast_meta.title or "").lower())
             report = self.engine.analyze(meta, steps)
 
             # Verificaciones de turnos
