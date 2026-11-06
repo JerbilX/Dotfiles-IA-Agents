@@ -476,8 +476,8 @@ for l in links:
     if [ -f "${dist_file}" ]; then
         local w
         w="$(wc -w < "${dist_file}" | tr -d ' ')"
-        local max_w="${MAX_CONTEXT_WORDS:-2000}"
-        local target_w="${TARGET_CONTEXT_WORDS:-1100}"
+        local max_w="${MAX_CONTEXT_WORDS}"
+        local target_w="${TARGET_CONTEXT_WORDS}"
         local pct=$(( w * 100 / max_w ))
         if [ "${w}" -gt "${max_w}" ]; then
             echo "  [✗] Error [${r}]: Presupuesto de contexto (techo) superado: ${w} / ${max_w} palabras (${pct}%)" >&2

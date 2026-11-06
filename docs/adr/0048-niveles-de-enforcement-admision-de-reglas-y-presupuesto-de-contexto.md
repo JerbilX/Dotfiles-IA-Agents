@@ -61,8 +61,8 @@ Cada regla, directiva o salvaguarda debe residir en el **nivel más bajo** con c
    - No puede resolverse mediante invocación bajo demanda en **P1**.
 2. **Huella Residual Mínima de P0 en P2:** Toda regla cubierta o interceptada por P0 no debe duplicar su lógica en el texto basal. Deja en P2, como máximo, una sola línea que instruya al agente sobre **cómo actuar ante el bloqueo** (ej. ante denegación de circuit breaker: detenerse y sintetizar; ante bloqueo de REPL: crear script en `scratch/`).
 3. **Jerarquía de Mitigación de Incidentes:** Ante cualquier fallo operativo o incidente de agente, la solución técnica debe evaluarse en orden estricto:
-   $$\text{P0 (Mecánico)} \longrightarrow \text{P1 (Skill)} \longrightarrow \text{P2 (Prompt Basal)}$$
-   Queda terminantemente prohibido añadir texto a `core/` si la infracción puede detectarse en P0 o modularizarse en P1.
+   **P0 (mecánico) → P1 (skill) → P2 (prompt basal)**.
+   Queda prohibido añadir texto a `core/` si la infracción puede detectarse en P0 o modularizarse en P1.
 
 ---
 
@@ -71,7 +71,7 @@ Cada regla, directiva o salvaguarda debe residir en el **nivel más bajo** con c
 Para auditar y gobernar las directivas sin sobrecargar el contexto del modelo:
 - Cada regla presente en `core/` y `rules/` contará con una metadata estructurada (ID estable, nivel asignado e issue de origen).
 - La metadata se gestionará en encabezados o ficheros de control que no aportan palabras al prompt final compilado distribuido a los agentes.
-- `./build.sh check` auditará el cumplimiento del criterio de admisión, asegurando que ninguna regla mecanizable permanezca indebidamente en P2 sin plan de migración.
+- `./build.sh check` auditará el cumplimiento del criterio de admisión, asegurando que ninguna regla mecanizable permanezca indebidamente en P2 sin plan de migración. El registro y este control no existen aún: se implementan en #286.
 
 ---
 
@@ -107,7 +107,9 @@ El ciclo de vida y optimización continua se cierra reutilizando el tooling exis
 
 ### 6. Diagnóstico de Distribución de Palabras y Clasificación Tentativa (Línea Base)
 
-Como insumo directo para la evacuación de directivas (#284) y la creación del registro de reglas (#286), se registra la auditoría basal de palabras y niveles tentativos resultantes de la issue #282:
+Como insumo directo para la evacuación de directivas (#284) y la creación del registro de reglas (#286), se registra la auditoría basal de palabras y niveles tentativos resultantes de la issue #282.
+
+Además de P0/P1/P2, se usa la categoría **Build**: texto que no es una regla de conducta sino una traducción de vocabulario entre runtimes, eliminable en compilación (#288). No es un nivel de enforcement. En filas mixtas (`P0 / P2`, `P0 / P1`, `P1 / P2`), la parte P2 se limita a la línea residual de §2.2.
 
 #### 6.1 `core/00-router.md` (Total: 891 palabras)
 
@@ -134,8 +136,8 @@ Como insumo directo para la evacuación de directivas (#284) y la creación del 
 | • *Actionable Fallback* | 22 | **P2** | Criterio de respuesta accionable ante fallos del entorno. |
 | • *Local-First y Circuit Breaker de Búsqueda* | 47 | **P0 / P2** | P0 para límite de búsquedas; P2 para principio local-first y orden de búsqueda. |
 | **Trazabilidad y Backlog** (136 palabras) | | | |
-| • *Inmutabilidad de Workspace y Trazabilidad* | 80 | **P1** | Protocolo de ramas efímeras, PRs y niveles N0/N1/N2 pertenece a `issue-driven-workflow`. |
-| • *Prohibición de Backlogs Locales* | 28 | **P1** | Regla de gestión de tareas y backlog canónico en `issue-driven-workflow`. |
+| • *Inmutabilidad de Workspace y Trazabilidad* | 80 | **P0 / P1** | P0: prohibición de commit/push a `main` (guard #283, branch protection). P1: protocolo de ramas efímeras, PRs y niveles N0/N1/N2 en `issue-driven-workflow`. |
+| • *Prohibición de Backlogs Locales* | 28 | **P0 / P1** | P0: bloqueo de creación de `TODO.md`, `backlog.md`, `tasks/`, `prompts/` (guard #283). P1: backlog canónico en Issues/Projects v2 en `issue-driven-workflow`. |
 | • *Decisiones (MADR)* | 24 | **P1** | Regla de gestión de decisiones de arquitectura en `adr-manager`. |
 | **Activación Obligatoria de Skills** (91 palabras) | | | |
 | • Tabla canónica de ruteo de skills | 91 | **P2** | **Indispensable en P2** para activar los procedimientos P1 bajo demanda. |
@@ -152,36 +154,44 @@ Como insumo directo para la evacuación de directivas (#284) y la creación del 
 
 | Directiva | Palabras | Nivel Tentativo | Justificación y Destino Propuesto |
 | :--- | :---: | :---: | :--- |
-| • *Ejecución de Git y Bypass de Sandbox* | 88 | **P0 / P2** | Mecanismo de sandbox y guía de bypass. |
+| • *Ejecución de Git y Bypass de Sandbox* | 88 | **P0 / P2** | P0: el sandbox ya rechaza mutadores sin bypass y la prohibición de `git commit -m` es interceptable. P2: una línea con la matriz lectura confinada / mutadores con bypass. |
 | • *Atribución* | 23 | **P1** | Convención de metadatos de commits y PRs transferible a `issue-driven-workflow`. |
 | • *Exploración Delegada* | 20 | **P1** | Criterio de subagentes en relevamientos transferible a `issue-driven-workflow`. |
-| • *Aprovisionamiento Hermético de Dotfiles* | 30 | **P1 / P2** | Procedimiento de bootstrap de dotfiles. |
-| • *Exclusividad de Bypass y Prefix Matching* | 98 | **P0 / P2** | Interceptable por hook/guardia determinista; en P2 solo guía de fallback. |
+| • *Aprovisionamiento Hermético de Dotfiles* | 30 | **P1 / P2** | P1: modos de `build`/`check`/`link` en la documentación del repo o skill de tooling. P2: una línea con la prohibición de escrituras externas (`link`, `all`), que solo ejecuta el usuario. |
+| • *Exclusividad de Bypass y Prefix Matching* | 98 | **P0 / P2** | P0: bypass fuera de la lista blanca, tuberías en bypass y evaluadores inline son interceptables (#283). P2: una línea de fallback (scripts en `scratch/`). |
 
 #### 6.4 `runtimes/claude/rules/01-claude-tools.md` (Total: 231 palabras)
 
 | Directiva | Palabras | Nivel Tentativo | Justificación y Destino Propuesto |
 | :--- | :---: | :---: | :--- |
-| • *Equivalencias de Herramientas* | 53 | **P0** | Eliminable mediante compilación con plantillas o vocabulario neutro (#288). |
-| • *Skills y Circuit Breaker* | 26 | **P0** | Hook determinista PreToolUse en Claude Code (#287). |
+| • *Equivalencias de Herramientas* | 53 | **Build** | Eliminable en compilación con plantillas o vocabulario neutro (#288). |
+| • *Skills y Circuit Breaker* | 26 | **P0 / P2** | P0: hook determinista PreToolUse en Claude Code (#287). P2: una línea residual sobre cómo actuar ante el bloqueo (§2.2). |
 | • *Atribución* | 36 | **P1** | Convención de metadatos de commits y PRs en `issue-driven-workflow`. |
-| • *Sin `BypassSandbox`* | 45 | **P0** | Neutralización en compilación (#288). |
+| • *Sin `BypassSandbox`* | 45 | **Build** | Neutralización en compilación (#288). |
 | • *Subagentes* | 24 | **P2** | Criterio cualitativo de despacho en Claude. |
 | • *Continuidad entre Runtimes* | 38 | **P2** | Criterio metodológico de transición de sesiones. |
 
 #### 6.5 Balance y Potencial de Evicción
-- Palabras candidatas directas a **P0** (mecanismo/hooks): ~450 palabras.
-- Palabras candidatas a **P1** (skills bajo demanda): ~250 palabras.
-- Palabras retenidas en **P2** (criterio irreductible y tabla de ruteo): ~550 palabras.
-- Margen proyectado post-evicción (#284): ~550 - 650 palabras en total, situando el prompt compilado muy por debajo de la banda objetivo de 1100 palabras.
+Cada prompt compilado incluye `core/` y solo las reglas de su propio runtime, por lo que el balance se calcula por runtime. Las filas suman menos que el total compilado por los encabezados de sección (~57 palabras).
+
+| Concepto (palabras) | Antigravity | Claude |
+| :--- | :---: | :---: |
+| Prompt compilado actual | 1271 | 1235 |
+| Evictable puro (`P0`, `P1`, `Build`) | 303 (core 260 + runtime 43) | 394 (core 260 + runtime 134) |
+| Filas mixtas | 405 en 7 filas (core 189 + runtime 216) | 215 en 5 filas (core 189 + runtime 26) |
+| Retenido en `P2` | 506 (core 418 + objetividad 88) | 568 (core 418 + objetividad 88 + runtime 62) |
+| **Proyección pesimista** (solo se evacúa lo puro) | **~968** | **~841** |
+| **Proyección optimista** (filas mixtas reducidas a ~15 palabras residuales) | **~670** | **~700** |
+
+En ambos escenarios y en ambos runtimes, la evicción de #284 deja el prompt compilado por debajo de la banda objetivo de 1100 palabras.
 
 ---
 
 ## Consecuencias y Efectos
 
 ### Positivas
-- **Contención definitiva del prompt basal:** Se frenan los 25 ciclos históricos de parches textuales acumulativos.
-- **Enforcement robusto y determinista:** Las prohibiciones mecánicas (REPL, comandos peligrosos, lecturas masivas) se garantizan mediante código (hooks), reduciendo la tasa de fallo de los agentes a 0% en dichos vectores.
+- **Contención del prompt basal:** El criterio de admisión y la banda objetivo buscan cortar el patrón histórico (~25 commits) de parches textuales acumulativos.
+- **Enforcement determinista (esperado):** Una vez implementados los hooks y guards (#283, #287), las prohibiciones mecánicas (REPL, comandos peligrosos, lecturas masivas) se harán cumplir por código en lugar de depender de la adhesión probabilística al texto.
 - **Menor carga cognitiva:** La reducción progresiva hacia la banda objetivo de 1100 palabras maximiza la atención del LLM para el código y la lógica de negocio.
 - **Compatibilidad multi-runtime:** Desacopla la lógica basal de las peculiaridades de interfaz de herramientas de cada runtime.
 

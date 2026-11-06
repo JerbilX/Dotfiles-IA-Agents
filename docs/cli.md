@@ -120,9 +120,9 @@ Flujo completo por defecto. Ejecuta secuencialmente `build`, `link`, `skills`, `
 
 ---
 
-## 4. Auditoría de Presupuesto de Contexto (Compuerta Dual)
+## 4. Auditoría de Presupuesto de Contexto
 
-El subcomando `check` implementa una compuerta de auditoría para prevenir la degradación atencional por saturación del System Prompt ([ADR-0008](adr/0008-telemetria-de-presupuesto-de-contexto-y-subcomando-check.md), [ADR-0013](adr/0013-estrategia-de-modularizacion-de-directivas-extensas-a-skills.md), [ADR-0017](adr/0017-principio-de-minima-intervencion-y-jerarquia-de-resolucion.md), [ADR-0047](adr/0047-resolucion-desacople-progressive-disclosure-y-compilacion-autosuficiente.md) y [ADR-0048](adr/0048-niveles-de-enforcement-admision-de-reglas-y-presupuesto-de-contexto.md)):
+El subcomando `check` implementa dos controles de auditoría (presupuesto global con techo y banda, y presupuesto modular) para prevenir la degradación atencional por saturación del System Prompt ([ADR-0008](adr/0008-telemetria-de-presupuesto-de-contexto-y-subcomando-check.md), [ADR-0013](adr/0013-estrategia-de-modularizacion-de-directivas-extensas-a-skills.md), [ADR-0017](adr/0017-principio-de-minima-intervencion-y-jerarquia-de-resolucion.md), [ADR-0047](adr/0047-resolucion-desacople-progressive-disclosure-y-compilacion-autosuficiente.md) y [ADR-0048](adr/0048-niveles-de-enforcement-admision-de-reglas-y-presupuesto-de-contexto.md)):
 
 1. **Presupuesto Global Dual ([ADR-0048](adr/0048-niveles-de-enforcement-admision-de-reglas-y-presupuesto-de-contexto.md)):**
    - **Techo Duro (`MAX_CONTEXT_WORDS=2000`):** Límite estricto que aborta con error estático (`exit 1`) si el prompt compilado supera este valor.

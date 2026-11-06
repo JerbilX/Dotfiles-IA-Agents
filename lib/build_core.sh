@@ -165,8 +165,8 @@ EOF
     size_kb="$(awk "BEGIN {printf \"%.1f\", ${bytes}/1024}")"
 
     echo "==> [build] Telemetría de contexto [${r}]: ${lines} líneas | ${words} palabras | ~${approx_tokens} tokens estimados (${size_kb} KB)"
-    local target_words="${TARGET_CONTEXT_WORDS:-1100}"
-    local max_words="${MAX_CONTEXT_WORDS:-2000}"
+    local target_words="${TARGET_CONTEXT_WORDS}"
+    local max_words="${MAX_CONTEXT_WORDS}"
     if [ "${words}" -gt "${max_words}" ]; then
         echo "  [!] Advertencia [${r}]: El contexto compilado supera el techo máximo (${words} > ${max_words} palabras)." >&2
         echo "      ADVERTENCIA: './build.sh check' fallará con error hasta reducir el prompt." >&2
