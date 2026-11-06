@@ -32,7 +32,6 @@ cmd_all() {
     validate_runtime_arg "${target_arg}" || return 1
     cmd_build "${target_arg}"
     cmd_link "${target_arg}"
-    cmd_skills "${target_arg}"
     cmd_status "${target_arg}"
     echo ""
     cmd_check "${target_arg}"

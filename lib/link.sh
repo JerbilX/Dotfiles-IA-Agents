@@ -112,6 +112,7 @@ cmd_link() {
     for r in "${target_runtimes[@]}"; do
         [ -z "$r" ] && continue
         link_runtime "$r"
+        skills_runtime "$r" || echo "  [!] Advertencia [${r}]: Falló el aprovisionamiento de skills; reintentar con './build.sh skills ${r}'." >&2
     done
     setup_gh_aliases
     setup_git_hooks

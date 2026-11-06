@@ -147,6 +147,55 @@ json_get "{data_file}" ".nested.val"
         self.assertEqual(res_jq.returncode, 0)
         self.assertEqual(res_jq.stdout.strip(), "123")
 
+    def test_cmd_link_invokes_skills_runtime(self):
+        """cmd_link must call skills_runtime for each target runtime (Issue #277)."""
+        bash_cmd = f"""
+export RUNTIMES_BASE_DIR="{REPO_ROOT}/runtimes"
+source "{REPO_ROOT}/lib/common.sh"
+source "{REPO_ROOT}/lib/link.sh"
+
+invoked_skills=()
+skills_runtime() {{
+    invoked_skills+=("$1")
+}}
+link_runtime() {{
+    :
+}}
+setup_gh_aliases() {{
+    :
+}}
+setup_git_hooks() {{
+    :
+}}
+
+cmd_link "antigravity"
+echo "Skills invoked: ${{invoked_skills[*]}}"
+"""
+        res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("Skills invoked: antigravity", res.stdout)
+
+    def test_cmd_link_skills_failure_is_not_fatal(self):
+        """A skills_runtime failure must not abort aliases/hooks setup under set -e."""
+        bash_cmd = f"""
+set -euo pipefail
+export RUNTIMES_BASE_DIR="{REPO_ROOT}/runtimes"
+source "{REPO_ROOT}/lib/common.sh"
+source "{REPO_ROOT}/lib/link.sh"
+
+skills_runtime() {{ return 1; }}
+link_runtime() {{ :; }}
+setup_gh_aliases() {{ echo "aliases-ok"; }}
+setup_git_hooks() {{ echo "hooks-ok"; }}
+
+cmd_link "antigravity"
+"""
+        res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("aliases-ok", res.stdout)
+        self.assertIn("hooks-ok", res.stdout)
+        self.assertIn("Falló el aprovisionamiento de skills", res.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
