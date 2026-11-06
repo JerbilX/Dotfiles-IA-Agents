@@ -39,18 +39,14 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
      * **Flujo para textos en pantalla:** Buscar string en `localizegeneratedstrings.lua` -> contrastar constante/enum en `ESOUIDocumentation.txt`.
      * **Principio de Suficiencia:** Asumir e implementar de inmediato la constante identificada.
      * **Sincronización JIT:** Ejecutar `scripts/update_esoui_docs.sh` si el manifiesto requiere una versión de API superior a `ESOUIDocumentation.txt`.
-   * **Vía Contingencia — Búsqueda Web (`search_web`):**
-     * Prohibido invocar `search_web` o búsquedas externas de forma prematura. Reservado exclusivamente ante vacíos documentales confirmados tras consultar sin éxito el MCP y las referencias locales (o si no están disponibles en el entorno).
+   * **Vía Contingencia — Búsqueda Web:**
+     * Prohibido realizar búsquedas web o consultas externas de forma prematura. Reservado exclusivamente ante vacíos documentales confirmados tras consultar sin éxito el MCP y las referencias locales (o si no están disponibles en el entorno).
 4. **Nivel 4 — Circuit Breaker y Freno Obligatorio (Stop & Ask):**
    * **Flujo Ordenado de Inspección y Fallback:**
-     1. Hasta 3 consultas a `eso-mcp-server` guiadas por hipótesis.
-     2. Si el MCP no resuelve o no está disponible: hasta 3 lecturas en archivos de referencia locales (`references/ESOUIDocumentation.txt`, `references/localizegeneratedstrings.lua`).
-     3. Si persiste un vacío documental confirmado: máximo 1 búsqueda web acotada (`search_web` o endpoint raw de GitHub).
+     1. Hasta 3 consultas consecutivas a herramientas de `eso-mcp-server` sin una acción intermedia observable (mutación de código local o pruebas), guiadas por hipótesis técnica.
+     2. Si el MCP no resuelve o no está disponible: hasta 3 lecturas consecutivas en archivos de referencia locales (`references/ESOUIDocumentation.txt`, `references/localizegeneratedstrings.lua`) sin formular mutaciones o pruebas.
+     3. Si persiste un vacío documental confirmado: máximo 1 búsqueda web acotada o consulta externa (endpoints raw o repositorio oficial de EsoUI).
      4. Si no se localiza la API o constante tras agotar este orden: **detenerse inmediatamente y consultar al usuario (Stop & Ask)**. Prohibido inventar signaturas, asumir parámetros o reiniciar bucles de inspección ciega.
-   * **Límite MCP:** Máximo 3 consultas consecutivas a `eso-mcp-server` sin una acción intermedia observable (mutación de código local o ejecución de pruebas).
-   * **Circuit Breaker ante Parálisis por Inspección (`READ_ONLY_LOOP`):** Máximo 3 lecturas pasivas consecutivas en archivos de referencia locales sin formular mutaciones o pruebas; exige formular hipótesis verificable antes de continuar o accionar Stop & Ask.
-   * **Límite Externo:** Máximo 1 consulta a GitHub (`https://github.com/esoui/esoui`) o endpoints raw.
-   * Si no se localiza la API o constante, **detenerse inmediatamente y consultar al usuario** (Stop & Ask). Prohibido inventar signaturas, asumir parámetros o continuar en bucles de inspección ciega.
 
 ---
 

@@ -270,8 +270,9 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("Vía Contingencia — Búsqueda Web", eso_skill_content)
         self.assertIn("Flujo Ordenado de Inspección y Fallback", eso_skill_content)
         self.assertIn("eso-mcp-server", eso_skill_content)
-        self.assertIn("search_web", eso_skill_content)
+        self.assertIn("búsqueda web", eso_skill_content.lower())
         self.assertIn("vacíos documentales confirmados", eso_skill_content)
+        self.assertNotIn("Límite Externo", eso_skill_content)
 
 
 if __name__ == "__main__":
