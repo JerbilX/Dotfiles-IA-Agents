@@ -476,10 +476,14 @@ for l in links:
     if [ -f "${dist_file}" ]; then
         local w
         w="$(wc -w < "${dist_file}" | tr -d ' ')"
-        local max_w="${MAX_CONTEXT_WORDS:-1350}"
+        local max_w="${MAX_CONTEXT_WORDS}"
+        local target_w="${TARGET_CONTEXT_WORDS}"
         local pct=$(( w * 100 / max_w ))
         if [ "${w}" -gt "${max_w}" ]; then
-            echo "  [!] Advertencia [${r}]: Presupuesto de contexto superado: ${w} / ${max_w} palabras (${pct}%)" >&2
+            echo "  [✗] Error [${r}]: Presupuesto de contexto (techo) superado: ${w} / ${max_w} palabras (${pct}%)" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        elif [ "${w}" -gt "${target_w}" ]; then
+            echo "  [!] Advertencia [${r}]: Presupuesto de contexto supera banda objetivo: ${w} / ${max_w} palabras (${pct}%, objetivo: <= ${target_w})" >&2
             CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
         else
             echo "  [✓] [${r}] Presupuesto de contexto: ${w} / ${max_w} palabras (${pct}%)"
