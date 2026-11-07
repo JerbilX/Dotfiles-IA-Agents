@@ -53,6 +53,127 @@ for l in links:
     fi
 }
 
+check_basal_rules_admission() {
+    echo "==> [check] Verificando control de admisión y metadatos de reglas basales..."
+    local rules_errors=0
+    local rules_audited=0
+
+    if command -v python3 >/dev/null 2>&1; then
+        local audit_output
+        audit_output="$(python3 -c '
+import glob, os, re, sys
+
+repo_root = sys.argv[1]
+core_dir = os.path.join(repo_root, "core")
+runtimes_dir = os.path.join(repo_root, "runtimes")
+
+target_files = sorted(glob.glob(os.path.join(core_dir, "*.md")))
+for rd in sorted(glob.glob(os.path.join(runtimes_dir, "*", "rules"))):
+    target_files.extend(sorted(glob.glob(os.path.join(rd, "*.md"))))
+
+seen_ids = set()
+errors = []
+total_rules = 0
+
+rule_comment_pattern = re.compile(
+    r"^<!--\s*rule:\s*id=([A-Za-z0-9_]+)\s+level=([A-Za-z0-9_]+)\s+origin=(#[0-9]+)\s*-->$"
+)
+valid_levels = {"P0", "P1", "P2", "Build"}
+
+for file_path in target_files:
+    rel_path = os.path.relpath(file_path, repo_root)
+    with open(file_path, "r", encoding="utf-8") as fp:
+        lines = fp.readlines()
+
+    pending_meta = None
+    i = 0
+    n = len(lines)
+    while i < n:
+        raw_line = lines[i]
+        line = raw_line.strip()
+        line_no = i + 1
+
+        m_comment = rule_comment_pattern.match(line)
+        if m_comment:
+            if pending_meta is not None:
+                p_id = pending_meta["id"]
+                p_lno = pending_meta["line_no"]
+                errors.append(f"Metadato huérfano <!-- rule: id={p_id} ... --> en {rel_path}:{p_lno} sin regla asociada")
+            rule_id, rule_level, rule_origin = m_comment.groups()
+            pending_meta = {
+                "id": rule_id,
+                "level": rule_level,
+                "origin": rule_origin,
+                "line_no": line_no
+            }
+            i += 1
+            continue
+
+        if line.startswith("- "):
+            if not raw_line.startswith("  ") and not raw_line.startswith("\t"):
+                total_rules += 1
+                rule_name = line
+                if pending_meta is None:
+                    errors.append(f"Regla en {rel_path}:{line_no} sin metadatos de admisión (falta comentario <!-- rule: id=... level=... origin=... -->): {rule_name[:60]}")
+                else:
+                    rid = pending_meta["id"]
+                    rlevel = pending_meta["level"]
+                    rlno = pending_meta["line_no"]
+                    if rid in seen_ids:
+                        errors.append(f"ID de regla duplicado \"{rid}\" en {rel_path}:{rlno}")
+                    seen_ids.add(rid)
+
+                    if rlevel not in valid_levels:
+                        errors.append(f"Nivel inválido \"{rlevel}\" para regla \"{rid}\" en {rel_path}:{rlno} (debe ser P0, P1, P2 o Build)")
+
+                    rule_lines_count = 1
+                    j = i + 1
+                    while j < n:
+                        next_raw = lines[j]
+                        next_line = next_raw.strip()
+                        if rule_comment_pattern.match(next_line):
+                            break
+                        if next_line.startswith("#"):
+                            break
+                        if next_line.startswith("- ") and not next_raw.startswith("  ") and not next_raw.startswith("\t"):
+                            break
+                        if next_line:
+                            rule_lines_count += 1
+                        j += 1
+
+                    if rlevel == "P0" and rule_lines_count > 1:
+                        errors.append(f"Regla P0 \"{rid}\" en {rel_path}:{line_no} conserva más de una línea en el basal ({rule_lines_count} líneas)")
+
+                    pending_meta = None
+
+        i += 1
+
+    if pending_meta is not None:
+        p_id = pending_meta["id"]
+        p_lno = pending_meta["line_no"]
+        errors.append(f"Metadato huérfano <!-- rule: id={p_id} ... --> al final de {rel_path}:{p_lno}")
+
+print(f"COUNT:{total_rules}")
+for err in errors:
+    print(f"ERROR:{err}")
+' "${SCRIPT_DIR}")"
+
+        while IFS= read -r line; do
+            if [[ "${line}" =~ ^COUNT:([0-9]+)$ ]]; then
+                rules_audited="${BASH_REMATCH[1]}"
+            elif [[ "${line}" =~ ^ERROR:(.*)$ ]]; then
+                echo "  [✗] ${BASH_REMATCH[1]}" >&2
+                CHECK_ERRORS=$((CHECK_ERRORS + 1))
+                rules_errors=$((rules_errors + 1))
+            fi
+        done <<< "${audit_output}"
+    fi
+
+    if [ "${rules_errors}" -eq 0 ]; then
+        echo "  [✓] Control de admisión basal: ${rules_audited} regla(s) verificada(s) con ID y nivel válidos"
+    fi
+}
+
 check_runtime() {
     local r="$1"
     local config_file
@@ -883,6 +1004,7 @@ cmd_check() {
 
     # Verificaciones comunes de directivas core
     check_core_rules
+    check_basal_rules_admission
 
     # Verificación de pureza de perfil global (MCP y Skills)
     check_global_mcp_purity

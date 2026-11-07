@@ -7,6 +7,8 @@ Unit tests for the self-sufficient basal prompt (ADR-0047): basal word budget, m
 import glob
 import os
 import re
+import subprocess
+import tempfile
 import unittest
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -304,6 +306,180 @@ class TestProgressiveDisclosure(unittest.TestCase):
             eso_skill_content.index("Límites por Etapa"),
             eso_skill_content.index("Flujo Ordenado de Inspección y Fallback"),
         )
+
+    def test_basal_rules_admission_metadata(self):
+        """All basal rules in core/*.md and runtimes/*/rules/*.md must have valid admission metadata (#286)."""
+        rule_comment_pattern = re.compile(
+            r"^<!--\s*rule:\s*id=([A-Za-z0-9_]+)\s+level=([A-Za-z0-9_]+)\s+origin=(#[0-9]+)\s*-->$"
+        )
+        valid_levels = {"P0", "P1", "P2", "Build"}
+        target_files = sorted(glob.glob(os.path.join(CORE_DIR, "*.md")))
+        for rd in sorted(glob.glob(os.path.join(RUNTIMES_DIR, "*", "rules"))):
+            target_files.extend(sorted(glob.glob(os.path.join(rd, "*.md"))))
+
+        self.assertGreater(len(target_files), 0, "No basal target files found")
+        seen_ids = set()
+        total_rules = 0
+
+        for file_path in target_files:
+            rel = os.path.relpath(file_path, REPO_ROOT)
+            with open(file_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            pending_meta = None
+            for idx, raw_line in enumerate(lines):
+                line = raw_line.strip()
+                lno = idx + 1
+                m = rule_comment_pattern.match(line)
+                if m:
+                    self.assertIsNone(
+                        pending_meta,
+                        f"Orphan metadata <!-- rule: id={pending_meta} ... --> at {rel}:{lno}"
+                    )
+                    pending_meta = {
+                        "id": m.group(1),
+                        "level": m.group(2),
+                        "origin": m.group(3),
+                        "line_no": lno,
+                    }
+                    continue
+
+                if line.startswith("- ") and not raw_line.startswith("  ") and not raw_line.startswith("\t"):
+                    total_rules += 1
+                    self.assertIsNotNone(
+                        pending_meta,
+                        f"Rule at {rel}:{lno} lacks admission metadata comment: {line[:60]}"
+                    )
+                    rid = pending_meta["id"]
+                    rlevel = pending_meta["level"]
+                    self.assertNotIn(
+                        rid, seen_ids,
+                        f"Duplicate rule ID '{rid}' at {rel}:{pending_meta['line_no']}"
+                    )
+                    seen_ids.add(rid)
+                    self.assertIn(
+                        rlevel, valid_levels,
+                        f"Invalid level '{rlevel}' for rule '{rid}' at {rel}:{pending_meta['line_no']}"
+                    )
+                    pending_meta = None
+
+            self.assertIsNone(
+                pending_meta,
+                f"Trailing metadata comment without associated rule at {rel}"
+            )
+
+        self.assertGreaterEqual(total_rules, 30, f"Expected at least 30 audited rules, found {total_rules}")
+
+    def test_p0_rules_single_line_in_basal(self):
+        """Rules marked P0 must not exceed a single line in the basal prompt (#286, ADR-0048)."""
+        rule_comment_pattern = re.compile(
+            r"^<!--\s*rule:\s*id=([A-Za-z0-9_]+)\s+level=([A-Za-z0-9_]+)\s+origin=(#[0-9]+)\s*-->$"
+        )
+        target_files = sorted(glob.glob(os.path.join(CORE_DIR, "*.md")))
+        for rd in sorted(glob.glob(os.path.join(RUNTIMES_DIR, "*", "rules"))):
+            target_files.extend(sorted(glob.glob(os.path.join(rd, "*.md"))))
+
+        for file_path in target_files:
+            rel = os.path.relpath(file_path, REPO_ROOT)
+            with open(file_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            pending_meta = None
+            n = len(lines)
+            for i in range(n):
+                raw = lines[i]
+                line = raw.strip()
+                m = rule_comment_pattern.match(line)
+                if m:
+                    pending_meta = {"id": m.group(1), "level": m.group(2), "line_no": i + 1}
+                    continue
+
+                if line.startswith("- ") and not raw.startswith("  ") and not raw.startswith("\t"):
+                    if pending_meta and pending_meta["level"] == "P0":
+                        rid = pending_meta["id"]
+                        rule_lines_count = 1
+                        for j in range(i + 1, n):
+                            next_raw = lines[j]
+                            next_line = next_raw.strip()
+                            if rule_comment_pattern.match(next_line):
+                                break
+                            if next_line.startswith("#"):
+                                break
+                            if next_line.startswith("- ") and not next_raw.startswith("  ") and not next_raw.startswith("\t"):
+                                break
+                            if next_line:
+                                rule_lines_count += 1
+                        self.assertEqual(
+                            rule_lines_count, 1,
+                            f"P0 rule '{rid}' in {rel}:{i + 1} spans {rule_lines_count} lines (> 1)"
+                        )
+                    pending_meta = None
+
+    def test_compiled_dist_strips_rule_metadata_comments(self):
+        """Compiled AGENTS.md in dist/ must not contain rule metadata comments (#286)."""
+        for runtime in ("antigravity", "claude"):
+            dist_file = os.path.join(DIST_DIR, runtime, "AGENTS.md")
+            self.assertTrue(os.path.isfile(dist_file), f"Missing compiled artifact: {dist_file}")
+            with open(dist_file, "r", encoding="utf-8") as f:
+                content = f.read()
+            self.assertNotIn("<!-- rule:", content, f"Rule metadata comment leaked in {dist_file}")
+            self.assertNotIn("rule: id=", content, f"Rule metadata identifier leaked in {dist_file}")
+
+    def test_admission_validation_negative_cases(self):
+        """Admission check in lib/check.sh must reject missing metadata, multiline P0, invalid level, duplicate ID (#286)."""
+        check_script = os.path.join(REPO_ROOT, "lib", "check.sh")
+        self.assertTrue(os.path.isfile(check_script))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            core_dir = os.path.join(tmpdir, "core")
+            os.makedirs(core_dir)
+
+            # Caso 1: Regla sin metadatos
+            f1 = os.path.join(core_dir, "00-test.md")
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write("# Header\n\n- **Regla Sin Meta:** Contenido de prueba.\n")
+
+            cmd = [
+                "bash", "-c",
+                f'source "{REPO_ROOT}/lib/common.sh" && source "{check_script}" && SCRIPT_DIR="{tmpdir}" CHECK_ERRORS=0 && check_basal_rules_admission'
+            ]
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.assertIn("sin metadatos de admisión", res.stderr)
+
+            # Caso 2: Regla P0 multilínea
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_P0_TEST level=P0 origin=#282 -->\n"
+                    "- **Regla P0 Multilínea:**\n"
+                    "  - Sub-bullet 1\n"
+                    "  - Sub-bullet 2\n"
+                )
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.assertIn("Regla P0 \"RULE_P0_TEST\"", res.stderr)
+            self.assertIn("conserva más de una línea", res.stderr)
+
+            # Caso 3: Nivel inválido
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_INVALID_LEVEL level=P9 origin=#282 -->\n"
+                    "- **Regla Nivel Inválido:** Contenido de prueba.\n"
+                )
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.assertIn("Nivel inválido \"P9\"", res.stderr)
+
+            # Caso 4: ID duplicado
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_DUP level=P2 origin=#282 -->\n"
+                    "- **Regla 1:** Contenido.\n"
+                    "<!-- rule: id=RULE_DUP level=P2 origin=#282 -->\n"
+                    "- **Regla 2:** Contenido duplicado.\n"
+                )
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.assertIn("ID de regla duplicado \"RULE_DUP\"", res.stderr)
 
 
 if __name__ == "__main__":
