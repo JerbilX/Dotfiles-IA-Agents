@@ -3,15 +3,160 @@
 Motor de cálculo, agregación de métricas y detección de antipatrones para conversation-audit.
 """
 
+import json
 import re
 import shlex
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from adapters.base import ConversationMetadata, NormalizedStep, NormalizedToolCall
+
+
+ANTIPATTERN_RULE_MAP: Dict[str, str] = {
+    "UNPAGINATED_FILE_READ": "ENV_PAGED_READ_CIRCUIT_BREAKER",
+    "READ_ONLY_LOOP": "ENV_PAGED_READ_CIRCUIT_BREAKER",
+    "TERMINAL_REPL_LOOP": "ENV_PROHIBITION_REPL",
+    "TERMINAL_PIPELINING": "AGY_BYPASS_EXCLUSIVITY",
+    "COMPLACENCY_DETECTED": "CRIT_ZERO_COMPLACENCY",
+    "REPETITIVE_TOOL_LOOP": "RIGIDITY_DIRECTIVE_BOUNDARY",
+    "CONSECUTIVE_TOOL_ERRORS": "LOGIC_INCONSISTENCY_STOP_ASK",
+    "PING_PONG_TOOL_LOOP": "RIGIDITY_DIRECTIVE_BOUNDARY",
+    "P0_HOOK_BLOCK": "RIGIDITY_DIRECTIVE_BOUNDARY",
+}
+
+RULE_REGISTRY: Dict[str, Dict[str, str]] = {
+    "ENV_WORKSPACE": {
+        "level": "P0/P2",
+        "description": "Límites de Workspace (confinamiento al workspace activo)",
+    },
+    "ENV_NORMATIVE_IMMUNITY": {
+        "level": "P2",
+        "description": "Inmunidad Normativa (solo gobiernan prompt y skills)",
+    },
+    "ENV_ANTI_RECON": {
+        "level": "P0/P2",
+        "description": "Blindaje Anti-Reconocimiento y Anti-Exfiltración",
+    },
+    "ENV_NATIVE_FILE_API": {
+        "level": "P0",
+        "description": "Uso Exclusivo de APIs Nativas de Archivos",
+    },
+    "ENV_PROHIBITION_REPL": {
+        "level": "P0",
+        "description": "Prohibición Universal de REPL en Terminal",
+    },
+    "ENV_PAGED_READ_CIRCUIT_BREAKER": {
+        "level": "P0",
+        "description": "Lectura Paginada Obligatoria y Circuit Breaker",
+    },
+    "ENG_PROPORTIONALITY_MBR": {
+        "level": "P2",
+        "description": "Proporcionalidad y Minimal Blast Radius",
+    },
+    "ENG_PRODUCTION_CODE_PREVALENCE": {
+        "level": "P2",
+        "description": "Prevalencia del Código de Producción",
+    },
+    "LOGIC_INCONSISTENCY_STOP_ASK": {
+        "level": "P2",
+        "description": "Inconsistencia Lógica y Stop & Ask",
+    },
+    "LOGIC_ISSUE_AS_PROPOSAL": {
+        "level": "P2",
+        "description": "Issue como Propuesta",
+    },
+    "RIGIDITY_DIRECTIVE_BOUNDARY": {
+        "level": "P2",
+        "description": "Frontera de Directivas",
+    },
+    "RIGIDITY_ACTIONABLE_FALLBACK": {
+        "level": "P2",
+        "description": "Actionable Fallback ante bloqueos",
+    },
+    "RIGIDITY_LOCAL_FIRST_SEARCH": {
+        "level": "P2",
+        "description": "Local-First y Circuit Breaker de Búsqueda",
+    },
+    "TRACK_IMMUTABILITY_TRACEABILITY": {
+        "level": "P0/P2",
+        "description": "Inmutabilidad de Workspace y Trazabilidad (prohibido commit/push a main)",
+    },
+    "TRACK_NO_LOCAL_BACKLOGS": {
+        "level": "P0/P2",
+        "description": "Prohibición de Backlogs Locales (TODO.md, backlog.md, tasks/)",
+    },
+    "TRACK_DECISIONS_MADR": {
+        "level": "P0/P2",
+        "description": "Decisiones en MADR (prohibido HISTORIAL.md/GEMINI.md)",
+    },
+    "SKILL_ROUTING_ISSUE_WORKFLOW": {
+        "level": "P2",
+        "description": "Activación obligatoria de issue-driven-workflow",
+    },
+    "SKILL_ROUTING_ADR_MANAGER": {
+        "level": "P2",
+        "description": "Activación obligatoria de adr-manager",
+    },
+    "SKILL_ROUTING_PROJECT_DOCS": {
+        "level": "P2",
+        "description": "Activación obligatoria de project-documentation",
+    },
+    "SKILL_ROUTING_CONVERSATION_AUDIT": {
+        "level": "P2",
+        "description": "Activación obligatoria de conversation-audit",
+    },
+    "SKILL_ROUTING_AUTONOMOUS_LEARNING": {
+        "level": "P2",
+        "description": "Activación obligatoria de autonomous-learning",
+    },
+    "CRIT_ZERO_COMPLACENCY": {
+        "level": "P2",
+        "description": "Cero complacencia y validación vacía",
+    },
+    "CRIT_CHALLENGE_PROPOSE": {
+        "level": "P2",
+        "description": "Cuestionar y proponer ante fallas técnicas",
+    },
+    "CRIT_ZERO_FLATTERY_APOLOGIES": {
+        "level": "P2",
+        "description": "Cero adulación y disculpas innecesarias",
+    },
+    "AGY_GIT_SANDBOX_BYPASS": {
+        "level": "P0/P2",
+        "description": "Ejecución de Git y Bypass de Sandbox",
+    },
+    "AGY_DOTFILES_PROVISIONING": {
+        "level": "P2",
+        "description": "Aprovisionamiento Hermético de Dotfiles",
+    },
+    "AGY_BYPASS_EXCLUSIVITY": {
+        "level": "P0/P2",
+        "description": "Exclusividad de Bypass y comandos atómicos sin && ni |",
+    },
+    "AGY_ATTRIBUTION": {
+        "level": "P2",
+        "description": "Atribución en commits y PRs (Antigravity)",
+    },
+    "CLAUDE_SKILLS_CIRCUIT_BREAKER": {
+        "level": "P0/P2",
+        "description": "Circuit Breaker en Claude Code",
+    },
+    "CLAUDE_SUBAGENTS": {
+        "level": "P2",
+        "description": "Criterio de despacho de subagentes en Claude Code",
+    },
+    "CLAUDE_RUNTIME_CONTINUITY": {
+        "level": "P2",
+        "description": "Continuidad entre Runtimes",
+    },
+    "CLAUDE_ATTRIBUTION": {
+        "level": "P2",
+        "description": "Atribución en commits y PRs (Claude Code)",
+    },
+}
 
 
 @dataclass
@@ -23,6 +168,34 @@ class DetectedAntipattern:
     step_index: int
     description: str
     recommendation: str
+    rule_id: Optional[str] = None
+
+    def __post_init__(self):
+        if self.rule_id is None and self.code in ANTIPATTERN_RULE_MAP:
+            self.rule_id = ANTIPATTERN_RULE_MAP[self.code]
+
+
+@dataclass
+class RuleViolationSummary:
+    """Resumen consolidado de violaciones para un ID de regla específico."""
+    rule_id: str
+    level: str
+    description: str
+    total_violations: int
+    sessions_count: int
+    sessions: List[str]
+    antipattern_count: int
+    p0_block_count: int
+    action_suggestion: str
+
+
+@dataclass
+class RulesViolationReport:
+    """Reporte consolidado de métricas de violación por ID de regla."""
+    total_sessions: int
+    total_violations: int
+    rule_summaries: List[RuleViolationSummary]
+    unmapped_antipatterns: int = 0
 
 
 @dataclass
@@ -804,12 +977,97 @@ class AuditEngine:
                         ),
                     )
                 )
+        # K. Bloqueos de Hooks Deterministas P0
+        antipatterns.extend(self._detect_p0_hook_blocks(steps))
 
         return antipatterns
+
+    @classmethod
+    def _detect_p0_hook_blocks(cls, steps: List[NormalizedStep]) -> List[DetectedAntipattern]:
+        """Detecta bloqueos mecánicos de hooks PreToolUse y Guards P0 en Antigravity y Claude Code."""
+        p0_blocks: List[DetectedAntipattern] = []
+        seen_blocks: Set[Tuple[int, str]] = set()
+
+        hook_marker_regex = re.compile(
+            r"(tool call denied by pre-tool hook|hard circuit breaker activado|circuit breaker activado|guard p0:|\[pretooluse\]|pre-tool hook:|denied by pre-tool hook)",
+            re.IGNORECASE,
+        )
+
+        for s in steps:
+            # Recolectar textos de error o salida de herramientas en este paso
+            texts_to_check: List[Tuple[str, str]] = []  # (texto, tool_name)
+            if s.tool_calls:
+                for tc in s.tool_calls:
+                    if tc.error:
+                        texts_to_check.append((tc.error, tc.name))
+                    if tc.raw_output and hook_marker_regex.search(tc.raw_output):
+                        texts_to_check.append((tc.raw_output, tc.name))
+            elif s.step_type not in ("TOOL_OUTPUT", "GENERIC") and s.content:
+                if hook_marker_regex.search(s.content):
+                    texts_to_check.append((s.content, "transcript_content"))
+
+            for text, tool_name in texts_to_check:
+                if not hook_marker_regex.search(text):
+                    continue
+
+                # Determinar regla asociada según el patrón bloqueado
+                rule_id = "RIGIDITY_DIRECTIVE_BOUNDARY"
+                detail = "restricción dura de entorno"
+
+                if re.search(r"circuit\s*breaker|lecturas?\s*pasivas?\s*consecutivas?|6 lecturas", text, re.IGNORECASE):
+                    rule_id = "ENV_PAGED_READ_CIRCUIT_BREAKER"
+                    detail = "límite de lecturas pasivas consecutivas alcanzado"
+                elif re.search(r"REPL|evalua(?:r|ción)\s+en\s+línea|-c\b|-e\b|evaluador\s+inline", text, re.IGNORECASE):
+                    rule_id = "ENV_PROHIBITION_REPL"
+                    detail = "evaluación REPL / inline en terminal"
+                elif re.search(r"reconocimiento|exfiltración|find\s+/(?!\w)|find\s+\$HOME|volcados masivos", text, re.IGNORECASE):
+                    rule_id = "ENV_ANTI_RECON"
+                    detail = "reconocimiento ciego del host o exfiltración"
+                elif re.search(r"APIs Nativas|I/O en terminal|cat\s*>|sed\s+-i|tee\b", text, re.IGNORECASE):
+                    rule_id = "ENV_NATIVE_FILE_API"
+                    detail = "operación de I/O en terminal en vez de herramienta nativa"
+                elif re.search(r"main|commit.*main|push.*main|Inmutabilidad de Workspace", text, re.IGNORECASE):
+                    rule_id = "TRACK_IMMUTABILITY_TRACEABILITY"
+                    detail = "intento de commit o push directo a main"
+                elif re.search(r"TODO\.md|backlog\.md|tasks/|backlogs locales", text, re.IGNORECASE):
+                    rule_id = "TRACK_NO_LOCAL_BACKLOGS"
+                    detail = "creación de backlog local no canónico"
+                elif re.search(r"HISTORIAL\.md|GEMINI\.md|Decisiones.*MADR", text, re.IGNORECASE):
+                    rule_id = "TRACK_DECISIONS_MADR"
+                    detail = "creación de registro de decisiones fuera de MADR"
+                elif re.search(r"rutas externas|fuera del workspace|\.\.", text, re.IGNORECASE):
+                    rule_id = "ENV_WORKSPACE"
+                    detail = "acceso o inspección fuera del workspace activo"
+                elif re.search(r"BypassSandbox|prefix matching|pipes|tuberías|conectores", text, re.IGNORECASE):
+                    rule_id = "AGY_BYPASS_EXCLUSIVITY"
+                    detail = "uso no autorizado de bypass o comandos encadenados"
+
+                key = (s.step_index, rule_id)
+                if key not in seen_blocks:
+                    seen_blocks.add(key)
+                    p0_blocks.append(
+                        DetectedAntipattern(
+                            severity="CRÍTICA",
+                            code="P0_HOOK_BLOCK",
+                            title="Bloqueo por Hook Determinista P0",
+                            step_index=s.step_index,
+                            description=(
+                                f"El paso {s.step_index} ({tool_name}) fue bloqueado mecánicamente por hook P0: {detail}."
+                            ),
+                            recommendation=(
+                                "Respetar la restricción mecánica y no reintentar a ciegas. "
+                                "Aplicar síntesis de estado, la herramienta nativa correspondiente o Stop & Ask."
+                            ),
+                            rule_id=rule_id,
+                        )
+                    )
+
+        return p0_blocks
 
 
 def format_text_report(report: AuditReport, verbose: bool = False) -> str:
     """Genera una salida tabular compacta para terminal."""
+
     lines: List[str] = []
     lines.append("=" * 72)
     lines.append(f" INFORME DE AUDITORÍA TÉCNICA - AGENT-AUDIT")
@@ -1582,5 +1840,241 @@ def format_json_failed_steps(failed_steps: List[NormalizedStep], max_snippet_cha
         ],
     }
     return json.dumps(data, indent=2, default=custom_serializer)
+
+
+def aggregate_rules_violations(reports: List[AuditReport]) -> RulesViolationReport:
+    """Consolida las violaciones por ID de regla a través de una o múltiples sesiones."""
+    total_sessions = len(reports)
+
+    ap_counts: Dict[str, int] = defaultdict(int)
+    p0_counts: Dict[str, int] = defaultdict(int)
+    sessions_by_rule: Dict[str, Set[str]] = defaultdict(set)
+    unmapped_count = 0
+
+    for rep in reports:
+        sess_id = rep.metadata.session_id or Path(rep.metadata.source_path).name or "sesion_anonima"
+        for ap in rep.antipatterns:
+            if ap.rule_id:
+                if ap.code == "P0_HOOK_BLOCK":
+                    p0_counts[ap.rule_id] += 1
+                else:
+                    ap_counts[ap.rule_id] += 1
+                sessions_by_rule[ap.rule_id].add(sess_id)
+            else:
+                unmapped_count += 1
+
+    all_rule_ids = list(RULE_REGISTRY.keys())
+    detected_extra = set(ap_counts.keys()) | set(p0_counts.keys())
+    for r_id in sorted(detected_extra):
+        if r_id not in RULE_REGISTRY:
+            all_rule_ids.append(r_id)
+
+    summaries: List[RuleViolationSummary] = []
+    total_violations = 0
+
+    for r_id in all_rule_ids:
+        meta = RULE_REGISTRY.get(r_id, {"level": "P2", "description": "Regla de comportamiento"})
+        level = meta.get("level", "P2")
+        desc = meta.get("description", "")
+
+        ap_c = ap_counts.get(r_id, 0)
+        p0_c = p0_counts.get(r_id, 0)
+        tot = ap_c + p0_c
+        total_violations += tot
+
+        sess_list = sorted(list(sessions_by_rule.get(r_id, set())))
+
+        # Acción sugerida según ciclo de mejora continua (#282 / #285)
+        if level == "P2":
+            if tot > 0:
+                action = "Candidata a promoción a P0 (violación recurrente mecanizable)"
+            else:
+                action = f"Candidata a bajar a P1 o eliminarse (0 violaciones en {total_sessions} ses.)"
+        elif level == "P0":
+            if tot > 0:
+                action = "Enforcement mecánico P0 activo (bloqueos interceptados)"
+            else:
+                action = "Enforcement mecánico P0 en regla (0 infracciones)"
+        elif "P0" in level:
+            if tot > 0:
+                action = "Reforzar cobertura P0 (infracciones observadas)"
+            else:
+                action = "Enforcement P0/P2 en regla (0 infracciones)"
+        elif level == "P1":
+            if tot > 0:
+                action = "Revisar adherencia a procedimiento P1"
+            else:
+                action = "Procedimiento P1 en regla"
+        else:
+            action = "Regla de compilación / build en regla"
+
+        summaries.append(
+            RuleViolationSummary(
+                rule_id=r_id,
+                level=level,
+                description=desc,
+                total_violations=tot,
+                sessions_count=len(sess_list),
+                sessions=sess_list,
+                antipattern_count=ap_c,
+                p0_block_count=p0_c,
+                action_suggestion=action,
+            )
+        )
+
+    # Ordenar: primero los que tienen violaciones (descendente por total), luego por rule_id
+    summaries.sort(key=lambda s: (-s.total_violations, s.rule_id))
+
+    return RulesViolationReport(
+        total_sessions=total_sessions,
+        total_violations=total_violations,
+        rule_summaries=summaries,
+        unmapped_antipatterns=unmapped_count,
+    )
+
+
+def format_text_rules_report(report: RulesViolationReport) -> str:
+    """Genera informe tabular en texto plano con métricas de violaciones por ID de regla."""
+    lines: List[str] = []
+    lines.append("=" * 80)
+    lines.append(" INFORME DE VIOLACIONES POR ID DE REGLA - AGENT-AUDIT")
+    lines.append("=" * 80)
+    lines.append(f"  Sesiones analizadas   : {report.total_sessions}")
+    lines.append(f"  Total de violaciones  : {report.total_violations}")
+    lines.append(f"  Antipatrones sin regla: {report.unmapped_antipatterns}")
+    lines.append("=" * 80)
+
+    with_violations = [s for s in report.rule_summaries if s.total_violations > 0]
+    without_violations = [s for s in report.rule_summaries if s.total_violations == 0]
+
+    lines.append(f" REGLAS CON VIOLACIONES ({len(with_violations)}):")
+    lines.append("-" * 80)
+    header = f" {'ID DE REGLA':<32} {'NIVEL':<7} {'VIOL':>5} {'SES':>4} {'AP/P0':>7}  {'ACCIÓN SUGERIDA'}"
+    lines.append(header)
+    lines.append("-" * 80)
+
+    if with_violations:
+        for s in with_violations:
+            ratio = f"{s.antipattern_count}/{s.p0_block_count}"
+            lines.append(
+                f" {s.rule_id:<32} {s.level:<7} {s.total_violations:>5} {s.sessions_count:>4} {ratio:>7}  {s.action_suggestion}"
+            )
+    else:
+        lines.append("  (No se registraron violaciones en las sesiones analizadas)")
+
+    lines.append("-" * 80)
+    lines.append(f" REGLAS SIN VIOLACIONES ({len(without_violations)}):")
+    lines.append("-" * 80)
+    lines.append(header)
+    lines.append("-" * 80)
+    for s in without_violations:
+        ratio = f"{s.antipattern_count}/{s.p0_block_count}"
+        lines.append(
+            f" {s.rule_id:<32} {s.level:<7} {s.total_violations:>5} {s.sessions_count:>4} {ratio:>7}  {s.action_suggestion}"
+        )
+    lines.append("=" * 80)
+    lines.append("*Ciclo de mejora continua del prompt basal (ADR-0048 / #282 / #285).*")
+    return "\n".join(lines)
+
+
+def format_markdown_rules_report(report: RulesViolationReport) -> str:
+    """Genera informe en Markdown de métricas de violaciones por ID de regla."""
+    lines: List[str] = []
+    lines.append("# Informe de Violaciones por ID de Regla")
+    lines.append("")
+    lines.append(f"- **Sesiones analizadas:** `{report.total_sessions}`")
+    lines.append(f"- **Total de violaciones:** `{report.total_violations}`")
+    lines.append(f"- **Antipatrones sin mapeo a regla:** `{report.unmapped_antipatterns}`")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    with_violations = [s for s in report.rule_summaries if s.total_violations > 0]
+    without_violations = [s for s in report.rule_summaries if s.total_violations == 0]
+
+    lines.append(f"## Reglas con Violaciones ({len(with_violations)})")
+    lines.append("")
+    if with_violations:
+        lines.append("| ID de Regla | Nivel | Violaciones | Sesiones | AP / P0 | Acción Sugerida |")
+        lines.append("| :--- | :---: | :---: | :---: | :---: | :--- |")
+        for s in with_violations:
+            ratio = f"{s.antipattern_count} / {s.p0_block_count}"
+            lines.append(
+                f"| `{s.rule_id}` | `{s.level}` | {s.total_violations} | {s.sessions_count} | {ratio} | {s.action_suggestion} |"
+            )
+    else:
+        lines.append("> No se detectaron violaciones de reglas en las sesiones analizadas.")
+    lines.append("")
+
+    lines.append(f"## Reglas sin Violaciones ({len(without_violations)})")
+    lines.append("")
+    lines.append("| ID de Regla | Nivel | Violaciones | Sesiones | AP / P0 | Acción Sugerida |")
+    lines.append("| :--- | :---: | :---: | :---: | :---: | :--- |")
+    for s in without_violations:
+        ratio = f"{s.antipattern_count} / {s.p0_block_count}"
+        lines.append(
+            f"| `{s.rule_id}` | `{s.level}` | 0 | 0 | {ratio} | {s.action_suggestion} |"
+        )
+    lines.append("")
+    lines.append("---")
+    lines.append("*Ciclo de mejora continua del prompt basal (ADR-0048 / #282 / #285).*")
+    return "\n".join(lines)
+
+
+def format_json_rules_report(report: RulesViolationReport) -> str:
+    """Genera representación serializada JSON de las métricas de violación por ID de regla."""
+    def custom_serializer(obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if hasattr(obj, "__dict__"):
+            return asdict(obj)
+        return str(obj)
+
+    return json.dumps(asdict(report), indent=2, ensure_ascii=False, default=custom_serializer)
+
+
+def discover_session_files(target: Path, runtime_hint: str = "auto") -> List[Tuple[Any, Path]]:
+    """Descubre recursivamente archivos de sesión o transcripción en target."""
+    from adapters import ADAPTERS, get_adapter
+
+    if not target.is_dir():
+        if target.is_file():
+            try:
+                ad = get_adapter(target, runtime_hint=runtime_hint)
+                return [(ad, target)]
+            except Exception:
+                return []
+        return []
+
+    discovered: List[Tuple[Any, Path]] = []
+    seen: Set[Path] = set()
+
+    # 1. Antigravity: transcript.jsonl
+    for p in sorted(target.glob("**/transcript.jsonl")):
+        res = p.resolve()
+        if p.is_file() and res not in seen:
+            try:
+                ad = get_adapter(p, runtime_hint="antigravity")
+                seen.add(res)
+                discovered.append((ad, p))
+            except Exception:
+                pass
+
+    # 2. Claude Code y otros archivos .jsonl / .json
+    for ext in ("*.jsonl", "*.json"):
+        for p in sorted(target.glob(f"**/{ext}")):
+            res = p.resolve()
+            if p.is_file() and res not in seen:
+                if p.name in ("transcript_full.jsonl", "config.json", "settings.json", "package.json", "hooks.json"):
+                    continue
+                for ad_cls in ADAPTERS:
+                    ad = ad_cls()
+                    if ad.detect(p):
+                        seen.add(res)
+                        discovered.append((ad, p))
+                        break
+
+    return discovered
+
 
 

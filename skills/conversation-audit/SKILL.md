@@ -41,20 +41,21 @@ Guía metodológica, catálogo de métricas y protocolo operativo para la audito
 
 ---
 
-## 3. Taxonomía de Antipatrones de Conversación
+## 3. Taxonomía de Antipatrones de Conversación y Mapeo de Reglas
 
-| Código | Severidad | Nombre | Diagnóstico Técnico | Acción Correctiva Recomendada |
-| :--- | :---: | :--- | :--- | :--- |
-| `REPETITIVE_TOOL_LOOP` | **ALTA** | Bucle Repetitivo de Herramienta | Dos o más invocaciones consecutivas de la misma herramienta con argumentos idénticos sin progreso intermedio. | Detenerse y verificar si el agente no leyó el output previo o quedó atrapado en un ciclo ciego de reintento. |
-| `CONSECUTIVE_TOOL_ERRORS` | **CRÍTICA** | Errores Consecutivos en Herramientas | Dos o más fallos de ejecución de herramientas consecutivos. | Activar de inmediato el disyuntor de seguridad (Stop & Ask). Prohibido seguir probando variaciones sin hipótesis fundada. |
-| `HIGH_LATENCY_STEP` | **MEDIA** | Paso de Alta Latencia | Pasos con duración individual superior al umbral configurado (ej. > 60s). | Investigar llamadas bloqueantes de red, búsquedas sin filtro o procesamiento excesivo en terminal. |
-| `TERMINAL_PIPELINING` | **MEDIA** | Encadenamiento en Terminal | Uso de operadores (`&&`, `\|`, `;`, tuberías) en comandos de terminal, rompiendo el *prefix matching* de permisos. | Desacoplar en llamadas CLI atómicas o utilizar herramientas nativas de archivos (escritura, edición atómica). |
-| `TERMINAL_REPL_LOOP` | **ALTA** | Bucle REPL Iterativo en Terminal | Secuencia o alta densidad de ejecuciones de evaluación en línea en terminal (`python3 -c`, `node -e`, `bash -c`) o wrappers vía `subprocess` para pruebas, exploración o filtrado de utilidades. | Desalentar el uso de terminal como REPL/wrapper e indicar el consumo de flags nativos del CLI, refactorización hacia un script dedicado en scratch (`<appDataDir>/brain/<conversation-id>/scratch/`) o tests locales. |
-| `CONTEXT_TRUNCATION` | **BAJA** | Campo Truncado en el Registro | Pasos con `truncated_fields`: el runtime recortó el campo al persistir el transcript. Señal de volumen; no prueba pérdida de contexto del modelo (verificar si pasos posteriores usan el contenido). | Acotar lecturas o salidas voluminosas recurrentes (búsqueda por contenido, `--jq`, paginación). |
-| `UNPAGINATED_FILE_READ` | **ALTA** | Lectura No Paginada de Archivos | Invocación de herramientas de lectura de archivos sin delimitar rango o paginado o con ventanas excesivas (> 200 líneas). | Utilizar búsqueda por contenido para localización previa y acotamiento de ventana mediante rangos de líneas o paginado. |
-| `READ_ONLY_LOOP` | **ALTA** | Bucle de Solo Lectura / Parálisis | Secuencia de 4 o más lecturas pasivas consecutivas (lectura de archivos, búsqueda por contenido, búsqueda por nombre o listado) sin acción observable intermedia (mutación o comando). | Detener lecturas exploratorias, formular hipótesis y proceder a mutar código, ejecutar pruebas o detenerse con síntesis. |
-| `PING_PONG_TOOL_LOOP` | **ALTA** | Bucle Cíclico Alternante | Patrón cíclico repetitivo entre 2 o 3 llamadas alternantes (ej. A -> B -> A -> B) eludiendo límites por archivo. | Romper la alternancia ciega entre archivos; aplicar disyuntor de seguridad y solicitar clarificación o validar hipótesis en tests. |
-| `COMPLACENCY_DETECTED` | **BAJA** | Complacencia o Adulación Vacía | Respuestas del modelo con frases serviles ("¡Gran idea!", "tienes toda la razón", "disculpa las molestias"). | Cumplir estrictamente `core/01-critical-feedback.md`. Mantener tono asertivo, objetivo y neutro. |
+| Código | Severidad | Nombre | Regla Asociada | Diagnóstico Técnico | Acción Correctiva Recomendada |
+| :--- | :---: | :--- | :---: | :--- | :--- |
+| `REPETITIVE_TOOL_LOOP` | **ALTA** | Bucle Repetitivo de Herramienta | `RIGIDITY_DIRECTIVE_BOUNDARY` | Dos o más invocaciones consecutivas de la misma herramienta con argumentos idénticos sin progreso intermedio. | Detenerse y verificar si el agente no leyó el output previo o quedó atrapado en un ciclo ciego de reintento. |
+| `CONSECUTIVE_TOOL_ERRORS` | **CRÍTICA** | Errores Consecutivos en Herramientas | `LOGIC_INCONSISTENCY_STOP_ASK` | Dos o más fallos de ejecución de herramientas consecutivos. | Activar de inmediato el disyuntor de seguridad (Stop & Ask). Prohibido seguir probando variaciones sin hipótesis fundada. |
+| `HIGH_LATENCY_STEP` | **MEDIA** | Paso de Alta Latencia | *Métrica* | Pasos con duración individual superior al umbral configurado (ej. > 60s). | Investigar llamadas bloqueantes de red, búsquedas sin filtro o procesamiento excesivo en terminal. |
+| `TERMINAL_PIPELINING` | **MEDIA** | Encadenamiento en Terminal | `AGY_BYPASS_EXCLUSIVITY` | Uso de operadores (`&&`, `\|`, `;`, tuberías) en comandos de terminal, rompiendo el *prefix matching* de permisos. | Desacoplar en llamadas CLI atómicas o utilizar herramientas nativas de archivos (escritura, edición atómica). |
+| `TERMINAL_REPL_LOOP` | **ALTA** | Bucle REPL Iterativo en Terminal | `ENV_PROHIBITION_REPL` | Secuencia o alta densidad de ejecuciones de evaluación en línea en terminal (`python3 -c`, `node -e`, `bash -c`) o wrappers vía `subprocess` para pruebas, exploración o filtrado de utilidades. | Desalentar el uso de terminal como REPL/wrapper e indicar el consumo de flags nativos del CLI, refactorización hacia un script dedicado en scratch (`<appDataDir>/brain/<conversation-id>/scratch/`) o tests locales. |
+| `CONTEXT_TRUNCATION` | **BAJA** | Campo Truncado en el Registro | *Volumen* | Pasos con `truncated_fields`: el runtime recortó el campo al persistir el transcript. Señal de volumen; no prueba pérdida de contexto del modelo (verificar si pasos posteriores usan el contenido). | Acotar lecturas o salidas voluminosas recurrentes (búsqueda por contenido, `--jq`, paginación). |
+| `UNPAGINATED_FILE_READ` | **ALTA** | Lectura No Paginada de Archivos | `ENV_PAGED_READ_CIRCUIT_BREAKER` | Invocación de herramientas de lectura de archivos sin delimitar rango o paginado o con ventanas excesivas (> 200 líneas). | Utilizar búsqueda por contenido para localización previa y acotamiento de ventana mediante rangos de líneas o paginado. |
+| `READ_ONLY_LOOP` | **ALTA** | Bucle de Solo Lectura / Parálisis | `ENV_PAGED_READ_CIRCUIT_BREAKER` | Secuencia de 4 o más lecturas pasivas consecutivas (lectura de archivos, búsqueda por contenido, búsqueda por nombre o listado) sin acción observable intermedia (mutación o comando). | Detener lecturas exploratorias, formular hipótesis y proceder a mutar código, ejecutar pruebas o detenerse con síntesis. |
+| `PING_PONG_TOOL_LOOP` | **ALTA** | Bucle Cíclico Alternante | `RIGIDITY_DIRECTIVE_BOUNDARY` | Patrón cíclico repetitivo entre 2 o 3 llamadas alternantes (ej. A -> B -> A -> B) eludiendo límites por archivo. | Romper la alternancia ciega entre archivos; aplicar disyuntor de seguridad y solicitar clarificación o validar hipótesis en tests. |
+| `COMPLACENCY_DETECTED` | **BAJA** | Complacencia o Adulación Vacía | `CRIT_ZERO_COMPLACENCY` | Respuestas del modelo con frases serviles ("¡Gran idea!", "tienes toda la razón", "disculpa las molestias"). | Cumplir estrictamente `core/01-critical-feedback.md`. Mantener tono asertivo, objetivo y neutro. |
+| `P0_HOOK_BLOCK` | **CRÍTICA** | Bloqueo por Hook Determinista P0 | *Según patrón bloqueado* | Invocación interceptada y bloqueada mecánicamente por hook `PreToolUse` o Guard P0 (circuit breaker, REPL, reconocimiento host, etc.). | Respetar la restricción mecánica y no reintentar el comando bloqueado. Detenerse con síntesis o aplicar la vía canónica autorizada. |
 
 ---
 
@@ -254,4 +255,49 @@ Para garantizar resultados deterministas, consultar la plantilla canónica [`tem
 ### 5.5 Recepción Asíncrona y Consolidación en la Sesión Principal
 - **Espera Reactiva (Prohibición de Polling):** Tras invocar al subagente, el agente principal entra en espera reactiva sin ejecutar bucles de sondeo (ej. `manage_subagents` status en Antigravity, o comandos sleep). El runtime reactiva la ejecución automáticamente al recibir el reporte consolidado.
 - **Aislamiento de Contexto:** El hilo de chat principal solo incorpora el diagnóstico ejecutivo consolidado, preservando su presupuesto de tokens y manteniendo un historial limpio enfocado en la tarea principal.
+
+---
+
+## 6. Métricas de Violación por ID de Regla y Ciclo de Mejora Continua (#282 / #285)
+
+Para cerrar el ciclo de gobernanza del prompt basal definido en **ADR-0048**, `agent-audit` correlaciona cada antipatrón y cada bloqueo mecánico de hooks P0 con los identificadores estables del registro canónico (`core/00-router.md`, `core/01-objectivity.md`, `runtimes/*/rules/*.md`).
+
+### 6.1 Reporte Consolidado (`--rules`)
+
+Permite auditar una sesión individual o un conjunto completo de sesiones (procesando recursivamente directorios de transcripciones de Antigravity y Claude Code):
+
+```bash
+# Reporte tabular en terminal sobre una sesión o directorio
+agent-audit <target> --rules
+
+# Salida estructurada JSON (apta para CI/CD o scripts periódicos)
+agent-audit <target> --rules --json
+agent-audit <target> --rules --format json
+
+# Salida formateada en Markdown
+agent-audit <target> --rules --format markdown -o informe_reglas.md
+```
+
+### 6.2 Detección de Bloqueos de Hooks Deterministas P0
+
+El motor inspecciona las firmas de error y outputs de herramientas para detectar bloqueos mecánicos (`P0_HOOK_BLOCK`):
+- **Hard Circuit Breaker (`ENV_PAGED_READ_CIRCUIT_BREAKER`):** Intercepción por superar 6 lecturas pasivas consecutivas sin acción intermedia.
+- **Guard P0 REPL (`ENV_PROHIBITION_REPL`):** Intercepción de evaluación inline en terminal (`python3 -c`, etc.).
+- **Guard P0 Reconocimiento / Exfiltración (`ENV_ANTI_RECON`):** Bloqueo de comandos de reconocimiento hostil (`find /`, etc.).
+- **Guard P0 I/O en Terminal (`ENV_NATIVE_FILE_API`):** Bloqueo de operaciones de escritura vía terminal (`cat >`, `tee`, `sed -i`).
+- **Guard P0 Main Branch (`TRACK_IMMUTABILITY_TRACEABILITY`):** Bloqueo de intentos de commit o push directo a `main`.
+- **Guard P0 Backlogs Locales (`TRACK_NO_LOCAL_BACKLOGS`):** Bloqueo de creación de `TODO.md`, `tasks/`, etc.
+- **Guard P0 MADR (`TRACK_DECISIONS_MADR`):** Bloqueo de creación de bitácoras no estructuradas (`HISTORIAL.md`, `GEMINI.md`).
+- **Límites de Workspace (`ENV_WORKSPACE`):** Bloqueo de inspección en rutas fuera del workspace activo.
+
+### 6.3 Ciclo de Transición de Reglas Basadas en Datos
+
+El informe asigna a cada regla una acción sugerida para la toma de decisiones arquitectónicas:
+
+1. **Promoción de P2 a P0 (Mecanización):**
+   - Una regla en nivel **P2** (prompt basal) que registre violaciones recurrentes con un patrón detectable mecánicamente debe promoverse a un hook determinista `PreToolUse` o Guard P0, reduciendo el texto explicativo en el prompt a una sola línea residual de conducta ante bloqueo.
+2. **Degradación de P2 a P1 o Eliminación:**
+   - Una regla en nivel **P2** que registre 0 violaciones observadas tras $N$ sesiones auditadas es candidata a trasladarse a su respectiva skill bajo demanda (P1) o a ser eliminada definitivamente del catálogo basal.
+3. **Validación de P0:**
+   - Una regla en nivel **P0** con conteo en bloqueos valida que el filtro determinista del entorno está operando efectivamente para salvaguardar los invariantes del workspace.
 
