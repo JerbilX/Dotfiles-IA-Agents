@@ -1,0 +1,469 @@
+#!/usr/bin/env python3
+"""
+agent-guard - Lifecycle Hook PreToolUse para Antigravity y Claude Code.
+Aplica guards mecánicos P0 (ADR-0048, ADR-0052):
+1. Prohibición universal de REPL / evaluadores en línea en terminal (ENV_PROHIBITION_REPL).
+2. Blindaje anti-reconocimiento ciego del host (ENV_ANTI_RECON).
+3. Uso exclusivo de APIs nativas de archivos e interdicción de I/O por terminal (ENV_NATIVE_FILE_API).
+4. Inmutabilidad y prohibición de commit o push directo a main (TRACK_IMMUTABILITY_TRACEABILITY).
+5. Prohibición de backlogs locales y archivos prohibidos (TRACK_NO_LOCAL_BACKLOGS, TRACK_DECISIONS_MADR).
+"""
+
+import json
+import os
+import re
+import shlex
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+# Archivos y rutas prohibidas (Backlogs locales y decisiones fuera de MADR)
+BANNED_FILE_NAMES = {
+    "todo.md",
+    "todo",
+    "todo.txt",
+    "backlog.md",
+    "backlog",
+    "gemini.md",
+    "historial.md",
+}
+
+BANNED_DIR_SEGMENTS = {
+    "tasks",
+    "prompts",
+}
+
+# Temporales legítimos permitidos para I/O terminal o redirección
+ALLOWED_TEMP_FILES = {
+    ".commit_msg",
+    ".pr_body",
+    ".issue_body",
+    ".issue_comment",
+    ".pr_comment",
+    ".git_message",
+    "stderr",
+    "stdout",
+}
+
+# Comandos de compilación, prueba y utilidades autorizadas exentos de veto I/O terminal
+BUILD_TEST_PREFIXES = (
+    "./build.sh",
+    "build.sh",
+    "python3 -m unittest",
+    "python -m unittest",
+    "pytest",
+    "make",
+    "cargo",
+    "npm test",
+    "npm run",
+    "yarn test",
+    "agent-audit",
+    "agent-module",
+    "agent-circuit-breaker",
+    "agent-guard",
+    "gh-pr-review",
+    "git-prune-gone",
+)
+
+REPL_BINARIES = {
+    "python", "python3", "python2",
+    "node", "nodejs",
+    "bash", "sh", "zsh", "dash", "ksh",
+    "perl", "ruby", "eval",
+}
+
+HOST_RECON_ROOTS = {"/", "~", "$HOME", "/home", "/root"}
+
+
+def is_banned_file_path(path_str: str) -> Optional[str]:
+    """Retorna el motivo si la ruta corresponde a un backlog local o archivo prohibido."""
+    if not path_str or not isinstance(path_str, str):
+        return None
+    clean = path_str.strip().strip("'\"")
+    if not clean:
+        return None
+    p = Path(clean)
+    name_lower = p.name.lower()
+    if name_lower in BANNED_FILE_NAMES:
+        return f"archivo prohibido '{p.name}' (usar GitHub Issues para tareas o docs/adr/ para decisiones)"
+    
+    parts_lower = [part.lower() for part in p.parts]
+    for banned_dir in BANNED_DIR_SEGMENTS:
+        if banned_dir in parts_lower:
+            return f"directorio prohibido '{banned_dir}/' (usar GitHub Issues o Projects v2)"
+    return None
+
+
+def get_current_git_branch(workspace_hint: Optional[str] = None) -> Optional[str]:
+    """Determina la rama actual de git leyendo .git/HEAD directamente."""
+    search_dirs = []
+    if workspace_hint:
+        search_dirs.append(Path(workspace_hint))
+    search_dirs.extend([Path.cwd(), Path.cwd().parent])
+
+    for base in search_dirs:
+        git_dir = base / ".git"
+        if git_dir.is_file():
+            try:
+                content = git_dir.read_text(encoding="utf-8").strip()
+                if content.startswith("gitdir:"):
+                    git_dir = (base / content.split(":", 1)[1].strip()).resolve()
+            except Exception:
+                pass
+        head_file = git_dir / "HEAD"
+        if head_file.is_file():
+            try:
+                head_content = head_file.read_text(encoding="utf-8").strip()
+                if head_content.startswith("ref: refs/heads/"):
+                    return head_content.replace("ref: refs/heads/", "").strip()
+                return head_content
+            except Exception:
+                pass
+    return None
+
+
+def _is_allowed_temp_path(target: str) -> bool:
+    clean = target.strip().strip("'\"")
+    p = Path(clean)
+    if clean in ("/dev/null", "&1", "&2"):
+        return True
+    if p.name in ALLOWED_TEMP_FILES:
+        return True
+    parts = [part.lower() for part in p.parts]
+    if "scratch" in parts or "tmp" in parts:
+        return True
+    return False
+
+
+def _check_repl_command(cmd_name: str, args: List[str]) -> Optional[str]:
+    """Detecta evaluadores en línea y subshells complejas en terminal."""
+    if cmd_name == "eval":
+        return "evaluación en línea mediante 'eval'"
+    if cmd_name in ("python", "python3", "python2") or cmd_name.startswith("python3."):
+        if any(a in ("-c", "--command") for a in args):
+            return f"evaluador en línea '{cmd_name} -c'"
+    if cmd_name in ("node", "nodejs"):
+        if any(a in ("-e", "--eval", "-p", "--print") for a in args):
+            return f"evaluador en línea '{cmd_name} -e'"
+    if cmd_name in ("bash", "sh", "zsh", "dash", "ksh"):
+        if any(a == "-c" for a in args):
+            return f"subshell / evaluador en línea '{cmd_name} -c'"
+    if cmd_name in ("perl", "ruby"):
+        if any(a == "-e" for a in args):
+            return f"evaluador en línea '{cmd_name} -e'"
+    return None
+
+
+def _check_host_recon_command(cmd_name: str, args: List[str]) -> Optional[str]:
+    """Detecta reconocimiento ciego del host."""
+    if cmd_name == "find":
+        for a in args:
+            clean = a.rstrip("/") or "/"
+            if clean in HOST_RECON_ROOTS:
+                return f"reconocimiento ciego del host ('find {a}')"
+            if clean.startswith("/home") and len(clean.split("/")) <= 3:
+                return f"reconocimiento ciego del host ('find {a}')"
+    if cmd_name == "ls":
+        for a in args:
+            if not a.startswith("-"):
+                clean = a.rstrip("/") or "/"
+                if clean in HOST_RECON_ROOTS:
+                    return f"listado no confinado del host ('ls {a}')"
+    return None
+
+
+def _check_git_main_guard(cmd_name: str, args: List[str], cwd: Optional[str]) -> Optional[str]:
+    """Detecta intentos de commit o push directo a main."""
+    if cmd_name != "git":
+        return None
+    subcmd = None
+    sub_idx = 0
+    for i, a in enumerate(args):
+        if not a.startswith("-"):
+            subcmd = a
+            sub_idx = i
+            break
+        if a in ("-C", "-c") and i + 1 < len(args):
+            continue
+    if not subcmd:
+        return None
+
+    if subcmd == "commit":
+        branch = get_current_git_branch(cwd)
+        if branch == "main":
+            return "prohibido comitear directamente en 'main' (usar rama efímera feat/ o fix/)"
+
+    if subcmd == "push":
+        push_args = args[sub_idx + 1:]
+        for a in push_args:
+            if a in ("main", "master", "refs/heads/main", "HEAD:main", "HEAD:refs/heads/main"):
+                return f"prohibido push directo a 'main' ('git push ... {a}')"
+        # Si es git push sin especificar rama destino ni remote
+        non_flag_args = [a for a in push_args if not a.startswith("-")]
+        if not non_flag_args or (len(non_flag_args) == 1 and non_flag_args[0] in ("origin", "upstream")):
+            branch = get_current_git_branch(cwd)
+            if branch == "main":
+                return "prohibido push directo a 'main' desde la rama activa (usar rama efímera y PR)"
+
+    return None
+
+
+def _check_terminal_file_io(cmd_name: str, args: List[str], is_piped_input: bool) -> Optional[str]:
+    """Detecta operaciones I/O en terminal sobre archivos del workspace."""
+    if cmd_name == "cat":
+        file_args = [a for a in args if not a.startswith("-") and a != "-"]
+        if file_args:
+            for f in file_args:
+                if not _is_allowed_temp_path(f):
+                    return f"I/O de archivo por terminal ('cat {f}'); usar view_file o Read con paginado"
+    if cmd_name == "tee":
+        file_args = [a for a in args if not a.startswith("-")]
+        if file_args:
+            for f in file_args:
+                if not _is_allowed_temp_path(f):
+                    return f"I/O de archivo por terminal ('tee {f}'); usar APIs nativas de escritura"
+    if cmd_name == "sed":
+        if any(a in ("-i", "--in-place") or a.startswith("-i") for a in args):
+            return "edición de archivo en terminal ('sed -i'); usar replace_file_content o Edit"
+        # Si sed tiene un archivo de entrada explícito que no es stdin
+        # Identificar argumentos que no son opciones ni scripts (-e, -f)
+        non_opt = []
+        skip_next = False
+        for a in args:
+            if skip_next:
+                skip_next = False
+                continue
+            if a in ("-e", "-f"):
+                skip_next = True
+                continue
+            if not a.startswith("-"):
+                non_opt.append(a)
+        # En sed, si hay > 1 argumento no opcional, el segundo es un archivo de entrada
+        if len(non_opt) > 1:
+            target_f = non_opt[1]
+            if not _is_allowed_temp_path(target_f):
+                return f"I/O de archivo por terminal ('sed ... {target_f}'); usar APIs nativas"
+    if cmd_name == "awk":
+        # En awk, si hay argumentos de archivo tras el script
+        non_opt = []
+        skip_next = False
+        for a in args:
+            if skip_next:
+                skip_next = False
+                continue
+            if a in ("-F", "-v", "-f"):
+                skip_next = True
+                continue
+            if not a.startswith("-"):
+                non_opt.append(a)
+        if len(non_opt) > 1:
+            target_f = non_opt[1]
+            if not _is_allowed_temp_path(target_f):
+                return f"I/O de archivo por terminal ('awk ... {target_f}'); usar APIs nativas"
+    return None
+
+
+def _check_output_redirections(cmd_segment: str) -> Optional[str]:
+    """Detecta redirecciones de salida '>' o '>>' hacia archivos del workspace."""
+    # Descartar redirecciones seguras /dev/null y fd
+    redir_matches = re.finditer(r"(?<![0-9])>{1,2}\s*([^\s;|&]+)", cmd_segment)
+    for m in redir_matches:
+        target = m.group(1).strip()
+        if not _is_allowed_temp_path(target):
+            # Verificar si crea backlog o archivo prohibido
+            banned = is_banned_file_path(target)
+            if banned:
+                return f"redirección terminal a {banned}"
+            return f"escritura en terminal mediante redirección ('{m.group(0).strip()}'); usar write_to_file o Write"
+    return None
+
+
+def evaluate_shell_command(command: str, cwd: Optional[str] = None) -> Optional[str]:
+    """
+    Evalúa una línea de comando shell completa.
+    Retorna el motivo de denegación si viola una invariante P0, o None si es permitida.
+    """
+    if not isinstance(command, str) or not command.strip():
+        return None
+    raw_cmd = command.strip()
+
+    # Comandos de build, suite de tests y checks globales están exentos de vetos I/O
+    for prefix in BUILD_TEST_PREFIXES:
+        if raw_cmd == prefix or raw_cmd.startswith(prefix + " ") or raw_cmd.startswith("./" + prefix):
+            return None
+
+    # Separar por operadores de control manteniendo el análisis por segmento
+    segments = re.split(r"\|\||&&|[;\n]", raw_cmd)
+    for seg_idx, seg in enumerate(segments):
+        seg = seg.strip()
+        if not seg:
+            continue
+
+        # Redirecciones a archivo
+        redir_err = _check_output_redirections(seg)
+        if redir_err:
+            return redir_err
+
+        # Parsear tuberías internas
+        pipe_parts = seg.split("|")
+        for p_idx, part in enumerate(pipe_parts):
+            part = part.strip()
+            if not part:
+                continue
+            is_piped_input = p_idx > 0
+
+            try:
+                tokens = shlex.split(part)
+            except ValueError:
+                tokens = part.split()
+
+            # Descartar asignaciones de variables de entorno al inicio (ej. VAR=x cmd)
+            while tokens and "=" in tokens[0] and not tokens[0].startswith("-"):
+                tokens = tokens[1:]
+
+            # Descartar wrappers o prefijos
+            while tokens and tokens[0] in ("sudo", "env", "time", "!", "nohup"):
+                tokens = tokens[1:]
+
+            if not tokens:
+                continue
+
+            cmd_name = os.path.basename(tokens[0])
+            args = tokens[1:]
+
+            # 1. REPL
+            repl_err = _check_repl_command(cmd_name, args)
+            if repl_err:
+                return f"prohibido {repl_err}; scripts en scratch/ o tests unitarios formales"
+
+            # 2. Reconocimiento ciego del host
+            recon_err = _check_host_recon_command(cmd_name, args)
+            if recon_err:
+                return recon_err
+
+            # 3. Git commit / push a main
+            git_err = _check_git_main_guard(cmd_name, args, cwd)
+            if git_err:
+                return git_err
+
+            # 4. Creación o manipulación de archivos prohibidos por comandos (touch, mkdir, etc.)
+            if cmd_name in ("touch", "mkdir", "cp", "mv"):
+                for a in args:
+                    if not a.startswith("-"):
+                        banned = is_banned_file_path(a)
+                        if banned:
+                            return f"prohibido {cmd_name} sobre {banned}"
+
+            # 5. I/O terminal sobre archivos
+            io_err = _check_terminal_file_io(cmd_name, args, is_piped_input)
+            if io_err:
+                return io_err
+
+    return None
+
+
+def evaluate_target_file(file_path: str) -> Optional[str]:
+    """Evalúa la ruta de archivo para herramientas de escritura/edición nativas."""
+    banned = is_banned_file_path(file_path)
+    if banned:
+        return f"prohibido crear o editar {banned}"
+    return None
+
+
+def evaluate_tool_request(name: str, args: Dict[str, Any], cwd: Optional[str] = None) -> Optional[str]:
+    """Evalúa la llamada a herramienta. Retorna reason si debe denegarse, None si se permite."""
+    name_clean = name.strip()
+
+    # 1. Herramientas de comandos shell
+    if name_clean in ("run_command", "bash", "Bash", "execute_command"):
+        cmd = ""
+        for k in ("CommandLine", "command", "cmd"):
+            if k in args and args[k]:
+                cmd = str(args[k])
+                break
+        cmd_cwd = str(args.get("Cwd") or args.get("cwd") or cwd or "")
+        return evaluate_shell_command(cmd, cmd_cwd)
+
+    # 2. Herramientas de creación y edición de archivos
+    if name_clean in ("write_to_file", "replace_file_content", "Write", "Edit", "MultiEdit"):
+        target = ""
+        for k in ("TargetFile", "AbsolutePath", "file_path", "filePath", "path"):
+            if k in args and args[k]:
+                target = str(args[k])
+                break
+        if target:
+            return evaluate_target_file(target)
+
+    return None
+
+
+def to_claude_response(reason: Optional[str]) -> Optional[dict]:
+    if not reason:
+        return None
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": f"Guard P0 Activado: {reason}",
+        }
+    }
+
+
+def to_antigravity_response(reason: Optional[str]) -> dict:
+    if not reason:
+        return {"decision": "allow"}
+    return {
+        "decision": "deny",
+        "reason": f"Guard P0 Activado: {reason}",
+    }
+
+
+def is_claude_payload(payload: dict) -> bool:
+    return "hook_event_name" in payload or "tool_name" in payload
+
+
+def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+        sys.stdout.write("Uso: agent-guard\n")
+        sys.stdout.write("Lifecycle Hook PreToolUse para guards mecánicos P0.\n")
+        return 0
+
+    try:
+        raw_input = sys.stdin.read()
+        if not raw_input.strip():
+            sys.stdout.write(json.dumps({"decision": "allow"}) + "\n")
+            return 0
+        payload = json.loads(raw_input)
+    except Exception:
+        sys.stdout.write(json.dumps({"decision": "allow"}) + "\n")
+        return 0
+
+    if not isinstance(payload, dict):
+        sys.stdout.write(json.dumps({"decision": "allow"}) + "\n")
+        return 0
+
+    if is_claude_payload(payload):
+        tool_name = payload.get("tool_name", "")
+        tool_input = payload.get("tool_input") or {}
+        reason = evaluate_tool_request(tool_name, tool_input if isinstance(tool_input, dict) else {})
+        out = to_claude_response(reason)
+        if out:
+            sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
+        return 0
+
+    tool_call = payload.get("toolCall", {})
+    name = tool_call.get("name", "")
+    args = tool_call.get("args", {})
+    cwd = None
+    ws_paths = payload.get("workspacePaths")
+    if ws_paths and isinstance(ws_paths, list) and ws_paths[0]:
+        cwd = ws_paths[0]
+
+    reason = evaluate_tool_request(name, args if isinstance(args, dict) else {}, cwd)
+    out = to_antigravity_response(reason)
+    sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

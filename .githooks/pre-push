@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# .githooks/pre-push - Guard P0 contra push directo a main (ADR-0052)
+set -euo pipefail
+
+remote="$1"
+url="$2"
+
+z40="0000000000000000000000000000000000000000"
+
+while read -r local_ref local_oid remote_ref remote_oid; do
+    if [ "${remote_ref}" = "refs/heads/main" ] || [ "${remote_ref}" = "refs/heads/master" ]; then
+        if [ "${local_oid}" != "${z40}" ]; then
+            echo "========================================================================" >&2
+            echo " [✗] ERROR [pre-push hook]: Push directo a 'main' bloqueado por guard P0." >&2
+            echo "     Invariante basal: TRACK_IMMUTABILITY_TRACEABILITY (ADR-0048, ADR-0052)" >&2
+            echo "     Todo cambio al workspace debe integrarse mediante rama efímera y PR." >&2
+            echo "========================================================================" >&2
+            exit 1
+        fi
+    fi
+done
+
+exit 0

@@ -35,6 +35,23 @@
       "Bash(git-prune-gone:*)",
       "Bash(./build.sh check:*)",
       "Bash(./build.sh build:*)"
+    ],
+    "deny": [
+      "Write(TODO.md)",
+      "Write(backlog.md)",
+      "Write(GEMINI.md)",
+      "Write(HISTORIAL.md)",
+      "Write(tasks/**)",
+      "Write(prompts/**)",
+      "Edit(TODO.md)",
+      "Edit(backlog.md)",
+      "Edit(GEMINI.md)",
+      "Edit(HISTORIAL.md)",
+      "Edit(tasks/**)",
+      "Edit(prompts/**)",
+      "Bash(find /:*)",
+      "Bash(find $HOME:*)",
+      "Bash(find ~:*)"
     ]
   },
   "hooks": {
@@ -45,6 +62,16 @@
           {
             "type": "command",
             "command": "${DOTFILES_ROOT}/skills/conversation-audit/bin/agent-circuit-breaker",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${DOTFILES_ROOT}/skills/conversation-audit/bin/agent-guard",
             "timeout": 5
           }
         ]

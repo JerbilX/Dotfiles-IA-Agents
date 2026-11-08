@@ -136,6 +136,8 @@ El subcomando `check` implementa dos controles de auditoría (presupuesto global
    - Aborta con error (`exit 1`) si una regla con componente `P0` (pura o mixta) supera el techo transitorio de 100 palabras ([ADR-0049](adr/0049-regimen-transitorio-de-admision-p0.md)).
    - Emite una advertencia estática (contabilizada en `CHECK_WARNINGS`) si una regla con componente `P0` supera el límite recomendado de huella residual de 30 palabras ([ADR-0048 §2.2](adr/0048-niveles-de-enforcement-admision-de-reglas-y-presupuesto-de-contexto.md)), orientando la evacuación hacia hooks mecánicos.
    - El compilador (`build_core.sh`) descarta estos comentarios al generar `dist/`, asegurando cero impacto en el recuento de palabras.
+4. **Verificación de Guards P0 y Blindaje Mecánico ([ADR-0052](adr/0052-guards-p0-enforcement-mecanico-invariantes-basales.md)):**
+   Verifica la disponibilidad y ejecutabilidad de `skills/conversation-audit/bin/agent-guard`, la integridad de los git hooks locales (`.githooks/pre-push` y `.githooks/pre-commit`) y la ausencia total de backlogs locales o archivos prohibidos en el repositorio (`TODO.md`, `backlog.md`, `tasks/`, `prompts/`, `GEMINI.md`, `HISTORIAL.md`).
 
 ---
 

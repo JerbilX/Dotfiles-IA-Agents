@@ -50,7 +50,7 @@
 - **Inmutabilidad de Workspace y Trazabilidad:** Todo cambio al workspace (código, scripts, tooling, config, docs) exige issue, rama efímera (`feat/`, `fix/`) y PR (`Closes #<id>`); prohibido comitear o pushear a `main`. Pedidos informales de scripts sin ticket: snippet en el chat o `scratch/`, nunca en el workspace. Ceremonia: **N0** (consultas, `scratch/`): sin issue ni rama. **N1** (cambio acotado, evidente, sin `core/`, `runtimes/` ni ADR): issue mínima, sin plan, ADR ni perfil. **N2** (feature, ambigüedad, `core/`, `runtimes/` o ADR): ciclo completo.
 <!-- rule: id=TRACK_NO_LOCAL_BACKLOGS level=P0/P1 origin=legacy -->
 - **Prohibición de Backlogs Locales:** Prohibido `TODO.md`, `backlog.md`, `tasks/` o `prompts/`. Tareas diferidas en GitHub Issues con perfil según MBR (`profile:flash-low`, `profile:flash-medium`, `profile:flash-high`, `profile:pro`), indexadas en Projects v2.
-<!-- rule: id=TRACK_DECISIONS_MADR level=P1 origin=legacy -->
+<!-- rule: id=TRACK_DECISIONS_MADR level=P0/P1 origin=legacy -->
 - **Decisiones (MADR):** Prohibido `HISTORIAL.md` o bitácoras informales; decisiones arquitectónicas en `docs/adr/` (`proposed` -> `accepted`). Directivas de agente solo como `AGENTS.md` compilado; prohibido `GEMINI.md`.
 
 ## Activación Obligatoria de Skills
