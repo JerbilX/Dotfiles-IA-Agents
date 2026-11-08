@@ -48,6 +48,35 @@ class TestAgentGuardREPL(unittest.TestCase):
             err = guard_mod.evaluate_shell_command(cmd)
             self.assertIsNotNone(err, f"Esperaba bloqueo para: {cmd}")
 
+    def test_combined_flags_and_wrappers_denied(self):
+        for cmd in (
+            "bash -lc 'ls'",
+            "sh -ec 'echo 1'",
+            "bash -o pipefail -c 'ls'",
+            "python3 -Ic 'print(1)'",
+            "python3 -X dev -c 'print(1)'",
+            "node -pe '1+1'",
+            "perl -ne 'print' x",
+            "ruby -ne 'puts 1'",
+            "timeout 5 python3 -c 'print(1)'",
+            "env -u X python3 -c 'print(1)'",
+            "find . -name '*.py' | xargs -I{} python3 -c 'print(1)'",
+            "command bash -c 'ls'",
+            "nice -n 10 bash -c 'ls'",
+        ):
+            err = guard_mod.evaluate_shell_command(cmd)
+            self.assertIsNotNone(err, f"Esperaba bloqueo para: {cmd}")
+
+    def test_interpreter_options_after_script_allowed(self):
+        for cmd in (
+            "python3 -m pytest -c setup.cfg",
+            "python3 scratch/tool.py -c config.json",
+            "bash scripts/run.sh -c",
+            "perl -MList::Util script.pl",
+        ):
+            err = guard_mod.evaluate_shell_command(cmd)
+            self.assertIsNone(err, f"Falso positivo en opción posterior al script: {cmd}")
+
     def test_formal_scripts_and_tests_allowed(self):
         for cmd in (
             "python3 script.py",
@@ -183,6 +212,37 @@ class TestAgentGuardTerminalFileIO(unittest.TestCase):
             err = guard_mod.evaluate_shell_command(cmd)
             self.assertIsNone(err, f"Comando de build/test bloqueado indebidamente: {cmd}")
 
+    def test_exemption_does_not_cover_chained_segments(self):
+        for cmd in (
+            "./build.sh check && python3 -c 'print(1)'",
+            "make test; cat README.md",
+            "pytest || echo x > README.md",
+            "npm run build | tee out.txt",
+        ):
+            err = guard_mod.evaluate_shell_command(cmd)
+            self.assertIsNotNone(err, f"La exención no debe propagarse a segmentos encadenados: {cmd}")
+
+    def test_quoted_operators_not_treated_as_shell(self):
+        for cmd in (
+            "git commit -m 'estado proposed -> accepted'",
+            'git commit -m "fix; cat README.md > x"',
+            "gh pr list --jq '.[] | select(.n > 3)'",
+            "jq '.items[] | {a: .b}' 2>/dev/null",
+            "grep -E 'a>b|c' --include='*.md' -rn docs | head -n 20",
+        ):
+            err = guard_mod.evaluate_shell_command(cmd)
+            self.assertIsNone(err, f"Falso positivo por operador entre comillas: {cmd}")
+
+    def test_heredoc_body_ignored_but_target_checked(self):
+        allowed = "cat > .commit_msg <<'EOF'\nfeat: x -> y; cat README.md\nEOF"
+        self.assertIsNone(guard_mod.evaluate_shell_command(allowed))
+        denied = "cat > README.md <<EOF\nhola\nEOF"
+        self.assertIsNotNone(guard_mod.evaluate_shell_command(denied))
+
+    def test_tmp_segment_only_at_root_or_absolute(self):
+        self.assertIsNone(guard_mod.evaluate_shell_command("echo x > /tmp/out.txt"))
+        self.assertIsNotNone(guard_mod.evaluate_shell_command("echo x > src/tmp/out.txt"))
+
 
 class TestAgentGuardMainProtection(unittest.TestCase):
     """Verifica protección contra commit y push directo a main (TRACK_IMMUTABILITY_TRACEABILITY)."""
@@ -225,6 +285,39 @@ class TestAgentGuardMainProtection(unittest.TestCase):
             err = guard_mod.evaluate_shell_command("git commit -F .commit_msg", cwd=tmpdir)
             self.assertIsNone(err)
 
+    def test_commit_with_global_options_on_main_denied(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir) / "repo"
+            (repo / ".git").mkdir(parents=True)
+            (repo / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+            for cmd in ("git -C repo commit -m x", "git -c user.name=x -C repo commit -m x"):
+                err = guard_mod.evaluate_shell_command(cmd, cwd=tmpdir)
+                self.assertIsNotNone(err, f"Esperaba bloqueo para: {cmd}")
+
+    def test_commit_on_master_denied(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / ".git").mkdir()
+            (Path(tmpdir) / ".git" / "HEAD").write_text("ref: refs/heads/master\n", encoding="utf-8")
+            self.assertIsNotNone(guard_mod.evaluate_shell_command("git commit -m x", cwd=tmpdir))
+
+    def test_push_refspec_to_main_denied(self):
+        for cmd in (
+            "git push origin feat/x:main",
+            "git push origin +feat/x:refs/heads/main",
+            "git push --force origin HEAD:master",
+            "git push origin :main",
+        ):
+            err = guard_mod.evaluate_shell_command(cmd)
+            self.assertIsNotNone(err, f"Esperaba bloqueo para: {cmd}")
+
+    def test_push_without_refspec_on_main_denied_for_any_remote(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / ".git").mkdir()
+            (Path(tmpdir) / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+            for cmd in ("git push", "git push fork", "git push origin HEAD"):
+                err = guard_mod.evaluate_shell_command(cmd, cwd=tmpdir)
+                self.assertIsNotNone(err, f"Esperaba bloqueo para: {cmd}")
+
 
 class TestAgentGuardBannedFiles(unittest.TestCase):
     """Verifica prohibición de backlogs locales y archivos vetados (TRACK_NO_LOCAL_BACKLOGS, TRACK_DECISIONS_MADR)."""
@@ -242,10 +335,22 @@ class TestAgentGuardBannedFiles(unittest.TestCase):
             "tasks/todo.txt",
             "prompts/system.md",
             "subdir/TODO.md",
-            "sub/tasks/task.json",
         ):
             err = guard_mod.evaluate_target_file(fpath)
             self.assertIsNotNone(err, f"Esperaba bloqueo para archivo: {fpath}")
+
+    def test_nested_tasks_prompts_dirs_allowed(self):
+        """tasks/ y prompts/ solo se vetan en la raíz del workspace (ej. roles de Ansible)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / ".git").mkdir()
+            for fpath in ("roles/web/tasks/main.yml", "src/prompts/system.txt", "sub/tasks/task.json"):
+                err = guard_mod.evaluate_target_file(fpath, cwd=tmpdir)
+                self.assertIsNone(err, f"Directorio anidado bloqueado indebidamente: {fpath}")
+                err = guard_mod.evaluate_target_file(str(Path(tmpdir) / fpath))
+                self.assertIsNone(err, f"Ruta absoluta anidada bloqueada indebidamente: {fpath}")
+            for fpath in ("tasks/x.md", "prompts/y.md"):
+                self.assertIsNotNone(guard_mod.evaluate_target_file(fpath, cwd=tmpdir))
+                self.assertIsNotNone(guard_mod.evaluate_target_file(str(Path(tmpdir) / fpath)))
 
     def test_legitimate_files_allowed(self):
         for fpath in (
