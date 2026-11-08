@@ -37,6 +37,7 @@ class TestBuildModularization(unittest.TestCase):
             "link.sh",
             "check.sh",
             "validate.py",
+            "tool_vocabulary.py",
         ]
         for name in expected_files:
             p = os.path.join(LIB_DIR, name)
