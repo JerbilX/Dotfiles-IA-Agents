@@ -18,14 +18,14 @@ En la arquitectura previa, las directivas basales compiladas en `core/00-router.
 
 ## Opciones Consideradas
 
-* **Opción 1: Vocabulario neutral funcional.** El núcleo universal (`core/`) prescinde de nombres propios de herramientas y se formula mediante verbos y capacidades semánticas ("herramientas nativas de archivos (escritura, edición, lectura paginada, búsqueda)", "delimitación de rango o paginado", "localizar por búsqueda de contenido").
+* **Opción 1: Vocabulario neutral funcional.** El núcleo universal (`core/`) prescinde de nombres propios de herramientas y se formula mediante verbos y capacidades semánticas ("herramientas nativas de archivos (escritura, edición, lectura, búsqueda)", "delimitación de rango o paginado", "localizar por búsqueda de contenido").
 * **Opción 2: Reemplazo en compilación mediante plantillas.** El núcleo introduce placeholders (`{{tool_read}}`, `{{tool_search}}`, ...) que el compilador (`lib/build_core.sh`) resuelve a partir de un mapa declarado en `runtimes/<r>/config.json`.
 
 ## Decisión Adoptada
 
 Se adopta la **Opción 1 (Vocabulario neutral)**:
 1. **Neutralidad en `core/00-router.md`:** Se eliminan todas las menciones a identificadores de herramientas específicas en las reglas de I/O de archivos (`ENV_NATIVE_FILE_API`) y lectura paginada / circuit breaker (`ENV_PAGED_READ_CIRCUIT_BREAKER`).
-2. **Eliminación del bloque de equivalencias:** Se retira completamente la regla `CLAUDE_TOOL_EQUIVALENCES` de `runtimes/claude/rules/01-claude-tools.md`, ahorrando 53 palabras netas en el prompt compilado de Claude Code.
+2. **Eliminación del bloque de equivalencias:** Se retira completamente la regla `CLAUDE_TOOL_EQUIVALENCES` de `runtimes/claude/rules/01-claude-tools.md` (-53 palabras en la regla fuente; -38 netas en el prompt compilado de Claude Code, de 1235 a 1197, por el mayor largo del vocabulario neutral en el core).
 3. **Control estático en `build.sh check`:** Se incorpora una verificación estática automatizada que falla si algún prompt compilado contiene placeholders sin resolver (`{{...}}`) o nombres cruzados de herramientas pertenecientes a otros entornos.
 
 ### Justificación Técnica
@@ -35,9 +35,10 @@ Se adopta la **Opción 1 (Vocabulario neutral)**:
 ## Consecuencias
 
 ### Positivas
-* **Reducción medible del presupuesto de contexto:** Disminución inmediata de ~53 palabras en Claude Code y reducción de palabras en el prompt basal universal.
+* **Reducción medible del presupuesto de contexto:** Disminución de 38 palabras netas en el prompt compilado de Claude Code (1235 → 1197).
 * **Inmunidad ante cambios de interfaces de herramientas:** Desacopla las directivas de versiones o perfiles de runtime donde ciertas herramientas puedan estar ausentes o renombradas.
 * **Garantía mecánica de pureza:** `./build.sh check` y la suite de pruebas unitarias impiden regresiones de nombres cruzados en artefactos compilados.
 
 ### Negativas / Trade-offs
 * Las reglas del router basal describen la operación de forma funcional ("delimitación de rango o paginado") en vez de nombrar los argumentos exactos (`StartLine`/`EndLine` u `offset`/`limit`), delegando los parámetros específicos al esquema formal de herramientas de cada runtime y a sus respectivas especializaciones.
+* El vocabulario neutral es más largo que los identificadores que reemplaza: el prompt compilado de Antigravity crece de 1271 a 1286 palabras.

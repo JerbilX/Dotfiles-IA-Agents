@@ -274,36 +274,35 @@ if os.path.isfile(core_router):
 
 # 2. Verificar prompts compilados en dist/
 placeholder_pattern = re.compile(r"\{\{([a-zA-Z0-9_.-]+)\}\}")
+# Mantener sincronizado con tests/test_tool_vocabulary_neutrality.py
 foreign_tools_by_runtime = {
     "claude": [
-        "view_file", "replace_file_content", "grep_search",
-        "find_by_name", "write_to_file", "read_url_content", "ask_question"
+        "view_file", "replace_file_content", "grep_search", "find_by_name",
+        "write_to_file", "run_command", "read_url_content", "ask_question"
     ],
     "antigravity": [
-        "`Grep`", "`Glob`", "`Read`"
+        "`Read`", "`Grep`", "`Glob`", "`Write`", "`Edit`", "`Bash`"
     ]
 }
 
-if os.path.isdir(dist_dir):
-    for r_name in os.listdir(dist_dir):
-        prompt_file = os.path.join(dist_dir, r_name, "AGENTS.md")
-        if not os.path.isfile(prompt_file):
-            continue
-        with open(prompt_file, "r", encoding="utf-8") as f:
-            content = f.read()
+for r_name in sorted(foreign_tools_by_runtime):
+    prompt_file = os.path.join(dist_dir, r_name, "AGENTS.md")
+    if not os.path.isfile(prompt_file):
+        print(f"WARN:Prompt compilado ausente: dist/{r_name}/AGENTS.md (ejecutar ./build.sh build); verificación de herramientas omitida")
+        continue
+    with open(prompt_file, "r", encoding="utf-8") as f:
+        content = f.read()
 
-        placeholders = placeholder_pattern.findall(content)
-        for p in placeholders:
-            errors.append(f"Placeholder sin resolver \"{{{{{p}}}}}\" detectado en dist/{r_name}/AGENTS.md")
+    for p in placeholder_pattern.findall(content):
+        errors.append(f"Placeholder sin resolver \"{{{{{p}}}}}\" detectado en dist/{r_name}/AGENTS.md")
 
-        forbidden_tools = foreign_tools_by_runtime.get(r_name, [])
-        for tool in forbidden_tools:
-            if tool.startswith("`") and tool.endswith("`"):
-                if tool in content:
-                    errors.append(f"Herramienta cruzada {tool} detectada en dist/{r_name}/AGENTS.md (propia de otro runtime)")
-            else:
-                if re.search(r"\b" + re.escape(tool) + r"\b", content):
-                    errors.append(f"Herramienta cruzada \"{tool}\" detectada en dist/{r_name}/AGENTS.md (propia de otro runtime)")
+    for tool in foreign_tools_by_runtime[r_name]:
+        if tool.startswith("`"):
+            found = tool in content
+        else:
+            found = re.search(r"\b" + re.escape(tool) + r"\b", content) is not None
+        if found:
+            errors.append(f"Herramienta cruzada {tool} detectada en dist/{r_name}/AGENTS.md (propia de otro runtime)")
 
 for err in errors:
     print(f"ERROR:{err}")
@@ -320,6 +319,10 @@ for err in errors:
         if [[ "${line}" =~ ^ERROR:(.*)$ ]]; then
             echo "  [✗] ${BASH_REMATCH[1]}" >&2
             CHECK_ERRORS=$((CHECK_ERRORS + 1))
+            crossing_errors=$((crossing_errors + 1))
+        elif [[ "${line}" =~ ^WARN:(.*)$ ]]; then
+            echo "  [!] Advertencia: ${BASH_REMATCH[1]}"
+            CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
             crossing_errors=$((crossing_errors + 1))
         fi
     done <<< "${check_output}"

@@ -70,12 +70,14 @@ class TestToolVocabularyNeutrality(unittest.TestCase):
         with open(prompt_file, "r", encoding="utf-8") as f:
             content = f.read()
 
+        # Mantener sincronizado con foreign_tools_by_runtime en lib/check.sh
         antigravity_tools = [
             "view_file",
             "replace_file_content",
             "grep_search",
             "find_by_name",
             "write_to_file",
+            "run_command",
             "read_url_content",
             "ask_question",
         ]
@@ -92,7 +94,8 @@ class TestToolVocabularyNeutrality(unittest.TestCase):
         with open(prompt_file, "r", encoding="utf-8") as f:
             content = f.read()
 
-        claude_specific_tokens = ["`Grep`", "`Glob`", "`Read`"]
+        # Mantener sincronizado con foreign_tools_by_runtime en lib/check.sh
+        claude_specific_tokens = ["`Read`", "`Grep`", "`Glob`", "`Write`", "`Edit`", "`Bash`"]
         for token in claude_specific_tokens:
             self.assertNotIn(
                 token,
