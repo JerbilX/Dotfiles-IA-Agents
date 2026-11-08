@@ -13,7 +13,9 @@
     "git-prune-gone": "git-prune-gone",
     "agent-module": "agent-module"
   },
-  "mcp_servers": [],
+  "mcp_servers": [
+    "leantoken"
+  ],
   "status": "active",
   "target": {
     "config_dir": "${HOME}/.claude",

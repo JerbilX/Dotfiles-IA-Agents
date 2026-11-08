@@ -31,21 +31,21 @@ class TestWorkspaceIsolation(unittest.TestCase):
         if os.path.isdir(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    def test_global_antigravity_mcp_servers_empty(self):
-        """runtimes/antigravity/config.json must declare empty mcp_servers to avoid token waste."""
+    def test_global_antigravity_mcp_servers_purity(self):
+        """runtimes/antigravity/config.json must only declare transversal servers (leantoken) and no domain servers (ADR-0039, ADR-0053)."""
         cfg_path = os.path.join(RUNTIMES_DIR, "antigravity", "config.json")
         self.assertTrue(os.path.isfile(cfg_path))
         with open(cfg_path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
-        self.assertEqual(cfg.get("mcp_servers"), [], "Global antigravity mcp_servers must be empty list")
+        self.assertEqual(cfg.get("mcp_servers"), ["leantoken"], "Global antigravity mcp_servers must declare ['leantoken']")
 
-    def test_global_dist_mcp_config_is_empty(self):
-        """dist/antigravity/mcp_config.json must compile with empty mcpServers."""
+    def test_global_dist_mcp_config_compilation(self):
+        """dist/antigravity/mcp_config.json must compile with leantoken configured (ADR-0053)."""
         mcp_path = os.path.join(DIST_DIR, "antigravity", "mcp_config.json")
         self.assertTrue(os.path.isfile(mcp_path))
         with open(mcp_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        self.assertEqual(data, {"mcpServers": {}}, "dist/antigravity/mcp_config.json must have empty mcpServers")
+        self.assertIn("leantoken", data.get("mcpServers", {}), "dist/antigravity/mcp_config.json must contain leantoken")
 
     def test_global_skills_purity_no_domain_skills(self):
         """runtimes/antigravity/config.json must not declare domain skills or binaries (ADR-0041, #176)."""
