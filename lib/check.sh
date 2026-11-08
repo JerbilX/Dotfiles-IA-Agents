@@ -615,6 +615,46 @@ check_runtime() {
         fi
     fi
 
+    # 4c. Hooks declarados en settings.json (combinados por merge_settings.py en link, ADR-0051)
+    local settings_source="${RUNTIMES_BASE_DIR}/${r}/settings.json"
+    if [ -f "${settings_source}" ]; then
+        local settings_hooks_report
+        if settings_hooks_report="$(python3 -I -c '
+import json, os, sys
+root, path = sys.argv[1], sys.argv[2]
+hooks = json.load(open(path, encoding="utf-8")).get("hooks", {})
+errors, count = [], 0
+if not isinstance(hooks, dict):
+    errors.append("la clave hooks debe ser un objeto")
+    hooks = {}
+for event, entries in hooks.items():
+    for entry in entries if isinstance(entries, list) else [None]:
+        if not isinstance(entry, dict) or not entry.get("matcher") or not isinstance(entry.get("hooks"), list):
+            errors.append(f"{event}: entrada sin matcher o sin lista hooks")
+            continue
+        where = event + "/" + entry["matcher"]
+        for h in entry["hooks"]:
+            cmd = str(h.get("command", "")).replace("${DOTFILES_ROOT}", root)
+            exe = cmd.split()[0] if cmd.split() else ""
+            if h.get("type") != "command" or not exe:
+                errors.append(f"{where}: hook sin type=command o sin command")
+            elif os.sep in exe and not os.access(exe, os.X_OK):
+                errors.append(f"{where}: comando no ejecutable {exe}")
+            else:
+                count += 1
+print("\n".join(errors) if errors else count)
+sys.exit(1 if errors else 0)
+' "${SCRIPT_DIR}" "${settings_source}" 2>&1)"; then
+            if [ "${settings_hooks_report}" != "0" ]; then
+                echo "  [✓] [${r}] Hooks en settings.json: ${settings_hooks_report} hook(s) con comando resoluble"
+            fi
+        else
+            echo "  [✗] [${r}] Hooks inválidos en ${settings_source}:" >&2
+            echo "${settings_hooks_report}" | sed 's/^/      /' >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        fi
+    fi
+
     # 5. Verificación de directivas excluidas y sobreescritas (disabled_core_rules y overrides)
     local disabled_rules=()
     mapfile -t disabled_rules < <(get_disabled_core_rules "${config_file}")

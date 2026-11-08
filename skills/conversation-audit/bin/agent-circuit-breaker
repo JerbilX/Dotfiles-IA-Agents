@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """
-agent-circuit-breaker - Lifecycle Hook PreToolUse para Antigravity.
+agent-circuit-breaker - Lifecycle Hook PreToolUse para Antigravity y Claude Code.
 Interrumpe deterministamente bucles de lectura pasiva consecutiva (> 6, ADR-0046)
 y bucles cíclicos alternantes (ping-pong, profundidad 4-6) e impone un
 disyuntor de seguridad mecánico para evitar parálisis por inspección.
+En Claude Code además exige lectura paginada y clasifica los comandos Bash de
+mera inspección como lecturas pasivas (ADR-0051).
 """
 
 import json
 import os
+import re
+import shlex
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -19,6 +23,14 @@ PASSIVE_TOOLS = {
     "list_dir",
     "read_url_content",
     "read_browser_page",
+    # Claude Code (ADR-0051). "Bash(read)" es un Bash clasificado como inspección pasiva.
+    "Read",
+    "Grep",
+    "Glob",
+    "LS",
+    "WebFetch",
+    "WebSearch",
+    "Bash(read)",
 }
 
 ACTIVE_TOOLS = {
@@ -29,6 +41,13 @@ ACTIVE_TOOLS = {
     "execute_command",
     "generate_image",
     "ask_question",
+    # Claude Code (ADR-0051)
+    "Bash",
+    "Edit",
+    "MultiEdit",
+    "Write",
+    "NotebookEdit",
+    "AskUserQuestion",
 }
 
 # ADR-0046: 6 deja pasar el 89% de las rachas naturales de exploración y corta la cola de parálisis (10+).
@@ -86,29 +105,36 @@ def detect_ping_pong_loop(events: List[str]) -> Optional[str]:
     return None
 
 
+def read_tail_json_lines(transcript_path: Path, max_bytes: int) -> List[Dict[str, Any]]:
+    """Parsea los registros JSONL contenidos en los últimos `max_bytes` del transcript."""
+    with open(transcript_path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        read_size = min(size, max_bytes)
+        f.seek(size - read_size)
+        chunk = f.read().decode("utf-8", errors="ignore")
+
+    records = []
+    for line in chunk.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except Exception:
+            continue
+        if isinstance(rec, dict):
+            records.append(rec)
+    return records
+
+
 def read_recent_transcript_records(transcript_path: Path) -> List[Dict[str, Any]]:
     """Lee y parsea los registros recientes del transcript delimitados por la última intervención del usuario."""
     if not transcript_path.is_file():
         return []
 
     try:
-        with open(transcript_path, "rb") as f:
-            f.seek(0, os.SEEK_END)
-            size = f.tell()
-            read_size = min(size, 65536)
-            f.seek(size - read_size)
-            chunk = f.read().decode("utf-8", errors="ignore")
-            lines = chunk.strip().splitlines()
-
-        records = []
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                records.append(json.loads(line))
-            except Exception:
-                continue
+        records = read_tail_json_lines(transcript_path, 65536)
 
         # Encontrar la última intervención del usuario
         last_user_idx = -1
@@ -137,7 +163,7 @@ def extract_recent_tool_events(records: List[Dict[str, Any]]) -> List[str]:
             if not tc_name:
                 continue
             tc_args = tc.get("args", {})
-            sig = get_tool_signature(tc_name, tc_args if isinstance(tc_args, dict) else {})
+            sig = tc.get("sig") or get_tool_signature(tc_name, tc_args if isinstance(tc_args, dict) else {})
             events.append(sig)
     return events
 
@@ -193,9 +219,13 @@ def evaluate_pre_tool_use(payload: dict) -> dict:
         return {"decision": "allow"}
 
     recent_records = read_recent_transcript_records(tpath)
-
-    # 1. Detección de bucle cíclico alternante (Ping-Pong)
     candidate_sig = get_tool_signature(tool_name, tool_args if isinstance(tool_args, dict) else {})
+    return evaluate_loops(tool_name, candidate_sig, recent_records)
+
+
+def evaluate_loops(tool_name: str, candidate_sig: str, recent_records: List[Dict[str, Any]]) -> dict:
+    """Aplica la detección de ping-pong y el umbral de lecturas pasivas sobre registros normalizados."""
+    # 1. Detección de bucle cíclico alternante (Ping-Pong)
     transcript_events = extract_recent_tool_events(recent_records)
     combined_events = transcript_events + [candidate_sig]
 
@@ -241,6 +271,245 @@ def evaluate_pre_tool_use(payload: dict) -> dict:
     return {"decision": "allow"}
 
 
+# --- Claude Code (#287, ADR-0051) ---
+
+# Los registros de Claude incluyen tool_results voluminosos: ventana mayor que en Antigravity.
+CLAUDE_TAIL_BYTES = 1024 * 1024
+READ_MAX_WINDOW = 200
+READ_UNPAGED_MAX_LINES = 150
+NON_TEXT_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".pdf", ".ipynb"}
+
+# Lista conservadora: un comando no listado cuenta como acción activa (no bloquea, reinicia el contador).
+PASSIVE_SHELL_COMMANDS = {
+    "cat", "head", "tail", "wc", "ls", "tree", "grep", "rg", "find", "sed", "awk",
+    "jq", "cut", "sort", "uniq", "file", "stat", "readlink", "realpath", "pwd",
+    "echo", "printf", "cd", "diff", "basename", "dirname", "true",
+}
+PASSIVE_GIT_SUBCOMMANDS = {"status", "log", "show", "diff", "blame", "ls-files", "rev-parse", "grep"}
+PASSIVE_GH_ACTIONS = {"view", "list", "diff", "checks", "status"}
+# Prefijos que se descartan para evaluar el comando que sigue.
+SHELL_PREFIX_KEYWORDS = {"do", "then", "else", "if", "while", "until", "!", "{", "(", "time"}
+# Segmentos de control que no ejecutan un comando propio.
+SHELL_CONTROL_SEGMENTS = {"for", "done", "fi", "}", ")"}
+_SAFE_REDIRECTS = re.compile(r"&>\s*/dev/null|\d*>\s*/dev/null|\d*>&\d+")
+_SHELL_SEGMENT_SPLIT = re.compile(r"\|\||&&|[|;\n]")
+
+
+def _is_passive_shell_tokens(tokens: List[str]) -> bool:
+    cmd = os.path.basename(tokens[0])
+    args = tokens[1:]
+    if cmd == "git":
+        i = 0
+        while i < len(args) and args[i].startswith("-"):
+            i += 2 if args[i] in ("-C", "-c") else 1
+        return i < len(args) and args[i] in PASSIVE_GIT_SUBCOMMANDS
+    if cmd == "gh":
+        return len(args) >= 2 and args[1] in PASSIVE_GH_ACTIONS
+    if cmd not in PASSIVE_SHELL_COMMANDS:
+        return False
+    if cmd == "sed" and any(a.startswith("-i") or a.startswith("--in-place") for a in args):
+        return False
+    if cmd == "find" and any(a in ("-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint") for a in args):
+        return False
+    if cmd == "sort" and any(a == "-o" or a.startswith("--output") for a in args):
+        return False
+    return True
+
+
+def is_passive_shell_command(command: str) -> bool:
+    """True si todos los segmentos del comando son de mera inspección (sin escrituras ni subshells)."""
+    if not isinstance(command, str) or not command.strip():
+        return False
+    cleaned = _SAFE_REDIRECTS.sub(" ", command)
+    if ">" in cleaned or "<<" in cleaned or "$(" in cleaned or "`" in cleaned:
+        return False
+    for segment in _SHELL_SEGMENT_SPLIT.split(cleaned):
+        try:
+            tokens = shlex.split(segment)
+        except ValueError:
+            return False
+        while tokens and tokens[0] in SHELL_PREFIX_KEYWORDS:
+            tokens = tokens[1:]
+        if not tokens or tokens[0] in SHELL_CONTROL_SEGMENTS:
+            continue
+        if "=" in tokens[0] or not _is_passive_shell_tokens(tokens):
+            return False
+    return True
+
+
+def normalize_claude_tool(name: str, tool_input: Any) -> Dict[str, Any]:
+    """Traduce una invocación de Claude Code al formato de tool_call que usa el breaker."""
+    args = tool_input if isinstance(tool_input, dict) else {}
+    if name == "Bash":
+        command = args.get("command", "")
+        if is_passive_shell_command(command):
+            compact = " ".join(command.split())[:80]
+            return {"name": "Bash(read)", "args": {}, "sig": f"Bash(read):{compact}"}
+        return {"name": "Bash", "args": {}, "sig": "Bash"}
+    return {"name": name, "args": args, "sig": get_tool_signature(name, args)}
+
+
+def _is_tool_result_only(content: Any) -> bool:
+    return (
+        isinstance(content, list)
+        and len(content) > 0
+        and all(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+    )
+
+
+def read_recent_claude_records(transcript_path: Path) -> List[Dict[str, Any]]:
+    """
+    Normaliza el transcript de Claude Code a registros {tool_calls} / {type: USER_INPUT}.
+    Agrupa por message.id (un mensaje del modelo = un paso), descarta los tool_use sin
+    tool_result (la llamada en curso y sus paralelas) y omite registros meta y de subagentes.
+    """
+    if not transcript_path.is_file():
+        return []
+    try:
+        raw = read_tail_json_lines(transcript_path, CLAUDE_TAIL_BYTES)
+    except Exception:
+        return []
+
+    completed = set()
+    for rec in raw:
+        content = (rec.get("message") or {}).get("content")
+        if isinstance(content, list):
+            for b in content:
+                if isinstance(b, dict) and b.get("type") == "tool_result" and b.get("tool_use_id"):
+                    completed.add(b["tool_use_id"])
+
+    normalized: List[Dict[str, Any]] = []
+    steps_by_message: Dict[str, Dict[str, Any]] = {}
+    for rec in raw:
+        if rec.get("isSidechain") or rec.get("isMeta"):
+            continue
+        message = rec.get("message") or {}
+        content = message.get("content")
+        rec_type = rec.get("type")
+        if rec_type == "user":
+            if content and not _is_tool_result_only(content):
+                normalized.append({"type": "USER_INPUT"})
+                steps_by_message = {}
+            continue
+        if rec_type != "assistant" or not isinstance(content, list):
+            continue
+        calls = [
+            normalize_claude_tool(b.get("name", ""), b.get("input"))
+            for b in content
+            if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("id") in completed
+        ]
+        if not calls:
+            continue
+        message_id = message.get("id")
+        if message_id and message_id in steps_by_message:
+            steps_by_message[message_id]["tool_calls"].extend(calls)
+            continue
+        step = {"tool_calls": calls}
+        normalized.append(step)
+        if message_id:
+            steps_by_message[message_id] = step
+
+    last_user_idx = -1
+    for idx, rec in enumerate(normalized):
+        if rec.get("type") == "USER_INPUT":
+            last_user_idx = idx
+    return normalized[last_user_idx + 1:]
+
+
+def _count_lines_up_to(path: Path, limit: int) -> Optional[int]:
+    """Cuenta líneas hasta superar `limit` (corte temprano). None si no es un archivo legible."""
+    try:
+        if not path.is_file():
+            return None
+        count = 0
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                count += chunk.count(b"\n")
+                if count > limit:
+                    return count
+        return count
+    except OSError:
+        return None
+
+
+def evaluate_claude_read_paging(tool_input: Any) -> Optional[dict]:
+    """Deniega lecturas con ventana > 200 líneas o sin paginar sobre archivos > 150 líneas."""
+    args = tool_input if isinstance(tool_input, dict) else {}
+    file_path = str(args.get("file_path", ""))
+    limit = args.get("limit")
+    try:
+        limit = int(limit) if limit is not None else None
+    except (TypeError, ValueError):
+        limit = None
+
+    if limit is not None:
+        if limit > READ_MAX_WINDOW:
+            return {
+                "decision": "deny",
+                "reason": (
+                    f"Lectura paginada obligatoria: ventana de {limit} líneas supera el máximo de "
+                    f"{READ_MAX_WINDOW}. Reintentar con limit ≤ {READ_MAX_WINDOW} "
+                    f"(≤ 50 en lectura quirúrgica tras localizar por búsqueda de contenido)."
+                ),
+            }
+        return None
+
+    path = Path(file_path)
+    if not file_path or path.suffix.lower() in NON_TEXT_SUFFIXES:
+        return None
+    lines = _count_lines_up_to(path, READ_UNPAGED_MAX_LINES)
+    if lines is not None and lines > READ_UNPAGED_MAX_LINES:
+        return {
+            "decision": "deny",
+            "reason": (
+                f"Lectura paginada obligatoria: '{path.name}' supera {READ_UNPAGED_MAX_LINES} líneas y se "
+                f"pidió sin limit. Localizar primero por búsqueda de contenido y leer una ventana "
+                f"quirúrgica con offset/limit (≤ 50 líneas; máximo {READ_MAX_WINDOW})."
+            ),
+        }
+    return None
+
+
+def evaluate_claude_pre_tool_use(payload: dict) -> dict:
+    """Evalúa el payload PreToolUse de Claude Code y retorna la decisión canónica."""
+    tool_name = payload.get("tool_name", "")
+    tool_input = payload.get("tool_input") or {}
+
+    if tool_name == "Read":
+        paging = evaluate_claude_read_paging(tool_input)
+        if paging:
+            return paging
+
+    candidate = normalize_claude_tool(tool_name, tool_input)
+    # Paridad con el matcher de Antigravity: solo las lecturas pasivas pasan por el breaker,
+    # así los ciclos editar -> probar no se confunden con ping-pong.
+    if candidate["name"] not in PASSIVE_TOOLS:
+        return {"decision": "allow"}
+
+    transcript_path_str = payload.get("transcript_path")
+    if not transcript_path_str:
+        return {"decision": "allow"}
+    recent_records = read_recent_claude_records(Path(transcript_path_str))
+    return evaluate_loops(candidate["name"], candidate["sig"], recent_records)
+
+
+def is_claude_payload(payload: dict) -> bool:
+    return "hook_event_name" in payload or "tool_name" in payload
+
+
+def to_claude_output(result: dict) -> Optional[dict]:
+    """Solo se emite salida al denegar: un 'allow' explícito saltearía los permisos de Claude Code."""
+    if result.get("decision") != "deny":
+        return None
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": result.get("reason", ""),
+        }
+    }
+
+
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
         sys.stdout.write("Uso: agent-circuit-breaker\n")
@@ -255,6 +524,15 @@ def main() -> int:
         payload = json.loads(raw_input)
     except Exception:
         sys.stdout.write(json.dumps({"decision": "allow"}) + "\n")
+        return 0
+
+    if isinstance(payload, dict) and is_claude_payload(payload):
+        try:
+            output = to_claude_output(evaluate_claude_pre_tool_use(payload))
+        except Exception:
+            output = None  # Fail-open: un error del hook no debe bloquear la sesión.
+        if output:
+            sys.stdout.write(json.dumps(output, ensure_ascii=False) + "\n")
         return 0
 
     result = evaluate_pre_tool_use(payload)

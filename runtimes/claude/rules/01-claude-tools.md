@@ -1,7 +1,7 @@
 # Especialización de Herramientas y Permisos (Runtime: Claude Code)
 
 <!-- rule: id=CLAUDE_SKILLS_CIRCUIT_BREAKER level=P0/P2 origin=legacy -->
-- **Skills y Circuit Breaker:** Las skills se cargan con la herramienta `Skill` desde cualquier workspace. El circuit breaker de lectura rige como regla (sin hook).
+- **Skills y Circuit Breaker:** Las skills se cargan con `Skill` desde cualquier workspace. Circuit breaker y paginación van por hook: ante bloqueo, sintetizar o Stop & Ask, sin reintentar.
 <!-- rule: id=CLAUDE_ATTRIBUTION level=P1 origin=legacy -->
 - **Atribución:** Runtime `Claude Code`; modelo: el ID del modelo en curso (ej. `claude-opus-5-5`). En issues y PRs: `Creado por: Claude Code (<modelo>)`. En commits (trailer Git): `Generated-by: Claude Code (<modelo>)`; prohibido agregar o mantener `Co-Authored-By`.
 <!-- rule: id=CLAUDE_NO_BYPASSSANDBOX level=Build origin=legacy -->
