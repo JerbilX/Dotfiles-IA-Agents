@@ -49,6 +49,43 @@ class TestMergeSettings(unittest.TestCase):
         # ADR-0047: el prompt compilado es autosuficiente; no se habilitan lecturas sobre core/
         self.assertFalse(any("/core/" in rule for rule in allow))
 
+    # --- Hooks (ADR-0051, #287) ---
+
+    CB = "${DOTFILES_ROOT}/skills/conversation-audit/bin/agent-circuit-breaker"
+
+    def _hook_entry(self, matcher, command):
+        return {"matcher": matcher, "hooks": [{"type": "command", "command": command, "timeout": 5}]}
+
+    def test_merges_hooks_preserving_user_hooks_idempotently(self):
+        user_entry = self._hook_entry("Write", "user-guard")
+        result = self._run(
+            {"hooks": {"PreToolUse": [self._hook_entry("Read|Bash", self.CB)]}},
+            {"hooks": {"PreToolUse": [user_entry], "Stop": [self._hook_entry("", "notify")]}},
+        )
+        pre = result["hooks"]["PreToolUse"]
+        self.assertEqual(len(pre), 2)  # _run ejecuta dos veces: sin duplicados
+        self.assertEqual(pre[0], user_entry)
+        self.assertEqual(pre[1]["hooks"][0]["command"],
+                         f"{REPO_ROOT}/skills/conversation-audit/bin/agent-circuit-breaker")
+        self.assertIn("Stop", result["hooks"])
+
+    def test_matcher_change_replaces_owned_hook(self):
+        expanded = self.CB.replace("${DOTFILES_ROOT}", REPO_ROOT)
+        result = self._run(
+            {"hooks": {"PreToolUse": [self._hook_entry("Read|Grep|Glob|Bash", self.CB)]}},
+            {"hooks": {"PreToolUse": [self._hook_entry("Read", expanded)]}},
+        )
+        pre = result["hooks"]["PreToolUse"]
+        self.assertEqual([e["matcher"] for e in pre], ["Read|Grep|Glob|Bash"])
+
+    def test_runtime_claude_settings_declare_circuit_breaker_hook(self):
+        with open(os.path.join(REPO_ROOT, "runtimes", "claude", "settings.json"), encoding="utf-8") as f:
+            pre = json.load(f)["hooks"]["PreToolUse"]
+        commands = {h["command"]: e["matcher"] for e in pre for h in e["hooks"]}
+        self.assertIn(self.CB, commands)
+        self.assertEqual(set(commands[self.CB].split("|")), {"Read", "Grep", "Glob", "Bash"})
+        self.assertTrue(os.access(self.CB.replace("${DOTFILES_ROOT}", REPO_ROOT), os.X_OK))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,7 +4,8 @@
 Uso: merge_settings.py <fragmento.json> <destino.json>
 
 Las listas en permissions.allow/deny/ask se unen preservando el orden (primero las
-del usuario); el resto de las claves del usuario no se modifica. Escritura atómica.
+del usuario); los hooks se combinan por evento (ver merge_hooks); el resto de las
+claves del usuario no se modifica. Escritura atómica.
 """
 
 import json
@@ -38,7 +39,33 @@ def merge(target, fragment):
         for entry in map(expand, f_perms[key]):
             if entry not in current:
                 current.append(entry)
+    merge_hooks(target, fragment.get("hooks", {}))
     return target
+
+
+def merge_hooks(target, f_hooks):
+    """Combina hooks por evento (ADR-0051).
+
+    Los comandos declarados en el fragmento son propiedad del repo: se retiran del destino
+    (incluso bajo otro matcher) y se agregan las entradas del fragmento al final. Así el
+    merge es idempotente y un cambio de matcher no deja entradas huérfanas. Los hooks
+    propios del usuario no se tocan.
+    """
+    if not f_hooks:
+        return
+    t_hooks = target.setdefault("hooks", {})
+    for event, f_entries in f_hooks.items():
+        f_entries = [
+            {**entry, "hooks": [{**h, "command": expand(h.get("command", ""))} for h in entry.get("hooks", [])]}
+            for entry in f_entries
+        ]
+        owned = {h["command"] for entry in f_entries for h in entry["hooks"]}
+        kept = []
+        for entry in t_hooks.get(event, []):
+            remaining = [h for h in entry.get("hooks", []) if h.get("command") not in owned]
+            if remaining:
+                kept.append({**entry, "hooks": remaining})
+        t_hooks[event] = kept + f_entries
 
 
 def main(argv):
@@ -63,7 +90,7 @@ def main(argv):
         json.dump(merged, f, indent=2, ensure_ascii=False)
         f.write("\n")
     os.replace(tmp_path, target_path)
-    print(f"  [✓] Permisos combinados en {target_path}")
+    print(f"  [✓] Permisos y hooks combinados en {target_path}")
     return 0
 
 

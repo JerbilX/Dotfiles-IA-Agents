@@ -36,5 +36,19 @@
       "Bash(./build.sh check:*)",
       "Bash(./build.sh build:*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Grep|Glob|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${DOTFILES_ROOT}/skills/conversation-audit/bin/agent-circuit-breaker",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
   }
 }
