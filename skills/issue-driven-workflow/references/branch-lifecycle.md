@@ -83,7 +83,6 @@ git-prune-gone --sync
 * **Granularidad Atómica en Ediciones:** Particionar cambios en bloques acotados de edición para prevenir truncamientos en la respuesta y degradación por latencia. Prohibido reemplazar archivos completos monolíticamente.
 * **Precedencia de Entornos Locales:** Priorizar binarios locales (`.venv/bin/`, `node_modules/.bin/`) sobre intérpretes o linters globales.
 * **Higiene de Salida y Pruebas:** Acotar salidas (`head -n 20`, `--jq`). En desarrollo o diagnóstico, pruebas filtradas (archivo o caso puntual) o de baja verbosidad; suite integral solo en la verificación final previa al commit. Temporales (`.commit_msg`, `.pr_body`, `.issue_body`, `.issue_comment`) se eliminan tras su uso.
-* **Veto Acumulativo:** Una falla no justifica tocar varias capas simultáneamente; aislar y corregir la causa raíz única con minimal blast radius.
 * Validar compilación, linters y suites de prueba locales (`./build.sh check`).
 * **Promoción Atómica del ADR:** Al comenzar a codificar, actualizar el YAML frontmatter del ADR a `status: accepted` en la rama de trabajo para ratificación atómica al mergear.
 

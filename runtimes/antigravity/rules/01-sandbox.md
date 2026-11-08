@@ -6,7 +6,5 @@
 - **Aprovisionamiento Hermético de Dotfiles:** build y check operan en sandbox (BypassSandbox: false); link y all son bootstrap exclusivo del usuario en terminal nativa.
 <!-- rule: id=AGY_BYPASS_EXCLUSIVITY level=P0/P2 origin=legacy -->
 - **Exclusividad de Bypass:** BypassSandbox: true exclusivo para git, gh y CLIs autorizados (agent-audit, agent-module, gh-pr-review, git-prune-gone); scripts en scratch/ con BypassSandbox: false.
-
-
-
-
+<!-- rule: id=AGY_ATTRIBUTION level=P2 origin=legacy -->
+- **Atribución:** En issues y PRs: `Creado por: Antigravity (<modelo de la sesión>)`. En commits (trailer Git): `Generated-by: Antigravity (<modelo de la sesión>)`.

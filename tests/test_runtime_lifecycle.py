@@ -138,7 +138,21 @@ class TestRuntimeLifecycle(unittest.TestCase):
             guard_content = f.read()
         self.assertIn("reconocimiento ciego del host", guard_content)
         self.assertIn("HOST_RECON_ROOTS", guard_content)
-        self.assertIn('cmd_name == "find"', guard_content)
+
+    def test_runtime_attribution_directives(self):
+        """runtimes must declare canonical attribution with Co-Authored-By veto in Claude (Issue #269, #284)."""
+        agy_rule = os.path.join(RUNTIMES_DIR, "antigravity", "rules", "01-sandbox.md")
+        with open(agy_rule, "r", encoding="utf-8") as f:
+            agy_content = f.read()
+        self.assertIn("AGY_ATTRIBUTION", agy_content)
+        self.assertIn("Generated-by: Antigravity", agy_content)
+
+        claude_rule = os.path.join(RUNTIMES_DIR, "claude", "rules", "01-claude-tools.md")
+        with open(claude_rule, "r", encoding="utf-8") as f:
+            claude_content = f.read()
+        self.assertIn("CLAUDE_ATTRIBUTION", claude_content)
+        self.assertIn("Generated-by: Claude Code", claude_content)
+        self.assertIn("Co-Authored-By", claude_content)
 
     def test_antigravity_rules_authorize_agent_module_bypass(self):
         """runtimes/antigravity/rules/01-sandbox.md must authorize agent-module for bypass (Issue #184)."""

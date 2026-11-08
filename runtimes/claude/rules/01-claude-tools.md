@@ -6,4 +6,5 @@
 - **Subagentes:** El subagente `research` con modelo `flash` es propio de Antigravity. En Claude Code, delegar exploración extensa solo si el usuario lo pide.
 <!-- rule: id=CLAUDE_RUNTIME_CONTINUITY level=P2 origin=legacy -->
 - **Continuidad entre Runtimes:** Issue, rama, commits y PR son la fuente de verdad del estado de una tarea. Al retomar trabajo iniciado en otro entorno, leer la issue y el historial de la rama antes de actuar.
-
+<!-- rule: id=CLAUDE_ATTRIBUTION level=P2 origin=legacy -->
+- **Atribución:** Runtime `Claude Code`; modelo: el ID del modelo en curso (ej. `claude-opus-5-5`). En issues y PRs: `Creado por: Claude Code (<modelo>)`. En commits (trailer Git): `Generated-by: Claude Code (<modelo>)`; prohibido agregar o mantener `Co-Authored-By`.

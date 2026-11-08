@@ -9,7 +9,7 @@ Guía operativa exhaustiva para el registro, especificación técnica, jerarquí
 - **Prohibición de Backlogs Locales:** No crear, sincronizar ni depender de archivos `TODO.md`, `backlog.md`, `NOTES.md` o bitácoras informales en cualquier nivel del proyecto. No volcar prompts, especificaciones de tareas ni planes de ejecución en carpetas o archivos temporales huérfanos (ej. `tasks/`, `prompts/`).
 - **Trazabilidad en GitHub Issues:** Todo requerimiento pendiente, mejora, refactor o bug detectado debe formalizarse exclusiva y directamente como una **GitHub Issue** tipificando su perfil de ejecución (`profile:flash-low`, `profile:flash-medium`, `profile:flash-high`, `profile:pro`) e indexada en Projects v2.
 - **Niveles de Ceremonia:**
-  - **N0** (consultas, exploración, scripts en `scratch/`): sin issue ni rama.
+  - **N0** (consultas, exploración, scripts en `scratch/`): sin issue ni rama. Pedidos informales de scripts sin ticket: snippet en el chat o `scratch/`, nunca en el workspace.
   - **N1** (cambio acotado, evidente, sin tocar `core/`, `runtimes/` ni ADR): issue mínima (cuerpo de 1-2 líneas), sin plan bloqueante, sin ADR ni label de perfil.
   - **N2** (funcionalidad nueva, refactor estructural, ambigüedad de diseño, impacto en `core/`, `runtimes/` o creación/modificación de ADR): ciclo completo con especificación exhaustiva, tipificación de perfil y plan formal.
 
