@@ -16,8 +16,8 @@ Subordinado a las directivas basales compiladas en el prompt del runtime:
 
 * **Backlog Canónico:** Prohibido `TODO.md` o `tasks/`; registro en Issues e indexación en Projects v2.
 * **Inmutabilidad y PRs:** Inmutabilidad estricta de workspace (tooling y scripts constituyen desarrollo). Prohibido push directo a `main`. Ramas efímeras (`feat/` o `fix/`) y entrega vía PR.
-* **Higiene y Atomicidad:** I/O solo con herramientas nativas; delimitación obligatoria de `StartLine` y `EndLine` (≤ 200 líneas) en toda llamada a `view_file` sin excepción; circuit breaker (máximo 6 lecturas consecutivas globales sin acción intermedia) e inmunidad heurística; granularidad atómica en `replace_file_content` (bloques acotados para evitar truncamientos y alta latencia); commits vía `.commit_msg` y eliminación inmediata de temporales.
-* **Sandbox:** Subordinado a `runtimes/*/rules/01-sandbox.md`. Comandos de red, git mutadores (`init`, `checkout`, `switch`, `branch`, `add`, `commit`, `merge`, `push`, `pull`, `revert`), `gh` y tooling autorizado (`agent-audit`, `agent-module`, `gh-pr-review`, `git-prune-gone`) operan con bypass (`BypassSandbox: true`). Validaciones locales, checks (`./build.sh check`), inspección git pasiva y remoción de archivos temporales (`rm -f`) operan en sandbox confinado (`BypassSandbox: false`).
+* **Higiene y Atomicidad:** I/O solo con herramientas nativas de archivos; delimitación obligatoria de rango o paginado (ventana ≤ 200 líneas) en toda lectura sin excepción; circuit breaker (máximo 6 lecturas consecutivas globales sin acción intermedia) e inmunidad heurística; granularidad atómica en ediciones (bloques acotados para evitar truncamientos y alta latencia); commits vía `.commit_msg` y eliminación inmediata de temporales.
+* **Sandbox:** Subordinado a `runtimes/*/rules/01-sandbox.md`. Comandos de red, git mutadores (`init`, `checkout`, `switch`, `branch`, `add`, `commit`, `merge`, `push`, `pull`, `revert`), `gh` y tooling autorizado (`agent-audit`, `agent-module`, `gh-pr-review`, `git-prune-gone`) operan con bypass de sandbox (ej. `BypassSandbox: true` en Antigravity). Validaciones locales, checks (`./build.sh check`), inspección git pasiva y remoción de archivos temporales (`rm -f`) operan en sandbox confinado (ej. `BypassSandbox: false` en Antigravity).
 * **Resiliencia de Binarios:** Ante fallo de invocación de tooling autorizado (`command not found` o ausencia en `$PATH`), resolver directamente la ruta canónica (`./skills/<skill>/bin/<cmd>` en este repo; `<skills_dir del runtime>/<skill>/bin/<cmd>` en workspaces externos) o aplicar fallback nativo (`git checkout <base> && git pull --prune --ff-only` y `git branch -D <rama>` solo si su PR está `MERGED`); prohibido realizar búsquedas exploratorias ciegas (`find`, `which`, `ls`).
 
 ---
@@ -33,7 +33,7 @@ Procedimientos detallados y plantillas en `references/`:
 | **Ramas y PRs** | Cat. A/B, higiene, 8 fases E2E, apertura de PRs y cierre post-merge. | [`references/branch-lifecycle.md`](references/branch-lifecycle.md) |
 | **Máquina de Estados** | Matriz de transiciones progresivas y regresivas (rework, bloqueos, rollback). | [`references/state-machine.md`](references/state-machine.md) |
 | **Code Review** | Ingesta `gh-pr-review`, parches y resolución de hilos. | [`references/code-review.md`](references/code-review.md) |
-| **Investigación Exploratoria** | Protocolo de delegación a subagente `research` (modelo `flash`, `inherit`), ahorro de tokens (> 3 archivos) y consolidación. | [`references/exploratory-research.md`](references/exploratory-research.md) |
+| **Investigación Exploratoria** | Protocolo de delegación al subagente de investigación del runtime (ej. `research` con modelo `flash` en Antigravity), ahorro de tokens (> 3 archivos) y consolidación. | [`references/exploratory-research.md`](references/exploratory-research.md) |
 | **Rollback** | Reversión con `git revert` y `build.sh rollback`. | [`references/rollback.md`](references/rollback.md) |
 
 ---
@@ -64,12 +64,12 @@ gh board-ready <owner>/<repo>
 
 ### 3.4 Investigaciones Exploratorias y Ahorro de Tokens
 Para relevamientos técnicos que requieran inspeccionar más de 8 archivos, explorar bases de código externas/desconocidas, o cuando el usuario lo pida:
-1. **Delegación:** Evitar acumular lecturas masivas en la sesión principal. Invocar subagente nativo `research` (`TypeName: "research"`, `Model: "flash"`, `Workspace: "inherit"`).
+1. **Delegación:** Evitar acumular lecturas masivas en la sesión principal. Invocar subagente nativo de investigación (ej. `research` con modelo `flash` en Antigravity, o subagente equivalente del runtime).
 2. **Consolidación:** El subagente entrega un resumen ejecutivo consolidado al hilo principal, protegiendo el contexto de la sesión. Ver [`references/exploratory-research.md`](references/exploratory-research.md).
 
 ### 3.5 Creación y Tipificación de Issues en Backlog
 Toda tarea futura, bug o deuda técnica detectada se lista al usuario y, con su confirmación, se registra formalmente en GitHub Issues tipificando su perfil de ejecución (`profile:<perfil>`). Issue mínima (N1, ejecutada en el mismo turno): mismo comando con `.issue_body` de 1-2 líneas, sin `--label` de perfil ni plan/ADR:
-1. Redactar especificación técnica en `.issue_body` vía `write_to_file`.
+1. Redactar especificación técnica en `.issue_body` mediante herramientas nativas de archivos.
 2. Crear issue determinista:
 ```bash
 gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"
@@ -100,10 +100,10 @@ Si el label `profile:<perfil>` no existe en el repo destino, omitirlo y menciona
 
 Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](references/branch-lifecycle.md) y [`references/state-machine.md`](references/state-machine.md).
 
-- [ ] **1. Ingesta:** `gh issue view <id>` (sin llamadas a `gh project item-edit`). Relevamientos exploratorios de > 8 archivos o repositorios externos se delegan al subagente `research` (modelo `flash`, `Workspace: inherit`).
+- [ ] **1. Ingesta:** `gh issue view <id>` (sin llamadas a `gh project item-edit`). Relevamientos exploratorios de > 8 archivos o repositorios externos se delegan al subagente de investigación (ej. `research` en Antigravity).
 - [ ] **2. Higiene:** Aislamiento preferente en ≤ 2 llamadas (`git fetch --prune origin` y `git switch --no-track -c <rama> origin/<base>`); poda diferida a Fase 8.
 - [ ] **3. Plan/ADR:** Fast-Track por defecto (sin pausa bloqueante en tickets con criterios claros en `Ready for Dev`); *Stop & Plan* con gate bloqueante ante ADRs nuevos/modificados, alternativas divergentes o diagnósticos inciertos.
-- [ ] **4. Desarrollo:** Promover ADR a `status: accepted` al iniciar desarrollo, I/O nativo con lectura paginada estricta (`view_file` con `StartLine`/`EndLine` ≤ 200, circuit breaker ≤ 6 lecturas consecutivas globales e inmunidad heurística), ediciones atómicas acotadas (`replace_file_content`) y verificar con `./build.sh check`.
+- [ ] **4. Desarrollo:** Promover ADR a `status: accepted` al iniciar desarrollo, I/O nativo con lectura paginada estricta (delimitación de rango o paginado ≤ 200 líneas, circuit breaker ≤ 6 lecturas consecutivas globales e inmunidad heurística), ediciones atómicas acotadas y verificar con `./build.sh check`.
 - [ ] **5. Commit:** Staging explícito (`git add <rutas>`; no usar `git add .`/`-A`), redactar en `.commit_msg` con trailer canónico `Generated-by: <runtime> (<modelo>)`, `git commit -F .commit_msg` y limpiar `.commit_msg` en paralelo con la siguiente llamada en el mismo turno.
 - [ ] **6. Push:** Publicar con `git push -u origin <rama>`.
 - [ ] **7. PR:** PR con `Closes #<id>` y línea de atribución (§3.5) vía `.pr_body` (ADR viaja como `accepted`); salvaguarda de indexación inmediata con `gh project item-add <project_number> --owner <project_owner> --url <pr_url>` (resueltos desde `.repo-config.json` o fallback `1` y `@me`); limpiar `.pr_body` en paralelo con el reporte del turno. Built-in Workflow avanza tarjeta a `👀 In Review / PR`.

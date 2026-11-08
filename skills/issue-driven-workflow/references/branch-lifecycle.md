@@ -41,8 +41,8 @@ Toda tarea despachada debe cumplir secuencialmente con las siguientes 8 fases:
    gh issue view <id>
    ```
 2. **Protocolo de Investigación Exploratoria (Ahorro de Contexto):**
-   * **Lecturas Acotadas (≤ 8 archivos):** Si la tarea requiere inspección quirúrgica de hasta 8 archivos conocidos, realizar lecturas directas en la sesión principal mediante `view_file` o `grep_search`.
-   * **Exploración Extensa (> 8 archivos, repositorios externos o a pedido del usuario):** Evitar saturar la sesión principal con lecturas masivas. Delegar el relevamiento al subagente nativo `research` (`Model: "flash"`, `Workspace: "inherit"`), quien devuelve un resumen ejecutivo consolidado. Ver [`references/exploratory-research.md`](exploratory-research.md).
+   * **Lecturas Acotadas (≤ 8 archivos):** Si la tarea requiere inspección quirúrgica de hasta 8 archivos conocidos, realizar lecturas directas en la sesión principal mediante herramientas nativas de lectura o búsqueda por contenido.
+   * **Exploración Extensa (> 8 archivos, repositorios externos o a pedido del usuario):** Evitar saturar la sesión principal con lecturas masivas. Delegar el relevamiento al subagente de investigación (ej. `research` con modelo `flash` en Antigravity, o subagente equivalente del runtime), quien devuelve un resumen ejecutivo consolidado. Ver [`references/exploratory-research.md`](exploratory-research.md).
 3. El análisis sitúa la tarea operativamente en fase de planificación local (`📐 In Planning`), sin mutaciones CLI en GitHub Projects v2.
 
 ### Paso 2: Aislamiento e Higiene del Workspace
@@ -78,9 +78,9 @@ git-prune-gone --sync
 
 ### Paso 4: Transición a Desarrollo y Verificación (⚙️ In Progress)
 * Al aprobarse el plan o entrar en fast-path, la tarea entra en desarrollo activo (`⚙️ In Progress`) en la rama local, sin mutaciones CLI en Projects v2.
-* Modificaciones de código exclusivamente mediante herramientas nativas de archivos (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`). Prohibido usar comandos de terminal para I/O (`cat`, `sed`, `awk`, `tee`).
-* **Lectura Paginada Obligatoria:** Toda llamada a `view_file` exige delimitar `StartLine` y `EndLine` (ventana ≤ 200 líneas) sin excepción; prohibidas lecturas no acotadas. Localizar previamente mediante `grep_search`.
-* **Granularidad Atómica en Ediciones:** Particionar cambios en bloques acotados de `replace_file_content` para prevenir truncamientos en `tool_calls` y degradación por latencia. Prohibido reemplazar archivos completos monolíticamente.
+* Modificaciones de código exclusivamente mediante herramientas nativas de archivos (escritura, edición, lectura, búsqueda). Prohibido usar comandos de terminal para I/O (`cat`, `sed`, `awk`, `tee`).
+* **Lectura Paginada Obligatoria:** Toda lectura de archivos exige delimitar rango o paginado (ventana ≤ 200 líneas) sin excepción; prohibidas lecturas no acotadas. Localizar previamente mediante búsqueda por contenido.
+* **Granularidad Atómica en Ediciones:** Particionar cambios en bloques acotados de edición para prevenir truncamientos en la respuesta y degradación por latencia. Prohibido reemplazar archivos completos monolíticamente.
 * Validar compilación, linters y suites de prueba locales (`./build.sh check`).
 * **Promoción Atómica del ADR:** Al comenzar a codificar, actualizar el YAML frontmatter del ADR a `status: accepted` en la rama de trabajo para ratificación atómica al mergear.
 
@@ -91,7 +91,7 @@ git-prune-gone --sync
    ```
    *(Indicar rutas explícitas; no usar `git add .` ni `git add -A`).*
 2. **Redacción y Commit Atómico:**
-   * Evitar `git commit -m "..."` (anula el prefix matching de permisos al contener comillas). Redactar mensaje convencional en `.commit_msg` con `write_to_file`.
+   * Evitar `git commit -m "..."` (anula el prefix matching de permisos al contener comillas). Redactar mensaje convencional en `.commit_msg` con herramientas nativas de archivos.
    * Incluir obligatoriamente al final del mensaje (separado por una línea en blanco) el trailer canónico de atribución:
      ```gitcommit
      <tipo>(<alcance>): <descripción>
@@ -116,7 +116,7 @@ git push -u origin <nombre-de-rama>
 ```
 
 ### Paso 7: Apertura de Pull Request (👀 In Review / PR)
-1. Redactar el cuerpo del PR en `.pr_body` con `write_to_file`, incluyendo obligatoriamente `Closes #<id>` (o vinculación múltiple si aplica).
+1. Redactar el cuerpo del PR en `.pr_body` mediante herramientas nativas de archivos, incluyendo obligatoriamente `Closes #<id>` (o vinculación múltiple si aplica).
 2. Publicar mediante GitHub CLI:
    ```bash
    gh pr create --base <base_branch> --title "<tipo>(<alcance>): <descripción>" --body-file .pr_body
@@ -209,7 +209,7 @@ Ante cualquier paso de saneamiento o higiene post-merge, seguir estrictamente es
      ```
      *(Usar `-D` solo si `gh pr view <rama> --json state --jq .state` devuelve `MERGED`: tras un squash merge `git branch -d` falla con `not fully merged` porque la rama no es ancestro de la base. Si el estado no es `MERGED`, no borrar y reportar al usuario).*
    - **Alerta al Usuario (Actionable Fallback):** Notificar al usuario en el chat que ejecute `./build.sh link` (o `./build.sh skills`) en su terminal nativa dentro de `Dotfiles-IA-Agents` para restablecer los binarios en `~/.local/bin/`.
-   - **Prohibición Expresa de Búsquedas Ciegas:** Prohibido iniciar búsquedas exploratorias (`find_by_name`, `find /`, `grep`, `which`, `ls`) para localizar `git-prune-gone` u otros binarios de skills.
+   - **Prohibición Expresa de Búsquedas Ciegas:** Prohibido iniciar búsquedas exploratorias (búsquedas por nombre de archivo, `find /`, `grep`, `which`, `ls`) para localizar `git-prune-gone` u otros binarios de skills.
 
 ---
 
@@ -249,7 +249,7 @@ El ciclo de vida en Projects v2 se rige por transiciones desacopladas gobernadas
 Cuando una tarea investigativa o spike concluya que **no se requieren cambios de código**:
 1. **Cierre Activo:** No delegar el cierre al usuario; cerrar la issue de forma autónoma.
 2. **Publicación del Informe Técnico:**
-   Redactar reporte en `.issue_comment` con `write_to_file` y publicar con GitHub CLI:
+   Redactar reporte en `.issue_comment` con herramientas nativas de archivos y publicar con GitHub CLI:
    ```bash
    gh issue comment <id> --body-file .issue_comment
    ```

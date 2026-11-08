@@ -13,7 +13,7 @@ Guía operativa y protocolo estricto para la consulta, detección de conflictos,
 ## 1. Principios Fundamentales y Compatibilidad
 
 1. **Estándar MADR + adr-tools:** Estructura basada en Markdown con YAML frontmatter legible por máquina y estructurado para humanos. Compatible en nomenclatura con `adr-tools` (`docs/adr/NNNN-titulo-en-kebab-case.md`).
-2. **Operación 100% Nativa (Zero-CLI):** Queda **terminantemente prohibido** invocar herramientas de línea de comandos externas (como `adr-init`, `adr-new`, binarios de `adr-tools` o scripts bash equivalentes). Todas las operaciones de lectura, cálculo correlativo y escritura deben ejecutarse mediante las herramientas nativas de archivos del agente (`list_dir`, `view_file`, `write_to_file`, `replace_file_content`).
+2. **Operación 100% Nativa (Zero-CLI):** Queda **terminantemente prohibido** invocar herramientas de línea de comandos externas (como `adr-init`, `adr-new`, binarios de `adr-tools` o scripts bash equivalentes). Todas las operaciones de lectura, cálculo correlativo y escritura deben ejecutarse mediante las herramientas nativas de archivos del agente (listado de directorios, lectura, escritura y edición atómica de archivos).
 3. **Inmutabilidad Histórica:** Una decisión registrada refleja el contexto y los trade-offs en el momento en que se tomó. Los ADRs históricos nunca se borran ni se reescriben en su cuerpo explicativo. Las modificaciones posteriores se gestionan mediante nuevos ADRs que reemplazan (supersede) a los anteriores.
 4. **Gate Humano de Aprobación:** El agente puede proponer decisiones, pero la aceptación definitiva de una decisión arquitectónica es prerrogativa exclusiva del usuario.
 
@@ -53,7 +53,7 @@ Antes de:
 
 El agente **DEBE verificar proactivamente** si existe el directorio `docs/adr/` en la raíz del workspace activo:
 
-1. Listar los archivos en `docs/adr/` mediante `list_dir` o `find_by_name`.
+1. Listar los archivos en `docs/adr/` mediante herramientas nativas de listado o búsqueda de archivos.
 2. Si existen ADRs, inspeccionar su YAML frontmatter (particularmente el campo `status`):
    - **`status: accepted`**: Representa lineamientos arquitectónicos vigentes y de cumplimiento obligatorio.
    - **`status: rejected`**: Identifica enfoques y alternativas previamente evaluadas y descartadas. El agente no debe volver a proponer soluciones idénticas sin justificar qué condiciones cambiaron.
@@ -84,9 +84,9 @@ Si una directiva del usuario, requerimiento funcional o cambio técnico planific
 Cuando se acuerde entre el usuario y el agente documentar una nueva decisión:
 
 1. **Verificación / Creación del Directorio:**
-   - Si `docs/adr/` no existe, se creará automáticamente al escribir el primer archivo con `write_to_file`.
+   - Si `docs/adr/` no existe, se creará automáticamente al escribir el primer archivo mediante herramientas nativas de archivos.
 2. **Cálculo Determinista del Correlativo:**
-   - Inspeccionar los archivos existentes en `docs/adr/` con `list_dir`.
+   - Inspeccionar los archivos existentes en `docs/adr/` con las herramientas nativas de listado.
    - Extraer el prefijo numérico de mayor valor (ej. si existen `0001-...` y `0002-...`, el siguiente es `3`).
    - Formatear el nuevo correlativo con 4 dígitos rellenos con ceros a la izquierda (`0001`, `0002`, `0003`, ..., `0010`, etc.). Si la carpeta está vacía, comenzar en `0001`.
 3. **Nomenclatura Canónica:**
@@ -94,7 +94,7 @@ Cuando se acuerde entre el usuario y el agente documentar una nueva decisión:
    - Reglas de título: Minúsculas, palabras separadas por guión medio (`-`), sin tildes, caracteres especiales ni espacios (ej. `0004-adopcion-de-pydantic-v2.md`).
 4. **Escritura Nativa:**
    - Cargar el contenido de la plantilla base ubicada en este skill (`resources/template.md`).
-   - Rellenar los campos y escribir el archivo en destino utilizando la herramienta nativa `write_to_file`.
+   - Rellenar los campos y escribir el archivo en destino utilizando las herramientas nativas de escritura de archivos.
    - **PROHIBIDO** invocar scripts CLI externos (`adr-new`, etc.).
 
 ---
@@ -128,7 +128,7 @@ Cuando una nueva decisión técnica modifica, anula o sustituye una decisión pr
      supersedes: ["0002-uso-de-persistencia-en-memoria.md"]
      ```
 3. **Actualización Atómica del ADR Reemplazado:**
-   - Modificar **exclusivamente el YAML frontmatter** del ADR antiguo mediante `replace_file_content`:
+   - Modificar **exclusivamente el YAML frontmatter** del ADR antiguo mediante herramientas nativas de edición:
      ```yaml
      status: superseded by ADR-0005
      superseded-by: ["0005-migracion-a-sqlite.md"]

@@ -104,10 +104,10 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
 ## 4. Fase 3: Flujo Atómico de Resolución
 
 1. **Mapeo y Análisis Técnico:**
-   - Inspeccionar el archivo afectado (`path`) y las líneas señaladas (`line` / `originalLine`) mediante la herramienta nativa `view_file`.
+   - Inspeccionar el archivo afectado (`path`) y las líneas señaladas (`line` / `originalLine`) mediante herramientas nativas de lectura.
    - Contrastar la observación del revisor con el diseño del sistema y los invariantes del proyecto, identificando la solución con el menor radio de impacto posible (*Minimal Blast Radius*).
 2. **Aplicación de Parches:**
-   - Aplicar las correcciones solicitadas exclusivamente a través de las herramientas nativas de edición (`replace_file_content` o `write_to_file`). No usar comandos de terminal para edición (`sed`, `cat >`, `echo >>`) ni scripts de parcheo.
+   - Aplicar las correcciones solicitadas exclusivamente a través de las herramientas nativas de edición y escritura de archivos. No usar comandos de terminal para edición (`sed`, `cat >`, `echo >>`) ni scripts de parcheo.
 3. **Verificación Estática y Local (Shift-Left):**
    - Ejecutar la suite de pruebas del proyecto y linters locales:
      ```bash
@@ -120,7 +120,7 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
      git add <ruta1> <ruta2> ...
      ```
      *(Indicar rutas explícitas; no usar `git add .` ni `git add -A`).*
-   - Redactar el mensaje en el archivo temporal `.commit_msg` mediante `write_to_file` siguiendo el estándar convencional:
+   - Redactar el mensaje en el archivo temporal `.commit_msg` mediante herramientas nativas de archivos siguiendo el estándar convencional:
      `fix(<alcance>): atender feedback de code review en PR #<id>`
    - Ejecutar el commit leyendo el archivo:
      ```bash
@@ -168,7 +168,7 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
    Al usar `--all <pr_id>`, incluye además `prNumber` y `totalFound`. La resolución múltiple y `--all` opera internamente en lotes de hasta 50 hilos mediante una única mutación GraphQL con alias (`t0`, `t1`, ...), ejecutando $\lceil N/50 \rceil$ llamadas en lugar de $N$. Si algún hilo falla (ej. ID inválido o eliminado), se reporta en `errors` con su respectivo `threadId` y mensaje sin interrumpir la resolución de los demás hilos del lote.
 
 2. **Réplica Opcional a un Hilo de Revisión Específico:**
-   Si se requiere dejar constancia explícita sobre un hilo puntual antes o después de resolverlo, redactar el texto en el archivo temporal `.reply_body` con `write_to_file` y enviarlo mediante `--body-file` para preservar el prefix matching en Antigravity:
+   Si se requiere dejar constancia explícita sobre un hilo puntual antes o después de resolverlo, redactar el texto en el archivo temporal `.reply_body` mediante herramientas nativas de archivos y enviarlo mediante `--body-file` para preservar el prefix matching en runtimes con permisos como Antigravity:
    ```bash
    gh-pr-review reply <thread_id> --body-file .reply_body
    ```
@@ -176,7 +176,7 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
 
 3. **Comentario Consolidado en el Pull Request:**
    Para notificar formalmente al revisor humano que todas las observaciones fueron atendidas:
-   - Redactar el resumen en `.pr_comment` mediante `write_to_file`.
+   - Redactar el resumen en `.pr_comment` mediante herramientas nativas de archivos.
    - Publicar el comentario en el PR:
      ```bash
      gh pr comment <pr_id> --body-file .pr_comment
