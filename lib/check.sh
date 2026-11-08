@@ -1238,6 +1238,66 @@ cmd_workspace() {
     fi
 }
 
+check_p0_guards() {
+    echo "==> [check] Verificando guards P0 y blindaje mecánico..."
+    local p0_errors=0
+
+    # 1. Binario agent-guard
+    local guard_bin="${SKILLS_DIR}/conversation-audit/bin/agent-guard"
+    if [ ! -f "${guard_bin}" ]; then
+        echo "  [✗] Binario agent-guard no encontrado en ${guard_bin}" >&2
+        p0_errors=$((p0_errors + 1))
+    elif [ ! -x "${guard_bin}" ]; then
+        echo "  [✗] Binario agent-guard no tiene permisos de ejecución (${guard_bin})" >&2
+        p0_errors=$((p0_errors + 1))
+    else
+        echo "  [✓] Guards P0: Binario agent-guard ejecutable y disponible"
+    fi
+
+    # 2. Git hooks locales (.githooks/)
+    local pre_push="${SCRIPT_DIR}/.githooks/pre-push"
+    local pre_commit="${SCRIPT_DIR}/.githooks/pre-commit"
+    if [ ! -f "${pre_push}" ] || [ ! -x "${pre_push}" ]; then
+        echo "  [✗] Git hook pre-push no encontrado o no ejecutable en ${pre_push}" >&2
+        p0_errors=$((p0_errors + 1))
+    else
+        echo "  [✓] Guards P0: Git hook pre-push verificado"
+    fi
+
+    if [ ! -f "${pre_commit}" ] || [ ! -x "${pre_commit}" ]; then
+        echo "  [✗] Git hook pre-commit no encontrado o no ejecutable en ${pre_commit}" >&2
+        p0_errors=$((p0_errors + 1))
+    else
+        echo "  [✓] Guards P0: Git hook pre-commit verificado"
+    fi
+
+    # 3. Ausencia total de backlogs locales o archivos prohibidos
+    local banned_found=0
+    for bf in TODO.md todo.md TODO todo backlog.md backlog GEMINI.md historial.md HISTORIAL.md; do
+        if [ -e "${SCRIPT_DIR}/${bf}" ]; then
+            echo "  [✗] Archivo prohibido detectado en la raíz del repo: ${bf}" >&2
+            p0_errors=$((p0_errors + 1))
+            banned_found=$((banned_found + 1))
+        fi
+    done
+    for bd in tasks prompts; do
+        if [ -d "${SCRIPT_DIR}/${bd}" ]; then
+            echo "  [✗] Directorio prohibido detectado en la raíz del repo: ${bd}/" >&2
+            p0_errors=$((p0_errors + 1))
+            banned_found=$((banned_found + 1))
+        fi
+    done
+    if [ "${banned_found}" -eq 0 ]; then
+        echo "  [✓] Guards P0: Ausencia de backlogs locales y archivos prohibidos verificada"
+    fi
+
+    if [ "${p0_errors}" -gt 0 ]; then
+        CHECK_ERRORS=$((CHECK_ERRORS + p0_errors))
+        return 1
+    fi
+    return 0
+}
+
 cmd_check() {
     local target_arg="${1:-}"
     validate_runtime_arg "${target_arg}" || return 1
@@ -1304,6 +1364,9 @@ cmd_check() {
 
     # Verificación de comandos con bypass en skills/
     check_skill_bypass_quotes
+
+    # Verificación de guards P0 y blindaje mecánico
+    check_p0_guards
 
     echo "==> [check] Verificación completada: ${CHECK_ERRORS} error(es), ${CHECK_WARNINGS} advertencia(s)."
     if [ "${CHECK_ERRORS}" -gt 0 ]; then

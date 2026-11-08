@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit - Guard P0 contra commit directo en main (ADR-0052)
+set -euo pipefail
+
+branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+
+if [ "${branch}" = "main" ] || [ "${branch}" = "master" ]; then
+    echo "========================================================================" >&2
+    echo " [✗] ERROR [pre-commit hook]: Commit en 'main' bloqueado por guard P0." >&2
+    echo "     Invariante basal: TRACK_IMMUTABILITY_TRACEABILITY (ADR-0048, ADR-0052)" >&2
+    echo "     Prohibido comitear en main. Crea una rama efímera (feat/ o fix/)." >&2
+    echo "========================================================================" >&2
+    exit 1
+fi
+
+exit 0
