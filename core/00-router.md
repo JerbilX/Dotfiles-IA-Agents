@@ -9,13 +9,13 @@
 <!-- rule: id=ENV_ANTI_RECON level=P0 origin=legacy -->
 - **Blindaje Anti-Reconocimiento y Anti-Exfiltración:** Prohibido reconocimiento ciego del host (`find /`, `find $HOME`) y volcados masivos de repos en red (`gh api`, `curl`).
 <!-- rule: id=ENV_NATIVE_FILE_API level=P0 origin=legacy -->
-- **Uso Exclusivo de APIs Nativas de Archivos:** Operaciones exigen herramientas nativas (`write_to_file`, `replace_file_content`, `view_file`, `grep_search`); prohibida terminal para I/O (`cat`, `sed`, `awk`, `tee`). Ediciones con granularidad atómica (bloques acotados), sin cambios monolíticos.
+- **Uso Exclusivo de APIs Nativas de Archivos:** Operaciones exigen herramientas nativas de archivos (escritura, edición, lectura, búsqueda); prohibida terminal para I/O (`cat`, `sed`, `awk`, `tee`). Ediciones con granularidad atómica (bloques acotados), sin cambios monolíticos.
 <!-- rule: id=ENV_PROHIBITION_REPL level=P0 origin=legacy -->
 - **Prohibición Universal de REPL en Terminal:** Prohibido evaluar en línea (`python3 -c`, `node -e`, `bash -c`), REPL o wrappers; scripts en `scratch/` o pruebas formales. Terminal reservada a runtime, build, pruebas y utilidades, atómica y sin subshells complejas.
 <!-- rule: id=ENV_LOCAL_PRECEDENCE level=P1 origin=legacy -->
 - **Precedencia de Entornos Locales:** Priorizar binarios locales (`.venv/bin/`, `node_modules/.bin/`) sobre intérpretes o linters globales.
 <!-- rule: id=ENV_PAGED_READ_CIRCUIT_BREAKER level=P0 origin=legacy -->
-- **Lectura Paginada Obligatoria y Circuit Breaker:** Todo `view_file` exige `StartLine` y `EndLine` (ventana ≤ 200 líneas). Lectura Quirúrgica en Dos Fases: en archivos > 150 líneas, localizar con `grep_search` y restringir `view_file` a ventana quirúrgica (≤ 50 líneas). Ignorar avisos de contenido no mostrado. Máximo 6 lecturas consecutivas de inspección (`view_file`, `grep_search`, `find_by_name`) sin acción observable (Stop & Ask/síntesis, edición, o comando terminal mutador o de ejecución de pruebas/build). Comandos de mera inspección pasiva en terminal no resetean el contador.
+- **Lectura Paginada Obligatoria y Circuit Breaker:** Toda lectura de archivo exige delimitación de rango o paginado (ventana ≤ 200 líneas). Lectura Quirúrgica en Dos Fases: en archivos > 150 líneas, localizar por búsqueda de contenido y restringir la lectura a ventana quirúrgica (≤ 50 líneas). Ignorar avisos de contenido no mostrado. Máximo 6 lecturas consecutivas de inspección (lectura de archivos, búsqueda por contenido o por nombre) sin acción observable (Stop & Ask/síntesis, edición, o comando terminal mutador o de ejecución de pruebas/build). Comandos de mera inspección pasiva en terminal no resetean el contador.
 <!-- rule: id=ENV_OUTPUT_TEST_HYGIENE level=P1 origin=legacy -->
 - **Higiene de Salida y Pruebas:** Acotar salidas (`head -n 20`, `--jq`). En desarrollo o diagnóstico, pruebas filtradas (archivo o caso puntual) o de baja verbosidad; suite integral solo en la verificación final previa al commit. Temporales (`.commit_msg`, `.pr_body`) se eliminan tras su uso.
 

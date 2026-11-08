@@ -1,7 +1,5 @@
 # Especialización de Herramientas y Permisos (Runtime: Claude Code)
 
-<!-- rule: id=CLAUDE_TOOL_EQUIVALENCES level=Build origin=legacy -->
-- **Equivalencias de Herramientas:** Donde las directivas nombran herramientas de Antigravity, usar las nativas de Claude Code: `view_file` → `Read` (con `offset`/`limit`, ventana ≤ 200 líneas), `grep_search` → `Grep`, `find_by_name` → `Glob`, `write_to_file` → `Write`, `replace_file_content` → `Edit`, `run_command` → `Bash`. Las reglas de lectura paginada, circuit breaker y granularidad atómica aplican igual.
 <!-- rule: id=CLAUDE_SKILLS_CIRCUIT_BREAKER level=P0/P2 origin=legacy -->
 - **Skills y Circuit Breaker:** Las skills se cargan con la herramienta `Skill` desde cualquier workspace. El circuit breaker de lectura rige como regla (sin hook).
 <!-- rule: id=CLAUDE_ATTRIBUTION level=P1 origin=legacy -->
