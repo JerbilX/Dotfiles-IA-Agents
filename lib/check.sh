@@ -57,10 +57,17 @@ check_basal_rules_admission() {
     echo "==> [check] Verificando control de admisión y metadatos de reglas basales..."
     local rules_errors=0
     local rules_audited=0
+    local count_found=0
 
-    if command -v python3 >/dev/null 2>&1; then
-        local audit_output
-        audit_output="$(python3 -c '
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "  [✗] python3 no está disponible para validar metadatos de reglas basales" >&2
+        CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        return
+    fi
+
+    local audit_output
+    local py_status=0
+    audit_output="$(python3 -c '
 import glob, os, re, sys
 
 repo_root = sys.argv[1]
@@ -73,12 +80,14 @@ for rd in sorted(glob.glob(os.path.join(runtimes_dir, "*", "rules"))):
 
 seen_ids = set()
 errors = []
+warnings = []
 total_rules = 0
 
 rule_comment_pattern = re.compile(
-    r"^<!--\s*rule:\s*id=([A-Za-z0-9_]+)\s+level=([A-Za-z0-9_]+)\s+origin=(#[0-9]+)\s*-->$"
+    r"^<!--\s*rule:\s*id=([A-Za-z0-9_]+)\s+level=([A-Za-z0-9_/]+)\s+origin=(#[0-9]+|legacy)\s*-->$"
 )
-valid_levels = {"P0", "P1", "P2", "Build"}
+valid_levels = {"P0", "P1", "P2", "Build", "P0/P2", "P0/P1", "P1/P2"}
+root_bullet_pattern = re.compile(r"^([-*]|\d+\.)\s+")
 
 for file_path in target_files:
     rel_path = os.path.relpath(file_path, repo_root)
@@ -92,6 +101,10 @@ for file_path in target_files:
         raw_line = lines[i]
         line = raw_line.strip()
         line_no = i + 1
+
+        if not line:
+            i += 1
+            continue
 
         m_comment = rule_comment_pattern.match(line)
         if m_comment:
@@ -109,42 +122,64 @@ for file_path in target_files:
             i += 1
             continue
 
-        if line.startswith("- "):
-            if not raw_line.startswith("  ") and not raw_line.startswith("\t"):
-                total_rules += 1
-                rule_name = line
-                if pending_meta is None:
-                    errors.append(f"Regla en {rel_path}:{line_no} sin metadatos de admisión (falta comentario <!-- rule: id=... level=... origin=... -->): {rule_name[:60]}")
-                else:
-                    rid = pending_meta["id"]
-                    rlevel = pending_meta["level"]
-                    rlno = pending_meta["line_no"]
-                    if rid in seen_ids:
-                        errors.append(f"ID de regla duplicado \"{rid}\" en {rel_path}:{rlno}")
-                    seen_ids.add(rid)
+        is_root_bullet = bool(root_bullet_pattern.match(line)) and not raw_line.startswith("  ") and not raw_line.startswith("\t")
 
-                    if rlevel not in valid_levels:
-                        errors.append(f"Nivel inválido \"{rlevel}\" para regla \"{rid}\" en {rel_path}:{rlno} (debe ser P0, P1, P2 o Build)")
+        if is_root_bullet:
+            total_rules += 1
+            rule_name = line
+            if pending_meta is None:
+                errors.append(f"Regla en {rel_path}:{line_no} sin metadatos de admisión (falta comentario <!-- rule: id=... level=... origin=... -->): {rule_name[:60]}")
+            else:
+                rid = pending_meta["id"]
+                rlevel = pending_meta["level"]
+                rlno = pending_meta["line_no"]
+                if rid in seen_ids:
+                    errors.append(f"ID de regla duplicado \"{rid}\" en {rel_path}:{rlno}")
+                seen_ids.add(rid)
 
-                    rule_lines_count = 1
-                    j = i + 1
-                    while j < n:
-                        next_raw = lines[j]
-                        next_line = next_raw.strip()
-                        if rule_comment_pattern.match(next_line):
-                            break
-                        if next_line.startswith("#"):
-                            break
-                        if next_line.startswith("- ") and not next_raw.startswith("  ") and not next_raw.startswith("\t"):
-                            break
-                        if next_line:
-                            rule_lines_count += 1
+                if rlevel not in valid_levels:
+                    errors.append(f"Nivel inválido \"{rlevel}\" para regla \"{rid}\" en {rel_path}:{rlno} (debe ser P0, P1, P2, Build o combinaciones mixtas)")
+
+                rule_lines = [line]
+                j = i + 1
+                while j < n:
+                    next_raw = lines[j]
+                    next_line = next_raw.strip()
+                    if not next_line:
                         j += 1
+                        continue
+                    if rule_comment_pattern.match(next_line):
+                        break
+                    if next_line.startswith("#"):
+                        break
+                    is_next_root = bool(root_bullet_pattern.match(next_line)) and not next_raw.startswith("  ") and not next_raw.startswith("\t")
+                    if is_next_root:
+                        break
+                    rule_lines.append(next_line)
+                    j += 1
 
-                    if rlevel == "P0" and rule_lines_count > 1:
+                rule_lines_count = len(rule_lines)
+                rule_words_count = len(" ".join(rule_lines).split())
+
+                levels = set(rlevel.split("/"))
+                if "P0" in levels:
+                    if rule_lines_count > 1:
                         errors.append(f"Regla P0 \"{rid}\" en {rel_path}:{line_no} conserva más de una línea en el basal ({rule_lines_count} líneas)")
+                    if rule_words_count > 30:
+                        warnings.append(f"Regla P0 \"{rid}\" en {rel_path}:{line_no} supera límite recomendado de palabras residuales ({rule_words_count}/30 palabras, ADR-0048 §2.2)")
 
-                    pending_meta = None
+                pending_meta = None
+            i += 1
+            continue
+
+        if pending_meta is not None:
+            p_id = pending_meta["id"]
+            p_lno = pending_meta["line_no"]
+            if line.startswith("#"):
+                errors.append(f"Metadato huérfano <!-- rule: id={p_id} ... --> en {rel_path}:{p_lno} antes de encabezado de sección")
+            else:
+                errors.append(f"Metadato huérfano <!-- rule: id={p_id} ... --> en {rel_path}:{p_lno} seguido de texto no-bullet")
+            pending_meta = None
 
         i += 1
 
@@ -154,19 +189,36 @@ for file_path in target_files:
         errors.append(f"Metadato huérfano <!-- rule: id={p_id} ... --> al final de {rel_path}:{p_lno}")
 
 print(f"COUNT:{total_rules}")
+for warn in warnings:
+    print(f"WARNING:{warn}")
 for err in errors:
     print(f"ERROR:{err}")
-' "${SCRIPT_DIR}")"
+' "${SCRIPT_DIR}" 2>&1)" || py_status=$?
 
-        while IFS= read -r line; do
-            if [[ "${line}" =~ ^COUNT:([0-9]+)$ ]]; then
-                rules_audited="${BASH_REMATCH[1]}"
-            elif [[ "${line}" =~ ^ERROR:(.*)$ ]]; then
-                echo "  [✗] ${BASH_REMATCH[1]}" >&2
-                CHECK_ERRORS=$((CHECK_ERRORS + 1))
-                rules_errors=$((rules_errors + 1))
-            fi
-        done <<< "${audit_output}"
+    if [ "${py_status}" -ne 0 ]; then
+        echo "  [✗] Error ejecutando auditoría de reglas basales (exit code ${py_status}):" >&2
+        echo "${audit_output}" | sed 's/^/      /' >&2
+        CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        return
+    fi
+
+    while IFS= read -r line; do
+        if [[ "${line}" =~ ^COUNT:([0-9]+)$ ]]; then
+            rules_audited="${BASH_REMATCH[1]}"
+            count_found=1
+        elif [[ "${line}" =~ ^WARNING:(.*)$ ]]; then
+            echo "  [!] Advertencia: ${BASH_REMATCH[1]}"
+        elif [[ "${line}" =~ ^ERROR:(.*)$ ]]; then
+            echo "  [✗] ${BASH_REMATCH[1]}" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
+            rules_errors=$((rules_errors + 1))
+        fi
+    done <<< "${audit_output}"
+
+    if [ "${count_found}" -eq 0 ]; then
+        echo "  [✗] La verificación de reglas basales no retornó conteo de reglas (COUNT:)" >&2
+        CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        rules_errors=$((rules_errors + 1))
     fi
 
     if [ "${rules_errors}" -eq 0 ]; then

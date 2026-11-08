@@ -130,9 +130,10 @@ El subcomando `check` implementa dos controles de auditoría (presupuesto global
 2. **Presupuesto Modular (`MAX_MODULE_WORDS=300`):**
    Audita individualmente cada directiva en `core/*.md` y `rules/*.md`. Si un archivo supera este umbral, emite una advertencia estática instando a evaluar la extracción del procedimiento a un skill bajo demanda (patrón *Trigger Directive + Dedicated Skill*).
 3. **Control de Admisión de Reglas Basales ([ADR-0048](adr/0048-niveles-de-enforcement-admision-de-reglas-y-presupuesto-de-contexto.md)):**
-   Audita que cada regla del prompt basal (`core/*.md` y `runtimes/*/rules/*.md`) porte metadatos estructurados en comentario HTML (`<!-- rule: id=<ID> level=<P0|P1|P2|Build> origin=#<ISSUE> -->`):
-   - Aborta con error (`exit 1`) si una regla no tiene ID o nivel válido (`P0`, `P1`, `P2`, `Build`) o si un ID colisiona.
-   - Aborta con error (`exit 1`) si una regla clasificada en `P0` conserva más de una línea física en el basal.
+   Audita que cada regla del prompt basal (`core/*.md` y `runtimes/*/rules/*.md`) porte metadatos estructurados en comentario HTML (`<!-- rule: id=<ID> level=<P0|P1|P2|Build|P0/P2|P0/P1|P1/P2> origin=<#ISSUE|legacy> -->`):
+   - Aborta con error (`exit 1`) si una regla no tiene ID o nivel válido, si un ID colisiona, si existen metadatos huérfanos, o ante ausencia/fallo de ejecución del validador (`python3`).
+   - Aborta con error (`exit 1`) si una regla clasificada con componente `P0` (pura o mixta) conserva más de una línea física en el basal.
+   - Emite una advertencia estática si una regla con componente `P0` supera el límite recomendado de huella residual de 30 palabras ([ADR-0048 §2.2](adr/0048-niveles-de-enforcement-admision-de-reglas-y-presupuesto-de-contexto.md)).
    - El compilador (`build_core.sh`) descarta estos comentarios al generar `dist/`, asegurando cero impacto en el recuento de palabras.
 
 ---

@@ -310,9 +310,10 @@ class TestProgressiveDisclosure(unittest.TestCase):
     def test_basal_rules_admission_metadata(self):
         """All basal rules in core/*.md and runtimes/*/rules/*.md must have valid admission metadata (#286)."""
         rule_comment_pattern = re.compile(
-            r"^<!--\s*rule:\s*id=([A-Za-z0-9_]+)\s+level=([A-Za-z0-9_]+)\s+origin=(#[0-9]+)\s*-->$"
+            r"^<!--\s*rule:\s*id=([A-Za-z0-9_]+)\s+level=([A-Za-z0-9_/]+)\s+origin=(#[0-9]+|legacy)\s*-->$"
         )
-        valid_levels = {"P0", "P1", "P2", "Build"}
+        valid_levels = {"P0", "P1", "P2", "Build", "P0/P2", "P0/P1", "P1/P2"}
+        root_bullet_pattern = re.compile(r"^([-*]|\d+\.)\s+")
         target_files = sorted(glob.glob(os.path.join(CORE_DIR, "*.md")))
         for rd in sorted(glob.glob(os.path.join(RUNTIMES_DIR, "*", "rules"))):
             target_files.extend(sorted(glob.glob(os.path.join(rd, "*.md"))))
@@ -330,6 +331,9 @@ class TestProgressiveDisclosure(unittest.TestCase):
             for idx, raw_line in enumerate(lines):
                 line = raw_line.strip()
                 lno = idx + 1
+                if not line:
+                    continue
+
                 m = rule_comment_pattern.match(line)
                 if m:
                     self.assertIsNone(
@@ -344,7 +348,8 @@ class TestProgressiveDisclosure(unittest.TestCase):
                     }
                     continue
 
-                if line.startswith("- ") and not raw_line.startswith("  ") and not raw_line.startswith("\t"):
+                is_root_bullet = bool(root_bullet_pattern.match(line)) and not raw_line.startswith("  ") and not raw_line.startswith("\t")
+                if is_root_bullet:
                     total_rules += 1
                     self.assertIsNotNone(
                         pending_meta,
@@ -362,6 +367,12 @@ class TestProgressiveDisclosure(unittest.TestCase):
                         f"Invalid level '{rlevel}' for rule '{rid}' at {rel}:{pending_meta['line_no']}"
                     )
                     pending_meta = None
+                    continue
+
+                if pending_meta is not None:
+                    self.fail(
+                        f"Orphan metadata <!-- rule: id={pending_meta['id']} ... --> at {rel}:{pending_meta['line_no']} followed by non-bullet line {lno}: {line[:40]}"
+                    )
 
             self.assertIsNone(
                 pending_meta,
@@ -373,8 +384,9 @@ class TestProgressiveDisclosure(unittest.TestCase):
     def test_p0_rules_single_line_in_basal(self):
         """Rules marked P0 must not exceed a single line in the basal prompt (#286, ADR-0048)."""
         rule_comment_pattern = re.compile(
-            r"^<!--\s*rule:\s*id=([A-Za-z0-9_]+)\s+level=([A-Za-z0-9_]+)\s+origin=(#[0-9]+)\s*-->$"
+            r"^<!--\s*rule:\s*id=([A-Za-z0-9_]+)\s+level=([A-Za-z0-9_/]+)\s+origin=(#[0-9]+|legacy)\s*-->$"
         )
+        root_bullet_pattern = re.compile(r"^([-*]|\d+\.)\s+")
         target_files = sorted(glob.glob(os.path.join(CORE_DIR, "*.md")))
         for rd in sorted(glob.glob(os.path.join(RUNTIMES_DIR, "*", "rules"))):
             target_files.extend(sorted(glob.glob(os.path.join(rd, "*.md"))))
@@ -389,26 +401,32 @@ class TestProgressiveDisclosure(unittest.TestCase):
             for i in range(n):
                 raw = lines[i]
                 line = raw.strip()
+                if not line:
+                    continue
+
                 m = rule_comment_pattern.match(line)
                 if m:
                     pending_meta = {"id": m.group(1), "level": m.group(2), "line_no": i + 1}
                     continue
 
-                if line.startswith("- ") and not raw.startswith("  ") and not raw.startswith("\t"):
-                    if pending_meta and pending_meta["level"] == "P0":
+                is_root_bullet = bool(root_bullet_pattern.match(line)) and not raw.startswith("  ") and not raw.startswith("\t")
+                if is_root_bullet:
+                    if pending_meta and "P0" in pending_meta["level"].split("/"):
                         rid = pending_meta["id"]
                         rule_lines_count = 1
                         for j in range(i + 1, n):
                             next_raw = lines[j]
                             next_line = next_raw.strip()
+                            if not next_line:
+                                continue
                             if rule_comment_pattern.match(next_line):
                                 break
                             if next_line.startswith("#"):
                                 break
-                            if next_line.startswith("- ") and not next_raw.startswith("  ") and not next_raw.startswith("\t"):
+                            is_next_root = bool(root_bullet_pattern.match(next_line)) and not next_raw.startswith("  ") and not next_raw.startswith("\t")
+                            if is_next_root:
                                 break
-                            if next_line:
-                                rule_lines_count += 1
+                            rule_lines_count += 1
                         self.assertEqual(
                             rule_lines_count, 1,
                             f"P0 rule '{rid}' in {rel}:{i + 1} spans {rule_lines_count} lines (> 1)"
@@ -434,52 +452,164 @@ class TestProgressiveDisclosure(unittest.TestCase):
             core_dir = os.path.join(tmpdir, "core")
             os.makedirs(core_dir)
 
+            def run_check(extra_env=None):
+                prefix = ""
+                if extra_env:
+                    prefix = " ".join(f'{k}="{v}"' for k, v in extra_env.items()) + " "
+                cmd = [
+                    "bash", "-c",
+                    f'{prefix}source "{REPO_ROOT}/lib/common.sh" && source "{check_script}" && SCRIPT_DIR="{tmpdir}" CHECK_ERRORS=0 && check_basal_rules_admission; echo "CHECK_ERRORS:$CHECK_ERRORS"'
+                ]
+                return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
             # Caso 1: Regla sin metadatos
             f1 = os.path.join(core_dir, "00-test.md")
             with open(f1, "w", encoding="utf-8") as fp:
                 fp.write("# Header\n\n- **Regla Sin Meta:** Contenido de prueba.\n")
-
-            cmd = [
-                "bash", "-c",
-                f'source "{REPO_ROOT}/lib/common.sh" && source "{check_script}" && SCRIPT_DIR="{tmpdir}" CHECK_ERRORS=0 && check_basal_rules_admission'
-            ]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            res = run_check()
             self.assertIn("sin metadatos de admisión", res.stderr)
+            self.assertNotIn("CHECK_ERRORS:0", res.stdout)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
 
-            # Caso 2: Regla P0 multilínea
+            # Caso 1b: Reglas con bullets alternativos (* y 1.) sin metadatos
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write("# Header\n\n* **Regla Asterisco:** Contenido.\n")
+            res = run_check()
+            self.assertIn("sin metadatos de admisión", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write("# Header\n\n1. **Regla Numerada:** Contenido.\n")
+            res = run_check()
+            self.assertIn("sin metadatos de admisión", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 2: Regla P0 multilínea (pura)
             with open(f1, "w", encoding="utf-8") as fp:
                 fp.write(
                     "# Header\n\n"
-                    "<!-- rule: id=RULE_P0_TEST level=P0 origin=#282 -->\n"
+                    "<!-- rule: id=RULE_P0_TEST level=P0 origin=legacy -->\n"
                     "- **Regla P0 Multilínea:**\n"
                     "  - Sub-bullet 1\n"
                     "  - Sub-bullet 2\n"
                 )
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            res = run_check()
             self.assertIn("Regla P0 \"RULE_P0_TEST\"", res.stderr)
             self.assertIn("conserva más de una línea", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 2b: Regla mixta con componente P0 multilínea
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_P0_MIXED level=P0/P2 origin=legacy -->\n"
+                    "- **Regla P0 Mixta:**\n"
+                    "  - Sub-bullet 1\n"
+                )
+            res = run_check()
+            self.assertIn("Regla P0 \"RULE_P0_MIXED\"", res.stderr)
+            self.assertIn("conserva más de una línea", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
 
             # Caso 3: Nivel inválido
             with open(f1, "w", encoding="utf-8") as fp:
                 fp.write(
                     "# Header\n\n"
-                    "<!-- rule: id=RULE_INVALID_LEVEL level=P9 origin=#282 -->\n"
+                    "<!-- rule: id=RULE_INVALID_LEVEL level=P9 origin=legacy -->\n"
                     "- **Regla Nivel Inválido:** Contenido de prueba.\n"
                 )
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            res = run_check()
             self.assertIn("Nivel inválido \"P9\"", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
 
             # Caso 4: ID duplicado
             with open(f1, "w", encoding="utf-8") as fp:
                 fp.write(
                     "# Header\n\n"
-                    "<!-- rule: id=RULE_DUP level=P2 origin=#282 -->\n"
+                    "<!-- rule: id=RULE_DUP level=P2 origin=legacy -->\n"
                     "- **Regla 1:** Contenido.\n"
-                    "<!-- rule: id=RULE_DUP level=P2 origin=#282 -->\n"
+                    "<!-- rule: id=RULE_DUP level=P2 origin=legacy -->\n"
                     "- **Regla 2:** Contenido duplicado.\n"
                 )
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            res = run_check()
             self.assertIn("ID de regla duplicado \"RULE_DUP\"", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 5: Metadato huérfano antes de encabezado
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_ORPHAN_HEADER level=P2 origin=legacy -->\n"
+                    "## Nueva Seccion\n"
+                    "- **Regla:** Contenido.\n"
+                )
+            res = run_check()
+            self.assertIn("antes de encabezado de sección", res.stderr)
+            self.assertIn("CHECK_ERRORS:2", res.stdout)  # 1 huérfano + 1 regla sin meta
+
+            # Caso 6: Metadato huérfano seguido de texto plano
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_ORPHAN_TEXT level=P2 origin=legacy -->\n"
+                    "Este es un párrafo de texto plano, no una regla con viñeta.\n"
+                )
+            res = run_check()
+            self.assertIn("seguido de texto no-bullet", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 7: Ausencia de python3
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_OK level=P2 origin=legacy -->\n"
+                    "- **Regla OK:** Contenido.\n"
+                )
+            cmd_no_py = [
+                "bash", "-c",
+                f'source "{REPO_ROOT}/lib/common.sh" && source "{check_script}" && SCRIPT_DIR="{tmpdir}" CHECK_ERRORS=0 && export PATH="/usr/local/bin-empty" && check_basal_rules_admission; echo "CHECK_ERRORS:$CHECK_ERRORS"'
+            ]
+            res = subprocess.run(cmd_no_py, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.assertIn("python3 no está disponible", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 8: Python termina con excepción o exit code != 0 (Punto 3)
+            tmp_bin = os.path.join(tmpdir, "fake_bin")
+            os.makedirs(tmp_bin, exist_ok=True)
+            fake_py = os.path.join(tmp_bin, "python3")
+            with open(fake_py, "w", encoding="utf-8") as fp:
+                fp.write("#!/bin/sh\necho 'Traceback (most recent call last): Exception' >&2\nexit 2\n")
+            os.chmod(fake_py, 0o755)
+
+            cmd_py_err = [
+                "bash", "-c",
+                f'source "{REPO_ROOT}/lib/common.sh" && source "{check_script}" && SCRIPT_DIR="{tmpdir}" CHECK_ERRORS=0 && export PATH="{tmp_bin}:$PATH" && check_basal_rules_admission; echo "CHECK_ERRORS:$CHECK_ERRORS"'
+            ]
+            res = subprocess.run(cmd_py_err, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.assertIn("Error ejecutando auditoría de reglas basales", res.stderr)
+            self.assertIn("exit code 2", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 9: Python no emite línea COUNT: (Punto 3)
+            with open(fake_py, "w", encoding="utf-8") as fp:
+                fp.write("#!/bin/sh\necho 'NO_COUNT_OUTPUT'\nexit 0\n")
+            os.chmod(fake_py, 0o755)
+
+            res = subprocess.run(cmd_py_err, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.assertIn("no retornó conteo de reglas (COUNT:)", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 10: Advertencia de palabras P0 > 30 (sin error en CHECK_ERRORS)
+            long_p0_text = " ".join(["palabra"] * 35)
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_P0_LONG level=P0 origin=legacy -->\n"
+                    f"- **Regla Larga:** {long_p0_text}\n"
+                )
+            res = run_check()
+            self.assertIn("supera límite recomendado de palabras residuales", res.stdout)
+            self.assertIn("CHECK_ERRORS:0", res.stdout)
 
 
 if __name__ == "__main__":
