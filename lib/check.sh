@@ -163,12 +163,19 @@ for file_path in target_files:
                     saw_blank = False
                     j += 1
 
+                rule_lines_count = len(rule_lines)
                 rule_words_count = len(" ".join(rule_lines).split())
 
+                # Ref: docs/adr/0049-regimen-transitorio-de-admision-p0.md
                 levels = set(rlevel.split("/"))
                 if "P0" in levels:
+                    if rule_lines_count > 1:
+                        if levels == {"P0"}:
+                            errors.append(f"Regla P0 \"{rid}\" en {rel_path}:{line_no} conserva más de una línea en el basal ({rule_lines_count} líneas)")
+                        else:
+                            warnings.append(f"Regla mixta \"{rid}\" ({rlevel}) en {rel_path}:{line_no} conserva {rule_lines_count} líneas en el basal: pendiente de evacuación de su componente P0 (ADR-0049)")
                     if rule_words_count > 100:
-                        errors.append(f"Regla P0 \"{rid}\" en {rel_path}:{line_no} supera el techo de 100 palabras ({rule_words_count}/100 palabras)")
+                        errors.append(f"Regla P0 \"{rid}\" en {rel_path}:{line_no} supera el techo transitorio de 100 palabras ({rule_words_count}/100 palabras, ADR-0049)")
                     elif rule_words_count > 30:
                         warnings.append(f"Regla P0 \"{rid}\" en {rel_path}:{line_no} supera límite recomendado de palabras residuales ({rule_words_count}/30 palabras, ADR-0048 §2.2)")
 

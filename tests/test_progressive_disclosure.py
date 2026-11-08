@@ -500,7 +500,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
                 )
             res = run_check()
             self.assertIn("Regla P0 \"RULE_P0_TEST\"", res.stderr)
-            self.assertIn("supera el techo de 100 palabras", res.stderr)
+            self.assertIn("supera el techo transitorio de 100 palabras", res.stderr)
             self.assertIn("CHECK_ERRORS:1", res.stdout)
 
             # Caso 2b: Regla mixta con componente P0 que supera el techo de 100 palabras
@@ -512,7 +512,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
                 )
             res = run_check()
             self.assertIn("Regla P0 \"RULE_P0_MIXED\"", res.stderr)
-            self.assertIn("supera el techo de 100 palabras", res.stderr)
+            self.assertIn("supera el techo transitorio de 100 palabras", res.stderr)
             self.assertIn("CHECK_ERRORS:1", res.stdout)
 
             # Caso 3: Nivel inválido
@@ -625,10 +625,30 @@ class TestProgressiveDisclosure(unittest.TestCase):
                     "Este es un párrafo de texto libre descolgado que no debe ser absorbido por la regla anterior.\n"
                 )
             res = run_check()
-            self.assertNotIn("supera el techo de 100 palabras", res.stderr)
+            self.assertNotIn("supera el techo transitorio de 100 palabras", res.stderr)
             self.assertNotIn("supera límite recomendado de palabras residuales", res.stdout)
             self.assertIn("CHECK_ERRORS:0", res.stdout)
             self.assertIn("CHECK_WARNINGS:0", res.stdout)
+
+            # Caso 12: Regla P0 pura multilínea es error (#286, ADR-0049)
+            multiline_rule = (
+                "- **Regla Multilínea:**\n"
+                "  - Primera sub-viñeta breve.\n"
+                "  - Segunda sub-viñeta breve.\n"
+            )
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write("# Header\n\n<!-- rule: id=RULE_P0_MULTI level=P0 origin=legacy -->\n" + multiline_rule)
+            res = run_check()
+            self.assertIn("conserva más de una línea en el basal (3 líneas)", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 13: Regla mixta multilínea pendiente de evacuación es advertencia (ADR-0049)
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write("# Header\n\n<!-- rule: id=RULE_MIXED_MULTI level=P0/P2 origin=legacy -->\n" + multiline_rule)
+            res = run_check()
+            self.assertIn("pendiente de evacuación de su componente P0", res.stdout)
+            self.assertIn("CHECK_ERRORS:0", res.stdout)
+            self.assertIn("CHECK_WARNINGS:1", res.stdout)
 
 
 if __name__ == "__main__":
