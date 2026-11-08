@@ -7,6 +7,8 @@ Unit tests for the self-sufficient basal prompt (ADR-0047): basal word budget, m
 import glob
 import os
 import re
+import subprocess
+import tempfile
 import unittest
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -304,6 +306,349 @@ class TestProgressiveDisclosure(unittest.TestCase):
             eso_skill_content.index("Límites por Etapa"),
             eso_skill_content.index("Flujo Ordenado de Inspección y Fallback"),
         )
+
+    def test_basal_rules_admission_metadata(self):
+        """All basal rules in core/*.md and runtimes/*/rules/*.md must have valid admission metadata (#286)."""
+        rule_comment_pattern = re.compile(
+            r"^<!--\s*rule:\s*id=([A-Za-z0-9_]+)\s+level=([A-Za-z0-9_/]+)\s+origin=(#[0-9]+|legacy)\s*-->$"
+        )
+        valid_levels = {"P0", "P1", "P2", "Build", "P0/P2", "P0/P1", "P1/P2"}
+        root_bullet_pattern = re.compile(r"^([-*]|\d+\.)\s+")
+        target_files = sorted(glob.glob(os.path.join(CORE_DIR, "*.md")))
+        for rd in sorted(glob.glob(os.path.join(RUNTIMES_DIR, "*", "rules"))):
+            target_files.extend(sorted(glob.glob(os.path.join(rd, "*.md"))))
+
+        self.assertGreater(len(target_files), 0, "No basal target files found")
+        seen_ids = set()
+        total_rules = 0
+
+        for file_path in target_files:
+            rel = os.path.relpath(file_path, REPO_ROOT)
+            with open(file_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            pending_meta = None
+            for idx, raw_line in enumerate(lines):
+                line = raw_line.strip()
+                lno = idx + 1
+                if not line:
+                    continue
+
+                m = rule_comment_pattern.match(line)
+                if m:
+                    self.assertIsNone(
+                        pending_meta,
+                        f"Orphan metadata <!-- rule: id={pending_meta} ... --> at {rel}:{lno}"
+                    )
+                    pending_meta = {
+                        "id": m.group(1),
+                        "level": m.group(2),
+                        "origin": m.group(3),
+                        "line_no": lno,
+                    }
+                    continue
+
+                is_root_bullet = bool(root_bullet_pattern.match(line)) and not raw_line.startswith("  ") and not raw_line.startswith("\t")
+                if is_root_bullet:
+                    total_rules += 1
+                    self.assertIsNotNone(
+                        pending_meta,
+                        f"Rule at {rel}:{lno} lacks admission metadata comment: {line[:60]}"
+                    )
+                    rid = pending_meta["id"]
+                    rlevel = pending_meta["level"]
+                    self.assertNotIn(
+                        rid, seen_ids,
+                        f"Duplicate rule ID '{rid}' at {rel}:{pending_meta['line_no']}"
+                    )
+                    seen_ids.add(rid)
+                    self.assertIn(
+                        rlevel, valid_levels,
+                        f"Invalid level '{rlevel}' for rule '{rid}' at {rel}:{pending_meta['line_no']}"
+                    )
+                    pending_meta = None
+                    continue
+
+                if pending_meta is not None:
+                    self.fail(
+                        f"Orphan metadata <!-- rule: id={pending_meta['id']} ... --> at {rel}:{pending_meta['line_no']} followed by non-bullet line {lno}: {line[:40]}"
+                    )
+
+            self.assertIsNone(
+                pending_meta,
+                f"Trailing metadata comment without associated rule at {rel}"
+            )
+
+        self.assertGreaterEqual(total_rules, 30, f"Expected at least 30 audited rules, found {total_rules}")
+
+    def test_p0_rules_word_budget_in_basal(self):
+        """Rules marked P0 must not exceed the hard cap of 100 words in the basal prompt (#286, ADR-0048)."""
+        rule_comment_pattern = re.compile(
+            r"^<!--\s*rule:\s*id=([A-Za-z0-9_]+)\s+level=([A-Za-z0-9_/]+)\s+origin=(#[0-9]+|legacy)\s*-->$"
+        )
+        root_bullet_pattern = re.compile(r"^([-*]|\d+\.)\s+")
+        target_files = sorted(glob.glob(os.path.join(CORE_DIR, "*.md")))
+        for rd in sorted(glob.glob(os.path.join(RUNTIMES_DIR, "*", "rules"))):
+            target_files.extend(sorted(glob.glob(os.path.join(rd, "*.md"))))
+
+        for file_path in target_files:
+            rel = os.path.relpath(file_path, REPO_ROOT)
+            with open(file_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            pending_meta = None
+            n = len(lines)
+            for i in range(n):
+                raw = lines[i]
+                line = raw.strip()
+                if not line:
+                    continue
+
+                m = rule_comment_pattern.match(line)
+                if m:
+                    pending_meta = {"id": m.group(1), "level": m.group(2), "line_no": i + 1}
+                    continue
+
+                is_root_bullet = bool(root_bullet_pattern.match(line)) and not raw.startswith("  ") and not raw.startswith("\t")
+                if is_root_bullet:
+                    if pending_meta and "P0" in pending_meta["level"].split("/"):
+                        rid = pending_meta["id"]
+                        rule_lines = [line]
+                        saw_blank = False
+                        for j in range(i + 1, n):
+                            next_raw = lines[j]
+                            next_line = next_raw.strip()
+                            if not next_line:
+                                saw_blank = True
+                                continue
+                            if rule_comment_pattern.match(next_line):
+                                break
+                            if next_line.startswith("#"):
+                                break
+                            is_next_root = bool(root_bullet_pattern.match(next_line)) and not next_raw.startswith("  ") and not next_raw.startswith("\t")
+                            if is_next_root:
+                                break
+                            if saw_blank and not next_raw.startswith(" ") and not next_raw.startswith("\t"):
+                                break
+                            rule_lines.append(next_line)
+                            saw_blank = False
+                        rule_words_count = len(" ".join(rule_lines).split())
+                        self.assertLessEqual(
+                            rule_words_count, 100,
+                            f"P0 rule '{rid}' in {rel}:{i + 1} exceeds hard cap of 100 words ({rule_words_count} words)"
+                        )
+                    pending_meta = None
+
+    def test_compiled_dist_strips_rule_metadata_comments(self):
+        """Compiled AGENTS.md in dist/ must not contain rule metadata comments (#286)."""
+        for runtime in ("antigravity", "claude"):
+            dist_file = os.path.join(DIST_DIR, runtime, "AGENTS.md")
+            self.assertTrue(os.path.isfile(dist_file), f"Missing compiled artifact: {dist_file}")
+            with open(dist_file, "r", encoding="utf-8") as f:
+                content = f.read()
+            self.assertNotIn("<!-- rule:", content, f"Rule metadata comment leaked in {dist_file}")
+            self.assertNotIn("rule: id=", content, f"Rule metadata identifier leaked in {dist_file}")
+
+    def test_admission_validation_negative_cases(self):
+        """Admission check in lib/check.sh must reject missing metadata, multiline P0, invalid level, duplicate ID (#286)."""
+        check_script = os.path.join(REPO_ROOT, "lib", "check.sh")
+        self.assertTrue(os.path.isfile(check_script))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            core_dir = os.path.join(tmpdir, "core")
+            os.makedirs(core_dir)
+
+            def run_check(extra_env=None):
+                prefix = ""
+                if extra_env:
+                    prefix = " ".join(f'{k}="{v}"' for k, v in extra_env.items()) + " "
+                cmd = [
+                    "bash", "-c",
+                    f'{prefix}source "{REPO_ROOT}/lib/common.sh" && source "{check_script}" && SCRIPT_DIR="{tmpdir}" CHECK_ERRORS=0 CHECK_WARNINGS=0 && check_basal_rules_admission; echo "CHECK_ERRORS:$CHECK_ERRORS"; echo "CHECK_WARNINGS:$CHECK_WARNINGS"'
+                ]
+                return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+            # Caso 1: Regla sin metadatos
+            f1 = os.path.join(core_dir, "00-test.md")
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write("# Header\n\n- **Regla Sin Meta:** Contenido de prueba.\n")
+            res = run_check()
+            self.assertIn("sin metadatos de admisión", res.stderr)
+            self.assertNotIn("CHECK_ERRORS:0", res.stdout)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 1b: Reglas con bullets alternativos (* y 1.) sin metadatos
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write("# Header\n\n* **Regla Asterisco:** Contenido.\n")
+            res = run_check()
+            self.assertIn("sin metadatos de admisión", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write("# Header\n\n1. **Regla Numerada:** Contenido.\n")
+            res = run_check()
+            self.assertIn("sin metadatos de admisión", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 2: Regla P0 que supera el techo de 100 palabras
+            too_long_p0 = " ".join(["palabra"] * 105)
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_P0_TEST level=P0 origin=legacy -->\n"
+                    f"- **Regla P0 Larga:** {too_long_p0}\n"
+                )
+            res = run_check()
+            self.assertIn("Regla P0 \"RULE_P0_TEST\"", res.stderr)
+            self.assertIn("supera el techo transitorio de 100 palabras", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 2b: Regla mixta con componente P0 que supera el techo de 100 palabras
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_P0_MIXED level=P0/P2 origin=legacy -->\n"
+                    f"- **Regla P0 Mixta:** {too_long_p0}\n"
+                )
+            res = run_check()
+            self.assertIn("Regla P0 \"RULE_P0_MIXED\"", res.stderr)
+            self.assertIn("supera el techo transitorio de 100 palabras", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 3: Nivel inválido
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_INVALID_LEVEL level=P9 origin=legacy -->\n"
+                    "- **Regla Nivel Inválido:** Contenido de prueba.\n"
+                )
+            res = run_check()
+            self.assertIn("Nivel inválido \"P9\"", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 4: ID duplicado
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_DUP level=P2 origin=legacy -->\n"
+                    "- **Regla 1:** Contenido.\n"
+                    "<!-- rule: id=RULE_DUP level=P2 origin=legacy -->\n"
+                    "- **Regla 2:** Contenido duplicado.\n"
+                )
+            res = run_check()
+            self.assertIn("ID de regla duplicado \"RULE_DUP\"", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 5: Metadato huérfano antes de encabezado
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_ORPHAN_HEADER level=P2 origin=legacy -->\n"
+                    "## Nueva Seccion\n"
+                    "- **Regla:** Contenido.\n"
+                )
+            res = run_check()
+            self.assertIn("antes de encabezado de sección", res.stderr)
+            self.assertIn("CHECK_ERRORS:2", res.stdout)  # 1 huérfano + 1 regla sin meta
+
+            # Caso 6: Metadato huérfano seguido de texto plano
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_ORPHAN_TEXT level=P2 origin=legacy -->\n"
+                    "Este es un párrafo de texto plano, no una regla con viñeta.\n"
+                )
+            res = run_check()
+            self.assertIn("seguido de texto no-bullet", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 7: Ausencia de python3
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_OK level=P2 origin=legacy -->\n"
+                    "- **Regla OK:** Contenido.\n"
+                )
+            cmd_no_py = [
+                "bash", "-c",
+                f'source "{REPO_ROOT}/lib/common.sh" && source "{check_script}" && SCRIPT_DIR="{tmpdir}" CHECK_ERRORS=0 && export PATH="/usr/local/bin-empty" && check_basal_rules_admission; echo "CHECK_ERRORS:$CHECK_ERRORS"'
+            ]
+            res = subprocess.run(cmd_no_py, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.assertIn("python3 no está disponible", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 8: Python termina con excepción o exit code != 0 (Punto 3)
+            tmp_bin = os.path.join(tmpdir, "fake_bin")
+            os.makedirs(tmp_bin, exist_ok=True)
+            fake_py = os.path.join(tmp_bin, "python3")
+            with open(fake_py, "w", encoding="utf-8") as fp:
+                fp.write("#!/bin/sh\necho 'Traceback (most recent call last): Exception' >&2\nexit 2\n")
+            os.chmod(fake_py, 0o755)
+
+            cmd_py_err = [
+                "bash", "-c",
+                f'source "{REPO_ROOT}/lib/common.sh" && source "{check_script}" && SCRIPT_DIR="{tmpdir}" CHECK_ERRORS=0 && export PATH="{tmp_bin}:$PATH" && check_basal_rules_admission; echo "CHECK_ERRORS:$CHECK_ERRORS"'
+            ]
+            res = subprocess.run(cmd_py_err, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.assertIn("Error ejecutando auditoría de reglas basales", res.stderr)
+            self.assertIn("exit code 2", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 9: Python no emite línea COUNT: (Punto 3)
+            with open(fake_py, "w", encoding="utf-8") as fp:
+                fp.write("#!/bin/sh\necho 'NO_COUNT_OUTPUT'\nexit 0\n")
+            os.chmod(fake_py, 0o755)
+
+            res = subprocess.run(cmd_py_err, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.assertIn("no retornó conteo de reglas (COUNT:)", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 10: Advertencia de palabras P0 > 30 (sin error en CHECK_ERRORS, con incremento en CHECK_WARNINGS)
+            long_p0_text = " ".join(["palabra"] * 35)
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_P0_LONG level=P0 origin=legacy -->\n"
+                    f"- **Regla Larga:** {long_p0_text}\n"
+                )
+            res = run_check()
+            self.assertIn("supera límite recomendado de palabras residuales", res.stdout)
+            self.assertIn("CHECK_ERRORS:0", res.stdout)
+            self.assertIn("CHECK_WARNINGS:1", res.stdout)
+
+            # Caso 11: Párrafo libre tras línea en blanco no contamina el conteo de la regla anterior (Hallazgo D)
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_P0_ISOLATED level=P0 origin=legacy -->\n"
+                    "- **Regla Aislada:** Contenido breve de diez palabras exactamente para prueba.\n\n"
+                    "Este es un párrafo de texto libre descolgado que no debe ser absorbido por la regla anterior.\n"
+                )
+            res = run_check()
+            self.assertNotIn("supera el techo transitorio de 100 palabras", res.stderr)
+            self.assertNotIn("supera límite recomendado de palabras residuales", res.stdout)
+            self.assertIn("CHECK_ERRORS:0", res.stdout)
+            self.assertIn("CHECK_WARNINGS:0", res.stdout)
+
+            # Caso 12: Regla P0 pura multilínea es error (#286, ADR-0049)
+            multiline_rule = (
+                "- **Regla Multilínea:**\n"
+                "  - Primera sub-viñeta breve.\n"
+                "  - Segunda sub-viñeta breve.\n"
+            )
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write("# Header\n\n<!-- rule: id=RULE_P0_MULTI level=P0 origin=legacy -->\n" + multiline_rule)
+            res = run_check()
+            self.assertIn("conserva más de una línea en el basal (3 líneas)", res.stderr)
+            self.assertIn("CHECK_ERRORS:1", res.stdout)
+
+            # Caso 13: Regla mixta multilínea pendiente de evacuación es advertencia (ADR-0049)
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write("# Header\n\n<!-- rule: id=RULE_MIXED_MULTI level=P0/P2 origin=legacy -->\n" + multiline_rule)
+            res = run_check()
+            self.assertIn("pendiente de evacuación de su componente P0", res.stdout)
+            self.assertIn("CHECK_ERRORS:0", res.stdout)
+            self.assertIn("CHECK_WARNINGS:1", res.stdout)
 
 
 if __name__ == "__main__":

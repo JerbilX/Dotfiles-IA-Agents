@@ -137,7 +137,7 @@ EOF
         if [ "$first" = false ]; then
             printf "\n\n" >> "${tmp_file}"
         fi
-        cat "$f" >> "${tmp_file}"
+        sed -E '/<!--[[:space:]]*rule:.*-->/d' "$f" >> "${tmp_file}"
         first=false
     done
 
@@ -147,7 +147,7 @@ EOF
             if [ "$first" = false ]; then
                 printf "\n\n" >> "${tmp_file}"
             fi
-            cat "$f" >> "${tmp_file}"
+            sed -E '/<!--[[:space:]]*rule:.*-->/d' "$f" >> "${tmp_file}"
             first=false
         done
     fi
