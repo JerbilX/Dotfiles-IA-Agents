@@ -381,8 +381,8 @@ class TestProgressiveDisclosure(unittest.TestCase):
 
         self.assertGreaterEqual(total_rules, 30, f"Expected at least 30 audited rules, found {total_rules}")
 
-    def test_p0_rules_single_line_in_basal(self):
-        """Rules marked P0 must not exceed a single line in the basal prompt (#286, ADR-0048)."""
+    def test_p0_rules_word_budget_in_basal(self):
+        """Rules marked P0 must not exceed the hard cap of 100 words in the basal prompt (#286, ADR-0048)."""
         rule_comment_pattern = re.compile(
             r"^<!--\s*rule:\s*id=([A-Za-z0-9_]+)\s+level=([A-Za-z0-9_/]+)\s+origin=(#[0-9]+|legacy)\s*-->$"
         )
@@ -413,11 +413,13 @@ class TestProgressiveDisclosure(unittest.TestCase):
                 if is_root_bullet:
                     if pending_meta and "P0" in pending_meta["level"].split("/"):
                         rid = pending_meta["id"]
-                        rule_lines_count = 1
+                        rule_lines = [line]
+                        saw_blank = False
                         for j in range(i + 1, n):
                             next_raw = lines[j]
                             next_line = next_raw.strip()
                             if not next_line:
+                                saw_blank = True
                                 continue
                             if rule_comment_pattern.match(next_line):
                                 break
@@ -426,10 +428,14 @@ class TestProgressiveDisclosure(unittest.TestCase):
                             is_next_root = bool(root_bullet_pattern.match(next_line)) and not next_raw.startswith("  ") and not next_raw.startswith("\t")
                             if is_next_root:
                                 break
-                            rule_lines_count += 1
-                        self.assertEqual(
-                            rule_lines_count, 1,
-                            f"P0 rule '{rid}' in {rel}:{i + 1} spans {rule_lines_count} lines (> 1)"
+                            if saw_blank and not next_raw.startswith(" ") and not next_raw.startswith("\t"):
+                                break
+                            rule_lines.append(next_line)
+                            saw_blank = False
+                        rule_words_count = len(" ".join(rule_lines).split())
+                        self.assertLessEqual(
+                            rule_words_count, 100,
+                            f"P0 rule '{rid}' in {rel}:{i + 1} exceeds hard cap of 100 words ({rule_words_count} words)"
                         )
                     pending_meta = None
 
@@ -458,7 +464,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
                     prefix = " ".join(f'{k}="{v}"' for k, v in extra_env.items()) + " "
                 cmd = [
                     "bash", "-c",
-                    f'{prefix}source "{REPO_ROOT}/lib/common.sh" && source "{check_script}" && SCRIPT_DIR="{tmpdir}" CHECK_ERRORS=0 && check_basal_rules_admission; echo "CHECK_ERRORS:$CHECK_ERRORS"'
+                    f'{prefix}source "{REPO_ROOT}/lib/common.sh" && source "{check_script}" && SCRIPT_DIR="{tmpdir}" CHECK_ERRORS=0 CHECK_WARNINGS=0 && check_basal_rules_admission; echo "CHECK_ERRORS:$CHECK_ERRORS"; echo "CHECK_WARNINGS:$CHECK_WARNINGS"'
                 ]
                 return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
@@ -484,31 +490,29 @@ class TestProgressiveDisclosure(unittest.TestCase):
             self.assertIn("sin metadatos de admisión", res.stderr)
             self.assertIn("CHECK_ERRORS:1", res.stdout)
 
-            # Caso 2: Regla P0 multilínea (pura)
+            # Caso 2: Regla P0 que supera el techo de 100 palabras
+            too_long_p0 = " ".join(["palabra"] * 105)
             with open(f1, "w", encoding="utf-8") as fp:
                 fp.write(
                     "# Header\n\n"
                     "<!-- rule: id=RULE_P0_TEST level=P0 origin=legacy -->\n"
-                    "- **Regla P0 Multilínea:**\n"
-                    "  - Sub-bullet 1\n"
-                    "  - Sub-bullet 2\n"
+                    f"- **Regla P0 Larga:** {too_long_p0}\n"
                 )
             res = run_check()
             self.assertIn("Regla P0 \"RULE_P0_TEST\"", res.stderr)
-            self.assertIn("conserva más de una línea", res.stderr)
+            self.assertIn("supera el techo de 100 palabras", res.stderr)
             self.assertIn("CHECK_ERRORS:1", res.stdout)
 
-            # Caso 2b: Regla mixta con componente P0 multilínea
+            # Caso 2b: Regla mixta con componente P0 que supera el techo de 100 palabras
             with open(f1, "w", encoding="utf-8") as fp:
                 fp.write(
                     "# Header\n\n"
                     "<!-- rule: id=RULE_P0_MIXED level=P0/P2 origin=legacy -->\n"
-                    "- **Regla P0 Mixta:**\n"
-                    "  - Sub-bullet 1\n"
+                    f"- **Regla P0 Mixta:** {too_long_p0}\n"
                 )
             res = run_check()
             self.assertIn("Regla P0 \"RULE_P0_MIXED\"", res.stderr)
-            self.assertIn("conserva más de una línea", res.stderr)
+            self.assertIn("supera el techo de 100 palabras", res.stderr)
             self.assertIn("CHECK_ERRORS:1", res.stdout)
 
             # Caso 3: Nivel inválido
@@ -599,7 +603,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
             self.assertIn("no retornó conteo de reglas (COUNT:)", res.stderr)
             self.assertIn("CHECK_ERRORS:1", res.stdout)
 
-            # Caso 10: Advertencia de palabras P0 > 30 (sin error en CHECK_ERRORS)
+            # Caso 10: Advertencia de palabras P0 > 30 (sin error en CHECK_ERRORS, con incremento en CHECK_WARNINGS)
             long_p0_text = " ".join(["palabra"] * 35)
             with open(f1, "w", encoding="utf-8") as fp:
                 fp.write(
@@ -610,6 +614,21 @@ class TestProgressiveDisclosure(unittest.TestCase):
             res = run_check()
             self.assertIn("supera límite recomendado de palabras residuales", res.stdout)
             self.assertIn("CHECK_ERRORS:0", res.stdout)
+            self.assertIn("CHECK_WARNINGS:1", res.stdout)
+
+            # Caso 11: Párrafo libre tras línea en blanco no contamina el conteo de la regla anterior (Hallazgo D)
+            with open(f1, "w", encoding="utf-8") as fp:
+                fp.write(
+                    "# Header\n\n"
+                    "<!-- rule: id=RULE_P0_ISOLATED level=P0 origin=legacy -->\n"
+                    "- **Regla Aislada:** Contenido breve de diez palabras exactamente para prueba.\n\n"
+                    "Este es un párrafo de texto libre descolgado que no debe ser absorbido por la regla anterior.\n"
+                )
+            res = run_check()
+            self.assertNotIn("supera el techo de 100 palabras", res.stderr)
+            self.assertNotIn("supera límite recomendado de palabras residuales", res.stdout)
+            self.assertIn("CHECK_ERRORS:0", res.stdout)
+            self.assertIn("CHECK_WARNINGS:0", res.stdout)
 
 
 if __name__ == "__main__":

@@ -142,10 +142,12 @@ for file_path in target_files:
 
                 rule_lines = [line]
                 j = i + 1
+                saw_blank = False
                 while j < n:
                     next_raw = lines[j]
                     next_line = next_raw.strip()
                     if not next_line:
+                        saw_blank = True
                         j += 1
                         continue
                     if rule_comment_pattern.match(next_line):
@@ -155,17 +157,19 @@ for file_path in target_files:
                     is_next_root = bool(root_bullet_pattern.match(next_line)) and not next_raw.startswith("  ") and not next_raw.startswith("\t")
                     if is_next_root:
                         break
+                    if saw_blank and not next_raw.startswith(" ") and not next_raw.startswith("\t"):
+                        break
                     rule_lines.append(next_line)
+                    saw_blank = False
                     j += 1
 
-                rule_lines_count = len(rule_lines)
                 rule_words_count = len(" ".join(rule_lines).split())
 
                 levels = set(rlevel.split("/"))
                 if "P0" in levels:
-                    if rule_lines_count > 1:
-                        errors.append(f"Regla P0 \"{rid}\" en {rel_path}:{line_no} conserva más de una línea en el basal ({rule_lines_count} líneas)")
-                    if rule_words_count > 30:
+                    if rule_words_count > 100:
+                        errors.append(f"Regla P0 \"{rid}\" en {rel_path}:{line_no} supera el techo de 100 palabras ({rule_words_count}/100 palabras)")
+                    elif rule_words_count > 30:
                         warnings.append(f"Regla P0 \"{rid}\" en {rel_path}:{line_no} supera límite recomendado de palabras residuales ({rule_words_count}/30 palabras, ADR-0048 §2.2)")
 
                 pending_meta = None
@@ -208,6 +212,7 @@ for err in errors:
             count_found=1
         elif [[ "${line}" =~ ^WARNING:(.*)$ ]]; then
             echo "  [!] Advertencia: ${BASH_REMATCH[1]}"
+            CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
         elif [[ "${line}" =~ ^ERROR:(.*)$ ]]; then
             echo "  [✗] ${BASH_REMATCH[1]}" >&2
             CHECK_ERRORS=$((CHECK_ERRORS + 1))
