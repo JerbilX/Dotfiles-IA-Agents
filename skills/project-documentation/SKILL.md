@@ -124,17 +124,17 @@ Antes de finalizar cualquier tarea de documentación o abrir un Pull Request, va
 
 ---
 
-## 7. Protocolo de Auditoría Estática con Subagente Ligero (flash / flash_lite)
+## 7. Protocolo de Auditoría Estática con Subagente Ligero
 
 ### 7.1 Racional y Umbral de Delegación
 La verificación sistemática de calidad documental (cumplimiento estricto del contrato de `README.md`, integridad de enlaces cruzados en `docs/` y coherencia funcional con la taxonomía Diátaxis) es una tarea pasiva y mecánica de inspección de texto.
 - **Sobrecarga de Contexto:** Ejecutar múltiples lecturas secuenciales de archivos en la sesión principal acumula tokens irreversiblemente en el historial conversacional.
-- **Umbral de Activación:** Se recomienda delegar la auditoría a un subagente ligero (`flash` o `flash_lite`) ante revisiones integrales de documentación, auditorías de repositorios, refactorizaciones documentales o preparación de Pull Requests con impacto en `docs/`.
+- **Umbral de Activación:** Se recomienda delegar la auditoría a un subagente con modelo ligero (ej. `flash` o `flash_lite` en Antigravity) ante revisiones integrales de documentación, auditorías de repositorios, refactorizaciones documentales o preparación de Pull Requests con impacto en `docs/`.
 
 ### 7.2 Especificación y Contrato del Subagente
-La delegación al subagente se estructura con la herramienta nativa `invoke_subagent`:
+La delegación al subagente se estructura con el mecanismo de subagentes del runtime (ej. `invoke_subagent` en Antigravity). Las reglas de blindaje (punto 2) son comunes a todos los runtimes; los parámetros del punto 1 corresponden a Antigravity.
 
-1. **Parámetros Canónicos de Configuración:**
+1. **Parámetros Canónicos de Configuración (Antigravity):**
    - `TypeName`: `"research"` (en Antigravity; subagente de lectura y análisis dotado de herramientas de inspección, o subagente equivalente del runtime).
    - `Role`: `"Static Documentation Auditor"` o `"Documentation Quality Auditor"`.
    - `Model`: `"flash"` o `"flash_lite"` (modelo ligero de alta velocidad y bajo costo, óptimo para parsear Markdown, verificar enlaces y evaluar estructura).
@@ -146,7 +146,7 @@ La delegación al subagente se estructura con la herramienta nativa `invoke_suba
    - **Disyuntor Autónomo de Seguridad (Circuit Breaker - Stop & Synthesize):** Si se alcanza el presupuesto de herramientas o un archivo esperado no existe, el subagente debe detenerse inmediatamente (*Stop & Synthesize*) y reportar los hallazgos en la tabla diagnóstica, sin iterar en búsquedas redundantes.
    - **Contrato de Salida Limpia:** Prohibido reenviar el contenido completo de los archivos analizados. Debe devolver exclusivamente la **Tabla Diagnóstica de Deficiencias y Conformidad** y el **Veredicto Global**.
 
-### 7.3 Estructura Canónica de Invocación (`invoke_subagent`)
+### 7.3 Estructura Canónica de Invocación (`invoke_subagent` en Antigravity)
 
 ```json
 {
@@ -204,7 +204,7 @@ El subagente sintetiza y devuelve al agente principal una tabla estructurada con
 - **Dictamen:** `APROBADO` / `REQUIERE SUBSANACIÓN`
 
 ### 7.6 Recepción Asíncrona y Espera Reactiva
-- **Prohibición de Polling:** Tras invocar al subagente, el agente principal no debe ejecutar comandos de espera en bucle (`manage_subagents` status o sleep). El runtime reactiva el turno automáticamente al completarse la auditoría.
+- **Prohibición de Polling:** Tras invocar al subagente, el agente principal no debe ejecutar comandos de espera en bucle (ej. `manage_subagents` status en Antigravity, o sleep). El runtime reactiva el turno automáticamente al completarse la auditoría.
 - **Aislamiento de Contexto:** La conversación principal solo incorpora la tabla consolidada y el veredicto, protegiendo el presupuesto de tokens para la resolución de tickets y el desarrollo guiado por issues.
 
 ---

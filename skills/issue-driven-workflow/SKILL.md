@@ -33,7 +33,7 @@ Procedimientos detallados y plantillas en `references/`:
 | **Ramas y PRs** | Cat. A/B, higiene, 8 fases E2E, apertura de PRs y cierre post-merge. | [`references/branch-lifecycle.md`](references/branch-lifecycle.md) |
 | **Máquina de Estados** | Matriz de transiciones progresivas y regresivas (rework, bloqueos, rollback). | [`references/state-machine.md`](references/state-machine.md) |
 | **Code Review** | Ingesta `gh-pr-review`, parches y resolución de hilos. | [`references/code-review.md`](references/code-review.md) |
-| **Investigación Exploratoria** | Protocolo de delegación a subagente `research` (modelo `flash`, `inherit`), ahorro de tokens (> 3 archivos) y consolidación. | [`references/exploratory-research.md`](references/exploratory-research.md) |
+| **Investigación Exploratoria** | Protocolo de delegación al subagente de investigación del runtime (ej. `research` con modelo `flash` en Antigravity), ahorro de tokens (> 3 archivos) y consolidación. | [`references/exploratory-research.md`](references/exploratory-research.md) |
 | **Rollback** | Reversión con `git revert` y `build.sh rollback`. | [`references/rollback.md`](references/rollback.md) |
 
 ---

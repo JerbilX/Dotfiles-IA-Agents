@@ -308,13 +308,15 @@ for r_name in sorted(foreign_tools_by_runtime):
 skills_dir = os.path.join(repo_root, "skills")
 forbidden_skills_tools = [
     "view_file", "replace_file_content", "grep_search", "find_by_name",
-    "write_to_file", "read_url_content", "ask_question"
+    "write_to_file", "read_url_content", "ask_question", "list_dir", "run_command"
 ]
 claude_specific_tokens = ["`Read`", "`Grep`", "`Glob`", "`Write`", "`Edit`", "`Bash`"]
 forbidden_params = ["StartLine", "EndLine"]
-excluded_skills_files = {
-    os.path.join("skills", "autonomous-learning", "references", "known_anti_patterns.md"),
-}
+# Mecanismos de subagentes de Antigravity: admitidos solo condicionados en la misma línea
+# (fuera de bloques de código, que ilustran la invocación bajo un encabezado condicionado).
+conditioned_subagent_tokens = ["invoke_subagent", "manage_subagents", "TypeName"]
+# Archivos cuyos nombres de herramientas son datos (trazas reales), no instrucciones.
+excluded_skills_files = set()
 
 if os.path.isdir(skills_dir):
     for root, dirs, files in os.walk(skills_dir):
@@ -337,9 +339,18 @@ if os.path.isdir(skills_dir):
             for param in forbidden_params:
                 if re.search(r"\b" + re.escape(param) + r"\b", content):
                     errors.append(f"Parámetro de runtime \"{param}\" encontrado en prosa normativa de {rel_path} (debe usar vocabulario neutral, ADR-0050)")
+            in_fence = False
             for idx, line in enumerate(content.splitlines(), 1):
-                if re.search(r"\bBypassSandbox\b", line) and "Antigravity" not in line and "antigravity" not in line:
+                if line.lstrip().startswith("```"):
+                    in_fence = not in_fence
+                conditioned = "Antigravity" in line or "antigravity" in line
+                if re.search(r"\bBypassSandbox\b", line) and not conditioned:
                     errors.append(f"Mención incondicional de \"BypassSandbox\" en {rel_path}:{idx} (debe condicionarse al runtime puntual, Issue #292)")
+                if in_fence or conditioned:
+                    continue
+                for token in conditioned_subagent_tokens:
+                    if re.search(r"\b" + re.escape(token) + r"\b", line):
+                        errors.append(f"Mención incondicional de \"{token}\" en {rel_path}:{idx} (debe condicionarse al runtime puntual, Issue #292)")
 
 for err in errors:
     print(f"ERROR:{err}")

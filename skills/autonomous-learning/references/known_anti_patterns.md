@@ -5,10 +5,10 @@ Este documento recopila los principales anti-patrones y trampas técnicas observ
 ---
 
 ## 1. Intentar Mutaciones Locales de Git dentro del Sandbox Estándar
-- **Anti-Patrón:** Ejecutar `git init`, `git add`, `git commit` o `git checkout` con `BypassSandbox: false`.
+- **Anti-Patrón:** Ejecutar `git init`, `git add`, `git commit` o `git checkout` dentro del sandbox confinado (ej. `BypassSandbox: false` en Antigravity).
 - **Síntoma:** Error del sistema de archivos: `fatal: Unable to create '.git/index.lock': Read-only file system` o `Permission denied`.
 - **Causa Raíz:** El kernel del entorno confinado monta el subdirectorio `.git/` con permisos de solo lectura (`ro`) para proteger la integridad del control de versiones.
-- **Solución Canónica:** Invocar todo comando mutador local (`git init`, `add`, `commit`, `branch -d`, `checkout`, `merge`) y comando remoto (`git push`, `git pull`, `gh`) directamente con `BypassSandbox: true` desde el primer intento. Las consultas pasivas (`git status`, `git log`, `git diff`) deben mantenerse en `BypassSandbox: false`.
+- **Solución Canónica:** Invocar todo comando mutador local (`git init`, `add`, `commit`, `branch -d`, `checkout`, `merge`) y comando remoto (`git push`, `git pull`, `gh`) directamente con bypass de sandbox desde el primer intento (ej. `BypassSandbox: true` en Antigravity). Las consultas pasivas (`git status`, `git log`, `git diff`) deben mantenerse confinadas (ej. `BypassSandbox: false` en Antigravity).
 - **Precedentes de Referencia:**
   - [ADR-0001: Blindaje de Sandbox y Gestión de Permisos de Git](file:///home/jerbilx/Proyectos-IA-V3/Dotfiles-IA-Agents/docs/adr/0001-blindaje-de-sandbox-y-gestion-de-permisos.md)
   - [ADR-0011: Ratificación de Bypass en Git y GitHub CLI por Restricciones del Sandbox](file:///home/jerbilx/Proyectos-IA-V3/Dotfiles-IA-Agents/docs/adr/0011-ratificacion-de-bypass-en-git-y-gh-por-restricciones-del-sandbox.md)
@@ -31,8 +31,8 @@ Este documento recopila los principales anti-patrones y trampas técnicas observ
 - **Síntoma:** Disparo de solicitudes interactivas de permisos o fallos silenciosos en subshells.
 - **Causa Raíz:** Encadenar utilidades delegando privilegios de bypass a binarios que no son Git ni GitHub CLI vulnera la regla de confinamiento y anula el *prefix matching*.
 - **Solución Canónica:** Procedimiento atómico en dos fases:
-  1. *Fase 1 (Inspección pasiva confinada, `BypassSandbox: false`):* `git branch --format "%(refname:short) %(upstream:track)"`.
-  2. *Fase 2 (Poda atómica mutadora, `BypassSandbox: true`):* `git branch -d <rama1> <rama2>` invocando directamente el binario de Git solo si existen ramas marcadas como `[gone]`.
+  1. *Fase 1 (Inspección pasiva confinada, ej. `BypassSandbox: false` en Antigravity):* `git branch --format "%(refname:short) %(upstream:track)"`.
+  2. *Fase 2 (Poda atómica mutadora, ej. `BypassSandbox: true` en Antigravity):* `git branch -d <rama1> <rama2>` invocando directamente el binario de Git solo si existen ramas marcadas como `[gone]`.
 - **Precedentes de Referencia:**
   - [ADR-0010: Política Transversal de Limpieza y Ciclo de Vida de Ramas](file:///home/jerbilx/Proyectos-IA-V3/Dotfiles-IA-Agents/docs/adr/0010-politica-transversal-de-limpieza-y-ciclo-de-vida-de-ramas.md)
   - [ADR-0017: Principio de Mínima Intervención y Jerarquía de Resolución](file:///home/jerbilx/Proyectos-IA-V3/Dotfiles-IA-Agents/docs/adr/0017-principio-de-minima-intervencion-y-jerarquia-de-resolucion.md)

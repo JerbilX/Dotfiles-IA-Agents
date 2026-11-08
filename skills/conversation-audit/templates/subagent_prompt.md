@@ -1,6 +1,6 @@
 # Plantilla de Directiva para Subagente de Auditoría de Sesiones
 
-Directiva y plantilla de prompt canónica para invocar al subagente de auditoría en background (`TypeName: "self"`, `Model: "flash"`).
+Directiva y plantilla de prompt canónica para invocar al subagente de auditoría en background (en Antigravity: `TypeName: "self"`, `Model: "flash"`; en otros runtimes, su mecanismo de subagentes equivalente).
 
 ---
 

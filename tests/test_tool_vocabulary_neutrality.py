@@ -114,12 +114,16 @@ class TestToolVocabularyNeutrality(unittest.TestCase):
             "write_to_file",
             "read_url_content",
             "ask_question",
+            "list_dir",
+            "run_command",
         ]
         claude_specific_tokens = ["`Read`", "`Grep`", "`Glob`", "`Write`", "`Edit`", "`Bash`"]
         forbidden_params = ["StartLine", "EndLine"]
-        excluded_files = {
-            os.path.join("skills", "autonomous-learning", "references", "known_anti_patterns.md"),
-        }
+        # Antigravity subagent mechanisms: allowed only when conditioned on the same line
+        # (outside code fences, which illustrate the invocation under a conditioned heading).
+        conditioned_subagent_tokens = ["invoke_subagent", "manage_subagents", "TypeName"]
+        # Files whose tool names are data (real traces), not instructions.
+        excluded_files = set()
 
         self.assertTrue(os.path.isdir(skills_dir), f"Skills directory not found: {skills_dir}")
 
@@ -157,11 +161,22 @@ class TestToolVocabularyNeutrality(unittest.TestCase):
                         f"Normative skill file '{rel_path}' contains runtime parameter '{param}'. Use neutral vocabulary (ADR-0050, Issue #292)."
                     )
 
+                in_fence = False
                 for idx, line in enumerate(content.splitlines(), 1):
+                    if line.lstrip().startswith("```"):
+                        in_fence = not in_fence
+                    conditioned = "Antigravity" in line or "antigravity" in line
                     if re.search(r"\bBypassSandbox\b", line):
                         self.assertTrue(
-                            "Antigravity" in line or "antigravity" in line,
+                            conditioned,
                             f"Normative skill file '{rel_path}:{idx}' mentions unconditioned 'BypassSandbox'. Must be conditioned to runtime (Issue #292)."
+                        )
+                    if in_fence or conditioned:
+                        continue
+                    for token in conditioned_subagent_tokens:
+                        self.assertIsNone(
+                            re.search(r"\b" + re.escape(token) + r"\b", line),
+                            f"Normative skill file '{rel_path}:{idx}' mentions unconditioned '{token}'. Must be conditioned to runtime (Issue #292)."
                         )
 
 

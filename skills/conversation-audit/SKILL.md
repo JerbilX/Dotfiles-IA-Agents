@@ -1,7 +1,7 @@
 ---
 name: conversation-audit
 description: >-
-  Auditoría sistemática, análisis de rendimiento y detección de antipatrones en sesiones y transcripciones de agentes de IA (Antigravity y Claude Code). Provee directivas metodológicas, catálogo de métricas, el CLI agent-audit y protocolo de delegación a subagente en background (modelo flash) para evaluar tiempos wall-clock, latencia por turno, desglose de herramientas, fallos de ejecución y vicios de comportamiento sin sobrecargar tokens de contexto.
+  Auditoría sistemática, análisis de rendimiento y detección de antipatrones en sesiones y transcripciones de agentes de IA (Antigravity y Claude Code). Provee directivas metodológicas, catálogo de métricas, el CLI agent-audit y protocolo de delegación a subagente en background (modelo ligero) para evaluar tiempos wall-clock, latencia por turno, desglose de herramientas, fallos de ejecución y vicios de comportamiento sin sobrecargar tokens de contexto.
 ---
 
 # Auditoría de Conversaciones y Análisis de Rendimiento de Agentes
@@ -15,7 +15,7 @@ Guía metodológica, catálogo de métricas y protocolo operativo para la audito
 1. **Ahorro de Presupuesto de Contexto (Context-Saving):**
    - Prohibido volcar transcripciones extensas (`transcript.jsonl`, JSON de sesiones) directamente al contexto del LLM mediante herramientas de lectura masiva (lectura de archivos sin paginar, `cat`).
    - La ingesta y agregación de métricas debe delegarse de forma determinista al binario local `agent-audit`, ingresando al contexto del agente únicamente el informe procesado o resumen tabular.
-   - En auditorías extensas, históricas o en lote, la ejecución y análisis de `agent-audit` debe desacoplarse hacia un subagente en background (modelo `flash`), preservando el hilo de chat principal libre de trazas intermedias.
+   - En auditorías extensas, históricas o en lote, la ejecución y análisis de `agent-audit` debe desacoplarse hacia un subagente en background con modelo ligero (ej. `flash` en Antigravity), preservando el hilo de chat principal libre de trazas intermedias.
 2. **Agnosticismo de Runtime:**
    - La arquitectura separa el modelo de datos normalizado (`NormalizedStep`, `NormalizedToolCall`) de los formatos físicos de cada runtime mediante adaptadores (`AntigravityAdapter`, `ClaudeAdapter`), permitiendo auditar indistintamente sesiones de Antigravity o Claude Code.
 3. **Cero Dependencias Externas:**
@@ -206,9 +206,9 @@ Para auditorías de sesiones extensas, análisis por lotes de múltiples convers
   - Cuando la conversación principal esté en fases activas de desarrollo o revisión y no deba ensuciarse con salidas extensas de CLI o cómputo intermedio de antipatrones.
 
 ### 5.2 Especificación y Contrato del Subagente
-La delegación al subagente se estructura con el mecanismo de subagentes del runtime (ej. `invoke_subagent` en Antigravity):
+La delegación al subagente se estructura con el mecanismo de subagentes del runtime (ej. `invoke_subagent` en Antigravity). El contrato operativo (punto 2) es común a todos los runtimes; los parámetros del punto 1 corresponden a Antigravity.
 
-1. **Parámetros de Configuración del Subagente:**
+1. **Parámetros de Configuración del Subagente (Antigravity):**
    - `TypeName`: `"self"` (en Antigravity; hereda el entorno y herramientas completas del agente para invocar comandos de terminal con bypass de sandbox si aplica).
    - `Role`: `"Session Performance Auditor"` o `"Session Auditor"`.
    - `Model`: `"flash"` (modelo ligero de alta velocidad y bajo costo, óptimo para parsear CLI, analizar antipatrones y sintetizar reportes).
@@ -225,7 +225,7 @@ La delegación al subagente se estructura con el mecanismo de subagentes del run
    - **Contrato de Salida Limpia:** El subagente tiene estrictamente prohibido reenviar trazas crudas, transcripciones enteras o tablas intermedias excesivas. Emite únicamente un **Diagnóstico Ejecutivo Consolidado**.
    - **Canal de Emisión:** Envía el reporte consolidado directamente en su mensaje de respuesta de finalización o mediante `send_message` hacia la sesión principal.
 
-### 5.3 Estructura de Invocación (`invoke_subagent`)
+### 5.3 Estructura de Invocación (`invoke_subagent` en Antigravity)
 
 ```json
 {
@@ -252,6 +252,6 @@ Para garantizar resultados deterministas, consultar la plantilla canónica [`tem
    - **Conclusiones y Próximos Pasos:** Recomendaciones técnicas sintéticas (ej. registrar issue si hay antipatrón estructural recurrente).
 
 ### 5.5 Recepción Asíncrona y Consolidación en la Sesión Principal
-- **Espera Reactiva (Prohibición de Polling):** Tras invocar al subagente, el agente principal entra en espera reactiva sin ejecutar bucles de sondeo (`manage_subagents` status o comandos sleep). El runtime reactiva la ejecución automáticamente al recibir el reporte consolidado.
+- **Espera Reactiva (Prohibición de Polling):** Tras invocar al subagente, el agente principal entra en espera reactiva sin ejecutar bucles de sondeo (ej. `manage_subagents` status en Antigravity, o comandos sleep). El runtime reactiva la ejecución automáticamente al recibir el reporte consolidado.
 - **Aislamiento de Contexto:** El hilo de chat principal solo incorpora el diagnóstico ejecutivo consolidado, preservando su presupuesto de tokens y manteniendo un historial limpio enfocado en la tarea principal.
 

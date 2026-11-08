@@ -1,6 +1,6 @@
 # Plantilla de Prompt para Subagente de Auditoría Estática de Documentación
 
-Plantilla canónica de prompt para delegar la verificación estática de documentación técnica a un subagente ligero (`flash` o `flash_lite`) utilizando el subagente nativo `research` (`TypeName: "research"`, `Workspace: "inherit"`).
+Plantilla canónica de prompt para delegar la verificación estática de documentación técnica a un subagente de inspección con modelo ligero (en Antigravity: subagente `research` con `TypeName: "research"`, `Model: "flash"` o `"flash_lite"`, `Workspace: "inherit"`; en otros runtimes, su subagente equivalente).
 
 ---
 
