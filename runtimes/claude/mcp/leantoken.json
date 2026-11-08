@@ -1,0 +1,11 @@
+{
+  "$schema": "../../schema/mcp-server.schema.json",
+  "description": "Servidor MCP de LeanToken para indexación y recuperación con presupuesto de tokens",
+  "command": "npx",
+  "args": [
+    "-y",
+    "leantoken",
+    "mcp"
+  ],
+  "env": {}
+}

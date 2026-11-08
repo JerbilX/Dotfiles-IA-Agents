@@ -14,7 +14,9 @@
     "agent-module": "agent-module",
     "agent-circuit-breaker": "agent-circuit-breaker"
   },
-  "mcp_servers": [],
+  "mcp_servers": [
+    "leantoken"
+  ],
   "status": "active",
   "target": {
     "config_dir": "${HOME}/.gemini/config",
