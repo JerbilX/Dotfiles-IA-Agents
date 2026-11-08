@@ -48,10 +48,7 @@
       "Edit(GEMINI.md)",
       "Edit(HISTORIAL.md)",
       "Edit(tasks/**)",
-      "Edit(prompts/**)",
-      "Bash(find /:*)",
-      "Bash(find $HOME:*)",
-      "Bash(find ~:*)"
+      "Edit(prompts/**)"
     ]
   },
   "hooks": {
