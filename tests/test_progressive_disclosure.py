@@ -251,7 +251,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
             router_content = f.read()
 
         self.assertIn("Circuit Breaker", router_content)
-        self.assertIn("grep_search", router_content)
+        self.assertIn("búsqueda de contenido", router_content)
         self.assertIn("> 150 líneas", router_content)
         self.assertIn("≤ 50 líneas", router_content)
         self.assertIn("contenido no mostrado", router_content)

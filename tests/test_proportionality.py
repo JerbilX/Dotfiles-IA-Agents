@@ -32,10 +32,11 @@ class TestProportionality(unittest.TestCase):
         skill = _read("skills", "issue-driven-workflow", "SKILL.md")
         self.assertNotIn("obligatoria ante cualquier interacción", skill)
 
-    def test_claude_runtime_has_tool_equivalences(self):
+    def test_claude_runtime_tool_equivalences_removed(self):
+        """CLAUDE_TOOL_EQUIVALENCES is removed in favor of neutral tool vocabulary (ADR-0050, #288)."""
         rules = _read("runtimes", "claude", "rules", "01-claude-tools.md")
-        for tool in ("`Read`", "`Grep`", "`Glob`", "`Edit`", "`Write`", "`Bash`"):
-            self.assertIn(tool, rules)
+        self.assertNotIn("CLAUDE_TOOL_EQUIVALENCES", rules)
+        self.assertNotIn("Equivalencias de Herramientas", rules)
         self.assertLessEqual(len(rules.split()), 300)
 
 

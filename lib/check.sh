@@ -238,6 +238,100 @@ for err in errors:
     fi
 }
 
+check_prompt_tool_crossings() {
+    echo "==> [check] Verificando ausencia de placeholders y nombres cruzados de herramientas..."
+    local crossing_errors=0
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "  [✗] python3 no está disponible para verificar herramientas en prompts" >&2
+        CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        return
+    fi
+
+    local check_output
+    local py_status=0
+    check_output="$(python3 -c '
+import os, re, sys
+
+repo_root = sys.argv[1]
+core_dir = os.path.join(repo_root, "core")
+dist_dir = os.path.join(repo_root, "dist")
+
+errors = []
+
+# 1. Verificar neutralidad en core/00-router.md
+core_router = os.path.join(core_dir, "00-router.md")
+if os.path.isfile(core_router):
+    with open(core_router, "r", encoding="utf-8") as f:
+        core_text = f.read()
+    forbidden_core_tools = [
+        "view_file", "replace_file_content", "write_to_file",
+        "grep_search", "find_by_name", "read_url_content"
+    ]
+    for tool in forbidden_core_tools:
+        if re.search(r"\b" + re.escape(tool) + r"\b", core_text):
+            errors.append(f"Herramienta de runtime \"{tool}\" encontrada en core/00-router.md (el core debe usar vocabulario neutral, ADR-0050)")
+
+# 2. Verificar prompts compilados en dist/
+placeholder_pattern = re.compile(r"\{\{([a-zA-Z0-9_.-]+)\}\}")
+# Mantener sincronizado con tests/test_tool_vocabulary_neutrality.py
+foreign_tools_by_runtime = {
+    "claude": [
+        "view_file", "replace_file_content", "grep_search", "find_by_name",
+        "write_to_file", "run_command", "read_url_content", "ask_question"
+    ],
+    "antigravity": [
+        "`Read`", "`Grep`", "`Glob`", "`Write`", "`Edit`", "`Bash`"
+    ]
+}
+
+for r_name in sorted(foreign_tools_by_runtime):
+    prompt_file = os.path.join(dist_dir, r_name, "AGENTS.md")
+    if not os.path.isfile(prompt_file):
+        print(f"WARN:Prompt compilado ausente: dist/{r_name}/AGENTS.md (ejecutar ./build.sh build); verificación de herramientas omitida")
+        continue
+    with open(prompt_file, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    for p in placeholder_pattern.findall(content):
+        errors.append(f"Placeholder sin resolver \"{{{{{p}}}}}\" detectado en dist/{r_name}/AGENTS.md")
+
+    for tool in foreign_tools_by_runtime[r_name]:
+        if tool.startswith("`"):
+            found = tool in content
+        else:
+            found = re.search(r"\b" + re.escape(tool) + r"\b", content) is not None
+        if found:
+            errors.append(f"Herramienta cruzada {tool} detectada en dist/{r_name}/AGENTS.md (propia de otro runtime)")
+
+for err in errors:
+    print(f"ERROR:{err}")
+' "${SCRIPT_DIR}" 2>&1)" || py_status=$?
+
+    if [ "${py_status}" -ne 0 ]; then
+        echo "  [✗] Error ejecutando verificación de vocabulario de herramientas (exit code ${py_status}):" >&2
+        echo "${check_output}" | sed 's/^/      /' >&2
+        CHECK_ERRORS=$((CHECK_ERRORS + 1))
+        return
+    fi
+
+    while IFS= read -r line; do
+        if [[ "${line}" =~ ^ERROR:(.*)$ ]]; then
+            echo "  [✗] ${BASH_REMATCH[1]}" >&2
+            CHECK_ERRORS=$((CHECK_ERRORS + 1))
+            crossing_errors=$((crossing_errors + 1))
+        elif [[ "${line}" =~ ^WARN:(.*)$ ]]; then
+            echo "  [!] Advertencia: ${BASH_REMATCH[1]}"
+            CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+            crossing_errors=$((crossing_errors + 1))
+        fi
+    done <<< "${check_output}"
+
+    if [ "${crossing_errors}" -eq 0 ]; then
+        echo "  [✓] Vocabulario de herramientas: Ausencia de placeholders y nombres cruzados verificada"
+    fi
+}
+
 check_runtime() {
     local r="$1"
     local config_file
@@ -1069,6 +1163,7 @@ cmd_check() {
     # Verificaciones comunes de directivas core
     check_core_rules
     check_basal_rules_admission
+    check_prompt_tool_crossings
 
     # Verificación de pureza de perfil global (MCP y Skills)
     check_global_mcp_purity
