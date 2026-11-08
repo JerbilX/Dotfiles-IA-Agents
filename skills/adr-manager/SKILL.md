@@ -12,10 +12,11 @@ Guía operativa y protocolo estricto para la consulta, detección de conflictos,
 
 ## 1. Principios Fundamentales y Compatibilidad
 
-1. **Estándar MADR + adr-tools:** Estructura basada en Markdown con YAML frontmatter legible por máquina y estructurado para humanos. Compatible en nomenclatura con `adr-tools` (`docs/adr/NNNN-titulo-en-kebab-case.md`).
-2. **Operación 100% Nativa (Zero-CLI):** Queda **terminantemente prohibido** invocar herramientas de línea de comandos externas (como `adr-init`, `adr-new`, binarios de `adr-tools` o scripts bash equivalentes). Todas las operaciones de lectura, cálculo correlativo y escritura deben ejecutarse mediante las herramientas nativas de archivos del agente (listado de directorios, lectura, escritura y edición atómica de archivos).
-3. **Inmutabilidad Histórica:** Una decisión registrada refleja el contexto y los trade-offs en el momento en que se tomó. Los ADRs históricos nunca se borran ni se reescriben en su cuerpo explicativo. Las modificaciones posteriores se gestionan mediante nuevos ADRs que reemplazan (supersede) a los anteriores.
-4. **Gate Humano de Aprobación:** El agente puede proponer decisiones, pero la aceptación definitiva de una decisión arquitectónica es prerrogativa exclusiva del usuario.
+1. **Estándar MADR + adr-tools:** Estructura basada en Markdown con YAML frontmatter legible por máquina y estructurado para humanos. Compatible en nomenclatura con `adr-tools` (`docs/adr/NNNN-titulo-en-kebab-case.md`). Prohibido `HISTORIAL.md` o bitácoras informales; las decisiones arquitectónicas se registran exclusivamente en `docs/adr/` (`proposed` -> `accepted`).
+2. **Directivas de Agente:** Directivas de agente solo como `AGENTS.md` compilado; prohibido `GEMINI.md` (bloqueado mecánicamente por guard P0).
+3. **Operación 100% Nativa (Zero-CLI):** Queda **terminantemente prohibido** invocar herramientas de línea de comandos externas (como `adr-init`, `adr-new`, binarios de `adr-tools` o scripts bash equivalentes). Todas las operaciones de lectura, cálculo correlativo y escritura deben ejecutarse mediante las herramientas nativas de archivos del agente (listado de directorios, lectura, escritura y edición atómica de archivos).
+4. **Inmutabilidad Histórica:** Una decisión registrada refleja el contexto y los trade-offs en el momento en que se tomó. Los ADRs históricos nunca se borran ni se reescriben en su cuerpo explicativo. Las modificaciones posteriores se gestionan mediante nuevos ADRs que reemplazan (supersede) a los anteriores.
+5. **Gate Humano de Aprobación:** El agente puede proponer decisiones, pero la aceptación definitiva de una decisión arquitectónica es prerrogativa exclusiva del usuario.
 
 ---
 

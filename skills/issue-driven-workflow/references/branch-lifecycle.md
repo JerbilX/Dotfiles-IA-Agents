@@ -72,15 +72,18 @@ git-prune-gone --sync
 ### Paso 3: Planificación y Refinamiento (📐 In Planning)
 * **Escala por Nivel:** N1 (cambio acotado, sin `core/`, `runtimes/` ni ADR) omite plan bloqueante, ADR y evaluación MBR escrita; N0 no entra al ciclo. Lo siguiente aplica a N2.
 * **Fast-Track por Defecto:** Para requerimientos con especificación técnica completa y criterios de aceptación claros en `🎯 Ready for Dev`, el agente no genera un `implementation_plan.md` bloqueante; avanza directamente al desarrollo activo (Paso 4), concentrando el control humano en el gate del Pull Request.
-* **Freno Obligatorio de Planificación (Stop & Plan):** Requieren obligatoriamente `implementation_plan.md` con pausa bloqueante (`RequestFeedback: true`) las tareas con ambigüedad de diseño, múltiples caminos técnicos posibles, cambios arquitectónicos que introduzcan o modifiquen un ADR (`docs/adr/`) con `status: proposed`, o diagnósticos donde la causa raíz aún no ha sido confirmada empíricamente.
+* **Freno Obligatorio de Planificación (Stop & Plan - solo N2):** Requieren obligatoriamente `implementation_plan.md` con pausa bloqueante (`RequestFeedback: true`) las tareas con ambigüedad de diseño, múltiples caminos técnicos posibles, cambios arquitectónicos que introduzcan o modifiquen un ADR (`docs/adr/`) con `status: proposed`, o diagnósticos donde la causa raíz aún no ha sido confirmada empíricamente.
 * **Evaluación de Minimal Blast Radius:** Registrar explícitamente el nivel de intervención más bajo posible (Nivel 0 a 4). Modificar directivas basales (`core/`) exige obligatoriamente la sección **"Justificación de Elevación Basal"**.
 * **Excepción de Fast-Path Ejecutivo:** Si la solución fue debatida y consensuada en el chat activo y el usuario emite orden ejecutiva directa (*"procedé"*, *"avanza"*, *"aplicalo"*), proceder de inmediato sin plan bloqueante redundante.
 
 ### Paso 4: Transición a Desarrollo y Verificación (⚙️ In Progress)
 * Al aprobarse el plan o entrar en fast-path, la tarea entra en desarrollo activo (`⚙️ In Progress`) en la rama local, sin mutaciones CLI en Projects v2.
 * Modificaciones de código exclusivamente mediante herramientas nativas de archivos (escritura, edición, lectura, búsqueda). Prohibido usar comandos de terminal para I/O (`cat`, `sed`, `awk`, `tee`).
-* **Lectura Paginada Obligatoria:** Toda lectura de archivos exige delimitar rango o paginado (ventana ≤ 200 líneas) sin excepción; prohibidas lecturas no acotadas. Localizar previamente mediante búsqueda por contenido.
+* **Lectura Paginada Obligatoria y Lectura Quirúrgica en Dos Fases:** Toda lectura de archivos exige delimitar rango o paginado (ventana ≤ 200 líneas) sin excepción; prohibidas lecturas no acotadas. Lectura Quirúrgica en Dos Fases: en archivos > 150 líneas, localizar por búsqueda de contenido y restringir la lectura a ventana quirúrgica (≤ 50 líneas). Ignorar avisos de contenido no mostrado.
 * **Granularidad Atómica en Ediciones:** Particionar cambios en bloques acotados de edición para prevenir truncamientos en la respuesta y degradación por latencia. Prohibido reemplazar archivos completos monolíticamente.
+* **Precedencia de Entornos Locales:** Priorizar binarios locales (`.venv/bin/`, `node_modules/.bin/`) sobre intérpretes o linters globales.
+* **Higiene de Salida y Pruebas:** Acotar salidas (`head -n 20`, `--jq`). En desarrollo o diagnóstico, pruebas filtradas (archivo o caso puntual) o de baja verbosidad; suite integral solo en la verificación final previa al commit. Temporales (`.commit_msg`, `.pr_body`, `.issue_body`, `.issue_comment`) se eliminan tras su uso.
+* **Veto Acumulativo:** Una falla no justifica tocar varias capas simultáneamente; aislar y corregir la causa raíz única con minimal blast radius.
 * Validar compilación, linters y suites de prueba locales (`./build.sh check`).
 * **Promoción Atómica del ADR:** Al comenzar a codificar, actualizar el YAML frontmatter del ADR a `status: accepted` en la rama de trabajo para ratificación atómica al mergear.
 

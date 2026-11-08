@@ -104,10 +104,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
             "GEMINI.md",
             "Inmunidad Normativa",
             "Blindaje Anti-Reconocimiento y Anti-Exfiltración",
-            "Precedencia de Entornos Locales",
-            "Higiene de Salida y Pruebas",
             "Veto acumulativo",
-            "Fast-path",
             "Activación Obligatoria de Skills",
             "Local-First",
             "Circuit Breaker",
@@ -116,12 +113,10 @@ class TestProgressiveDisclosure(unittest.TestCase):
             "Prevalencia del Código de Producción",
             "Minimal Blast Radius",
             "Inconsistencia Lógica",
-            "Stop & Plan",
             "Prohibición de Backlogs Locales",
             "Inmutabilidad de Workspace",
             "Uso Exclusivo de",
             "Límites de Workspace",
-            "Lectura Quirúrgica en Dos Fases",
             "Lectura Paginada Obligatoria",
             "Prohibición Universal de REPL en Terminal",
         ]
@@ -133,7 +128,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
             )
 
     def test_procedural_rules_delegated_to_skills(self):
-        """Procedural rules removed from core/ (ADR-0047) must live in the issue-driven-workflow skill."""
+        """Procedural rules removed from core/ (ADR-0047, ADR-0048, #284) must live in skills (P1)."""
         provisioning = os.path.join(
             REPO_ROOT, "skills", "issue-driven-workflow", "references", "repo-provisioning.md"
         )
@@ -141,6 +136,40 @@ class TestProgressiveDisclosure(unittest.TestCase):
             content = f.read()
         self.assertIn("Inicialización Local Proactiva", content)
         self.assertIn("Gate de Confirmación", content)
+
+        # Procedural rules evacuated in #284
+        workflow_skill = os.path.join(REPO_ROOT, "skills", "issue-driven-workflow", "SKILL.md")
+        with open(workflow_skill, "r", encoding="utf-8") as f:
+            workflow_content = f.read()
+        self.assertIn("Fast-path", workflow_content)
+        self.assertIn("Fast-Track", workflow_content)
+        self.assertIn("Stop & Plan", workflow_content)
+        self.assertIn("Precedencia de Entornos Locales", workflow_content)
+        self.assertIn("Higiene, Pruebas y Atomicidad", workflow_content)
+
+        lifecycle = os.path.join(
+            REPO_ROOT, "skills", "issue-driven-workflow", "references", "branch-lifecycle.md"
+        )
+        with open(lifecycle, "r", encoding="utf-8") as f:
+            lifecycle_content = f.read()
+        self.assertIn("Precedencia de Entornos Locales", lifecycle_content)
+        self.assertIn("Higiene de Salida y Pruebas", lifecycle_content)
+        self.assertIn("Lectura Quirúrgica en Dos Fases", lifecycle_content)
+
+        backlog = os.path.join(
+            REPO_ROOT, "skills", "issue-driven-workflow", "references", "issue-backlog.md"
+        )
+        with open(backlog, "r", encoding="utf-8") as f:
+            backlog_content = f.read()
+        self.assertIn("N0", backlog_content)
+        self.assertIn("N1", backlog_content)
+        self.assertIn("N2", backlog_content)
+
+        adr_skill = os.path.join(REPO_ROOT, "skills", "adr-manager", "SKILL.md")
+        with open(adr_skill, "r", encoding="utf-8") as f:
+            adr_content = f.read()
+        self.assertIn("HISTORIAL.md", adr_content)
+        self.assertIn("GEMINI.md", adr_content)
 
     def test_no_orphan_core_pointers_in_router_and_dist(self):
         """core/00-router.md and compiled dist prompts must not contain orphan pointers to core/ (ADR-0047)."""
@@ -204,13 +233,14 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("0038-arquitectura-de-progressive-disclosure-en-agents-md-y-modularizacion-de-reglas.md", content)
 
     def test_execution_profiles_standardization(self):
-        """Execution profile labels and MBR matrix must be documented across core and skills."""
+        """Execution profile labels and MBR matrix must be documented across skills and backlog reference."""
         router_path = os.path.join(CORE_DIR, "00-router.md")
         with open(router_path, "r", encoding="utf-8") as f:
             router_content = f.read()
 
+        # ADR-0048 / #284: router delegates profile labels to issue-driven-workflow
         for label in ("profile:flash-low", "profile:flash-medium", "profile:flash-high", "profile:pro"):
-            self.assertIn(label, router_content, f"Missing {label} in core/00-router.md")
+            self.assertNotIn(label, router_content, f"Unexpected {label} remaining in core/00-router.md")
 
         backlog_ref_path = os.path.join(
             REPO_ROOT, "skills", "issue-driven-workflow", "references", "issue-backlog.md"
@@ -229,6 +259,8 @@ class TestProgressiveDisclosure(unittest.TestCase):
             skill_content = f.read()
 
         self.assertIn('--label "profile:<perfil>"', skill_content)
+        for label in ("profile:flash-low", "profile:flash-medium", "profile:flash-high", "profile:pro"):
+            self.assertIn(label, skill_content, f"Missing {label} in issue-driven-workflow SKILL.md")
 
     def test_pagination_and_atomic_edits_invariants(self):
         """Strict pagination in view_file and atomic granularity in replace_file_content must be enforced."""
@@ -245,19 +277,26 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("ventana ≤ 200 líneas", skill_content)
 
     def test_view_file_circuit_breaker_and_prompt_immunity_invariants(self):
-        """core/00-router.md must enforce circuit breaker (<= 2 calls), heuristic prompt immunity, and grep_search (>150 lines, <=50 lines)."""
+        """core/00-router.md defines 1-line residual; issue-driven-workflow defines two-phase surgical read (ADR-0040, ADR-0048)."""
         router_path = os.path.join(CORE_DIR, "00-router.md")
         with open(router_path, "r", encoding="utf-8") as f:
             router_content = f.read()
 
         self.assertIn("Circuit Breaker", router_content)
-        self.assertIn("búsqueda de contenido", router_content)
-        self.assertIn("> 150 líneas", router_content)
-        self.assertIn("≤ 50 líneas", router_content)
-        self.assertIn("contenido no mostrado", router_content)
         self.assertIn("6 lecturas consecutivas", router_content)
-        self.assertIn("comando terminal mutador o de ejecución de pruebas/build", router_content)
-        self.assertIn("Comandos de mera inspección pasiva en terminal", router_content)
+        self.assertIn("ventana ≤ 200 líneas", router_content)
+
+        lifecycle_ref_path = os.path.join(
+            REPO_ROOT, "skills", "issue-driven-workflow", "references", "branch-lifecycle.md"
+        )
+        with open(lifecycle_ref_path, "r", encoding="utf-8") as f:
+            lifecycle_content = f.read()
+
+        self.assertIn("Lectura Quirúrgica en Dos Fases", lifecycle_content)
+        self.assertIn("búsqueda de contenido", lifecycle_content)
+        self.assertIn("> 150 líneas", lifecycle_content)
+        self.assertIn("≤ 50 líneas", lifecycle_content)
+        self.assertIn("contenido no mostrado", lifecycle_content)
 
     def test_domain_mcp_precedence_over_web_search_invariants(self):
         """core/00-router.md and skills/eso-addon-development/SKILL.md must enforce MCP precedence over web search (#266)."""

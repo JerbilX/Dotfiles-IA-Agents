@@ -125,16 +125,20 @@ class TestRuntimeLifecycle(unittest.TestCase):
             self.assertTrue(found, f"Declared binary {src_name} not found in enabled skills")
 
     def test_anti_reconnaissance_and_anti_exfiltration_invariants(self):
-        """core/00-router.md must declare anti-reconnaissance and anti-exfiltration rules (Issue #184, ADR-0047)."""
+        """core/00-router.md defines 1-line residual; agent-guard enforces mechanical patterns (Issue #184, ADR-0048, ADR-0052, #284)."""
         env_standards = os.path.join(REPO_ROOT, "core", "00-router.md")
         with open(env_standards, "r", encoding="utf-8") as f:
             content = f.read()
 
         self.assertIn("Blindaje Anti-Reconocimiento y Anti-Exfiltración", content)
-        self.assertIn("find /", content)
-        self.assertIn("find $HOME", content)
-        self.assertIn("gh api", content)
         self.assertIn("Stop & Ask", content)
+
+        guard_file = os.path.join(REPO_ROOT, "skills", "conversation-audit", "bin", "agent-guard")
+        with open(guard_file, "r", encoding="utf-8") as f:
+            guard_content = f.read()
+        self.assertIn("reconocimiento ciego del host", guard_content)
+        self.assertIn("HOST_RECON_ROOTS", guard_content)
+        self.assertIn('cmd_name == "find"', guard_content)
 
     def test_antigravity_rules_authorize_agent_module_bypass(self):
         """runtimes/antigravity/rules/01-sandbox.md must authorize agent-module for bypass (Issue #184)."""
@@ -157,28 +161,36 @@ class TestRuntimeLifecycle(unittest.TestCase):
         self.assertEqual(res.stdout.strip(), "1")
 
     def test_antigravity_rules_veto_inline_evaluators_and_wrappers(self):
-        """runtimes/antigravity/rules/01-sandbox.md must explicitly prohibit inline evaluators and wrappers (Issue #208)."""
+        """runtimes/antigravity/rules/01-sandbox.md defines 1-line residual; agent-guard enforces REPL patterns (Issue #208, ADR-0048, #284)."""
         sandbox_rule = os.path.join(RUNTIMES_DIR, "antigravity", "rules", "01-sandbox.md")
         with open(sandbox_rule, "r", encoding="utf-8") as f:
             content = f.read()
 
-        self.assertIn("python3 -c", content)
-        self.assertIn("node -e", content)
-        self.assertIn("bash -c", content)
-        self.assertIn("subprocess", content)
-        self.assertIn("prefix matching", content)
         self.assertIn("scratch", content)
+        self.assertIn("BypassSandbox: false", content)
+
+        guard_file = os.path.join(REPO_ROOT, "skills", "conversation-audit", "bin", "agent-guard")
+        with open(guard_file, "r", encoding="utf-8") as f:
+            guard_content = f.read()
+        self.assertIn("python3", guard_content)
+        self.assertIn("node", guard_content)
+        self.assertIn("bash", guard_content)
 
     def test_environment_standards_prohibit_inline_evaluators_and_wrappers(self):
-        """core/00-router.md must prohibit inline evaluators and CLI wrappers (Issue #208, ADR-0047)."""
+        """core/00-router.md defines 1-line residual; agent-guard enforces evaluators (Issue #208, ADR-0048, ADR-0052, #284)."""
         env_rule = os.path.join(CORE_DIR, "00-router.md")
         with open(env_rule, "r", encoding="utf-8") as f:
             content = f.read()
 
-        self.assertIn("python3 -c", content)
-        self.assertIn("node -e", content)
-        self.assertIn("bash -c", content)
-        self.assertIn("wrappers", content)
+        self.assertIn("Prohibición Universal de REPL en Terminal", content)
+        self.assertIn("scratch/", content)
+
+        guard_file = os.path.join(REPO_ROOT, "skills", "conversation-audit", "bin", "agent-guard")
+        with open(guard_file, "r", encoding="utf-8") as f:
+            guard_content = f.read()
+        self.assertIn("python3", guard_content)
+        self.assertIn("bash", guard_content)
+        self.assertIn("node", guard_content)
 
     def test_conversation_audit_skill_prohibits_subprocess_wrappers(self):
         """skills/conversation-audit/SKILL.md must mandate native options and prohibit subprocess wrappers (Issue #208)."""
