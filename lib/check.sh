@@ -251,109 +251,18 @@ check_prompt_tool_crossings() {
     local check_output
     local py_status=0
     check_output="$(python3 -c '
-import os, re, sys
-
+import os, sys
 repo_root = sys.argv[1]
-core_dir = os.path.join(repo_root, "core")
-dist_dir = os.path.join(repo_root, "dist")
+lib_dir = os.path.join(repo_root, "lib")
+if lib_dir not in sys.path:
+    sys.path.insert(0, lib_dir)
+from tool_vocabulary import check_tool_vocabulary
 
-errors = []
-
-# 1. Verificar neutralidad en core/00-router.md
-core_router = os.path.join(core_dir, "00-router.md")
-if os.path.isfile(core_router):
-    with open(core_router, "r", encoding="utf-8") as f:
-        core_text = f.read()
-    forbidden_core_tools = [
-        "view_file", "replace_file_content", "write_to_file",
-        "grep_search", "find_by_name", "read_url_content"
-    ]
-    for tool in forbidden_core_tools:
-        if re.search(r"\b" + re.escape(tool) + r"\b", core_text):
-            errors.append(f"Herramienta de runtime \"{tool}\" encontrada en core/00-router.md (el core debe usar vocabulario neutral, ADR-0050)")
-
-# 2. Verificar prompts compilados en dist/
-placeholder_pattern = re.compile(r"\{\{([a-zA-Z0-9_.-]+)\}\}")
-# Mantener sincronizado con tests/test_tool_vocabulary_neutrality.py
-foreign_tools_by_runtime = {
-    "claude": [
-        "view_file", "replace_file_content", "grep_search", "find_by_name",
-        "write_to_file", "run_command", "read_url_content", "ask_question"
-    ],
-    "antigravity": [
-        "`Read`", "`Grep`", "`Glob`", "`Write`", "`Edit`", "`Bash`"
-    ]
-}
-
-for r_name in sorted(foreign_tools_by_runtime):
-    prompt_file = os.path.join(dist_dir, r_name, "AGENTS.md")
-    if not os.path.isfile(prompt_file):
-        print(f"WARN:Prompt compilado ausente: dist/{r_name}/AGENTS.md (ejecutar ./build.sh build); verificación de herramientas omitida")
-        continue
-    with open(prompt_file, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    for p in placeholder_pattern.findall(content):
-        errors.append(f"Placeholder sin resolver \"{{{{{p}}}}}\" detectado en dist/{r_name}/AGENTS.md")
-
-    for tool in foreign_tools_by_runtime[r_name]:
-        if tool.startswith("`"):
-            found = tool in content
-        else:
-            found = re.search(r"\b" + re.escape(tool) + r"\b", content) is not None
-        if found:
-            errors.append(f"Herramienta cruzada {tool} detectada en dist/{r_name}/AGENTS.md (propia de otro runtime)")
-
-# 3. Verificar prosa normativa en skills/ (ADR-0050, Issue #292)
-skills_dir = os.path.join(repo_root, "skills")
-forbidden_skills_tools = [
-    "view_file", "replace_file_content", "grep_search", "find_by_name",
-    "write_to_file", "read_url_content", "ask_question", "list_dir", "run_command"
-]
-claude_specific_tokens = ["`Read`", "`Grep`", "`Glob`", "`Write`", "`Edit`", "`Bash`"]
-forbidden_params = ["StartLine", "EndLine"]
-# Mecanismos de subagentes de Antigravity: admitidos solo condicionados en la misma línea
-# (fuera de bloques de código, que ilustran la invocación bajo un encabezado condicionado).
-conditioned_subagent_tokens = ["invoke_subagent", "manage_subagents", "TypeName"]
-# Archivos cuyos nombres de herramientas son datos (trazas reales), no instrucciones.
-excluded_skills_files = set()
-
-if os.path.isdir(skills_dir):
-    for root, dirs, files in os.walk(skills_dir):
-        dirs[:] = [d for d in dirs if d not in ("bin", "scripts", "tests", "__pycache__")]
-        for f in sorted(files):
-            if not f.endswith(".md"):
-                continue
-            file_path = os.path.join(root, f)
-            rel_path = os.path.relpath(file_path, repo_root)
-            if rel_path in excluded_skills_files:
-                continue
-            with open(file_path, "r", encoding="utf-8") as fp:
-                content = fp.read()
-            for tool in forbidden_skills_tools:
-                if re.search(r"\b" + re.escape(tool) + r"\b", content):
-                    errors.append(f"Herramienta de runtime \"{tool}\" encontrada en prosa normativa de {rel_path} (debe usar vocabulario neutral, ADR-0050)")
-            for token in claude_specific_tokens:
-                if token in content:
-                    errors.append(f"Token de herramienta de Claude \"{token}\" encontrado en prosa normativa de {rel_path} (debe usar vocabulario neutral, ADR-0050)")
-            for param in forbidden_params:
-                if re.search(r"\b" + re.escape(param) + r"\b", content):
-                    errors.append(f"Parámetro de runtime \"{param}\" encontrado en prosa normativa de {rel_path} (debe usar vocabulario neutral, ADR-0050)")
-            in_fence = False
-            for idx, line in enumerate(content.splitlines(), 1):
-                if line.lstrip().startswith("```"):
-                    in_fence = not in_fence
-                conditioned = "Antigravity" in line or "antigravity" in line
-                if re.search(r"\bBypassSandbox\b", line) and not conditioned:
-                    errors.append(f"Mención incondicional de \"BypassSandbox\" en {rel_path}:{idx} (debe condicionarse al runtime puntual, Issue #292)")
-                if in_fence or conditioned:
-                    continue
-                for token in conditioned_subagent_tokens:
-                    if re.search(r"\b" + re.escape(token) + r"\b", line):
-                        errors.append(f"Mención incondicional de \"{token}\" en {rel_path}:{idx} (debe condicionarse al runtime puntual, Issue #292)")
-
+errors, warnings = check_tool_vocabulary(repo_root)
 for err in errors:
     print(f"ERROR:{err}")
+for warn in warnings:
+    print(f"WARN:{warn}")
 ' "${SCRIPT_DIR}" 2>&1)" || py_status=$?
 
     if [ "${py_status}" -ne 0 ]; then
