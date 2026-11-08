@@ -132,12 +132,8 @@ class TestRuntimeLifecycle(unittest.TestCase):
 
         self.assertIn("Blindaje Anti-Reconocimiento y Anti-Exfiltración", content)
         self.assertIn("Stop & Ask", content)
-
-        guard_file = os.path.join(REPO_ROOT, "skills", "conversation-audit", "bin", "agent-guard")
-        with open(guard_file, "r", encoding="utf-8") as f:
-            guard_content = f.read()
-        self.assertIn("reconocimiento ciego del host", guard_content)
-        self.assertIn("HOST_RECON_ROOTS", guard_content)
+        self.assertIn("gh api", content)
+        self.assertIn("curl", content)
 
     def test_runtime_attribution_directives(self):
         """runtimes must declare canonical attribution with Co-Authored-By veto in Claude (Issue #269, #284)."""
@@ -182,6 +178,8 @@ class TestRuntimeLifecycle(unittest.TestCase):
 
         self.assertIn("scratch", content)
         self.assertIn("BypassSandbox: false", content)
+        self.assertIn("wrappers", content)
+        self.assertIn("--jq", content)
 
         guard_file = os.path.join(REPO_ROOT, "skills", "conversation-audit", "bin", "agent-guard")
         with open(guard_file, "r", encoding="utf-8") as f:
