@@ -14,8 +14,12 @@ class TestProportionality(unittest.TestCase):
 
     def test_router_declares_proportionality_and_levels(self):
         router = _read("core", "00-router.md")
-        for marker in ("Proporcionalidad", "**N0**", "**N1**", "**N2**", "Trazabilidad"):
+        for marker in ("Proporcionalidad", "Trazabilidad"):
             self.assertIn(marker, router, f"Falta '{marker}' en core/00-router.md")
+
+        backlog = _read("skills", "issue-driven-workflow", "references", "issue-backlog.md")
+        for marker in ("**N0**", "**N1**", "**N2**"):
+            self.assertIn(marker, backlog, f"Falta '{marker}' en issue-backlog.md")
 
     def test_traceability_chain_is_preserved(self):
         router = _read("core", "00-router.md")
@@ -26,7 +30,9 @@ class TestProportionality(unittest.TestCase):
         self.assertIn("con su confirmación", _read("core", "00-router.md"))
 
     def test_stop_and_plan_is_scoped_to_n2(self):
-        self.assertIn("solo N2", _read("core", "00-router.md"))
+        lifecycle = _read("skills", "issue-driven-workflow", "references", "branch-lifecycle.md")
+        self.assertIn("solo n2", lifecycle.lower())
+        self.assertIn("Stop & Plan", lifecycle)
 
     def test_hygiene_is_not_triggered_by_queries(self):
         skill = _read("skills", "issue-driven-workflow", "SKILL.md")
