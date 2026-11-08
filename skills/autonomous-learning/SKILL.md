@@ -46,7 +46,7 @@ Toda decisión o lección aprendida histórica se descompone y clasifica en un m
 Para agilizar la recuperación de precedentes, las decisiones se agrupan en seis categorías temáticas:
 
 1. `sandbox-permissions`:
-   - Confinamiento estándar vs. bypass (`BypassSandbox: true`).
+   - Confinamiento estándar vs. bypass de sandbox (ej. `BypassSandbox: true` en runtimes con sandbox como Antigravity).
    - Montaje de solo lectura de `.git/` en el sandbox del runtime.
    - Preservación de *prefix matching* (evitar comillas complejas, variables de shell o pipes en CLI).
    - Uso obligatorio de archivos temporales (`.commit_msg`, `.pr_body`, `.issue_body`).
@@ -102,7 +102,7 @@ Ante la aparición de un bug complejo, bloqueo de entorno (sandbox), duda de dis
 ### Paso 2: Búsqueda Contextual
 El agente cuenta con dos vías equivalentes para localizar precedentes:
 - **Vía A (Nativa del Agente - Recomendada en ejecución interactiva):**
-  Usar `grep_search` sobre `docs/adr/` buscando el síntoma, o inspeccionar el índice con `list_dir`.
+  Usar búsqueda nativa por contenido sobre `docs/adr/` buscando el síntoma, o inspeccionar el índice con herramientas nativas de listado.
 - **Vía B (Herramienta CLI del Skill):**
   Ejecutar el script local provisto por este skill:
   ```bash
@@ -118,7 +118,7 @@ Inspeccionar el campo `status` del YAML frontmatter de los ADRs coincidentes:
 
 ### Paso 4: Validación de Hipótesis contra Precedentes
 - Si la hipótesis formulada para explicar una falla contradice un precedente documentado con `status: accepted`, la hipótesis es **inválida por definición**.
-- *Ejemplo de validación:* Si un comando `git commit` falla con error de permisos, la hipótesis "debo ejecutar sudo o chmod en .git/" es inválida porque el ADR-0001 y ADR-0011 ya demostraron que `.git/` está montado como solo lectura en el kernel del contenedor de sandbox, y la solución validada es utilizar `BypassSandbox: true` de forma atómica.
+- *Ejemplo de validación:* Si un comando `git commit` falla con error de permisos, la hipótesis "debo ejecutar sudo o chmod en .git/" es inválida porque el ADR-0001 y ADR-0011 ya demostraron que `.git/` está montado como solo lectura en el kernel del contenedor de sandbox, y la solución validada es utilizar bypass de sandbox de forma atómica (ej. `BypassSandbox: true` en runtimes con sandbox como Antigravity).
 
 ### Paso 5: Formulación de Recomendación Preventiva
 El agente sintetiza la respuesta estructurándola según el precedente:

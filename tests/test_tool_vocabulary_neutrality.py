@@ -103,6 +103,67 @@ class TestToolVocabularyNeutrality(unittest.TestCase):
                 f"dist/antigravity/AGENTS.md must not contain Claude-specific tool reference {token}"
             )
 
+    def test_skills_normative_prose_tool_vocabulary_neutrality(self):
+        """Markdown files in skills/ must use neutral vocabulary without unconditioned runtime-specific tool names (ADR-0050, Issue #292)."""
+        skills_dir = os.path.join(REPO_ROOT, "skills")
+        forbidden_tools = [
+            "view_file",
+            "replace_file_content",
+            "grep_search",
+            "find_by_name",
+            "write_to_file",
+            "read_url_content",
+            "ask_question",
+        ]
+        claude_specific_tokens = ["`Read`", "`Grep`", "`Glob`", "`Write`", "`Edit`", "`Bash`"]
+        forbidden_params = ["StartLine", "EndLine"]
+        excluded_files = {
+            os.path.join("skills", "autonomous-learning", "references", "known_anti_patterns.md"),
+        }
+
+        self.assertTrue(os.path.isdir(skills_dir), f"Skills directory not found: {skills_dir}")
+
+        for root, dirs, files in os.walk(skills_dir):
+            dirs[:] = [d for d in dirs if d not in ("bin", "scripts", "tests", "__pycache__")]
+            for f in sorted(files):
+                if not f.endswith(".md"):
+                    continue
+                file_path = os.path.join(root, f)
+                rel_path = os.path.relpath(file_path, REPO_ROOT)
+                if rel_path in excluded_files:
+                    continue
+
+                with open(file_path, "r", encoding="utf-8") as fp:
+                    content = fp.read()
+
+                for tool in forbidden_tools:
+                    match = re.search(r"\b" + re.escape(tool) + r"\b", content)
+                    self.assertIsNone(
+                        match,
+                        f"Normative skill file '{rel_path}' contains runtime tool '{tool}'. Use neutral vocabulary (ADR-0050, Issue #292)."
+                    )
+
+                for token in claude_specific_tokens:
+                    self.assertNotIn(
+                        token,
+                        content,
+                        f"Normative skill file '{rel_path}' contains Claude tool token '{token}'. Use neutral vocabulary (ADR-0050, Issue #292)."
+                    )
+
+                for param in forbidden_params:
+                    match = re.search(r"\b" + re.escape(param) + r"\b", content)
+                    self.assertIsNone(
+                        match,
+                        f"Normative skill file '{rel_path}' contains runtime parameter '{param}'. Use neutral vocabulary (ADR-0050, Issue #292)."
+                    )
+
+                for idx, line in enumerate(content.splitlines(), 1):
+                    if re.search(r"\bBypassSandbox\b", line):
+                        self.assertTrue(
+                            "Antigravity" in line or "antigravity" in line,
+                            f"Normative skill file '{rel_path}:{idx}' mentions unconditioned 'BypassSandbox'. Must be conditioned to runtime (Issue #292)."
+                        )
+
 
 if __name__ == "__main__":
     unittest.main()

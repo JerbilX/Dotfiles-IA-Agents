@@ -18,7 +18,7 @@ Protocolo determinista para inicializar repositorios locales y aprovisionar repo
   ```bash
   git add .
   ```
-- Redactar el mensaje inicial en `.commit_msg` con `write_to_file` y crear el commit inicial:
+- Redactar el mensaje inicial en `.commit_msg` mediante herramientas nativas de archivos y crear el commit inicial:
   ```bash
   git commit -F .commit_msg
   ```
@@ -73,7 +73,7 @@ El agente interactúa con el ecosistema de repositorios según las necesidades d
      *(Si se requiere una organización o propietario específico, utilizar `gh repo list <owner>`).*
 
 2. **Límites de Workspace y Exploración:**
-   - No realizar búsquedas ni exploraciones en el sistema de archivos fuera del workspace activo (`list_dir`, `find_by_name` en carpetas hermanas o `..`).
+   - No realizar búsquedas ni exploraciones en el sistema de archivos fuera del workspace activo (listado o búsqueda de archivos en carpetas hermanas o `..`).
    - No inferir ni inspeccionar repositorios locales externos; resolver la interacción mediante APIs o CLI de GitHub.
 
 3. **Desacoplamiento en Fases de Diseño y Arquitectura:**
@@ -103,7 +103,7 @@ Para optimizar el presupuesto basal de tokens en el prompt inicial de proyectos 
    2. **Vía Fallback:** Si no se encuentra en `$PATH`, invocar la ruta determinista del runtime activo:
       - Antigravity: `python3 ~/.gemini/config/skills/issue-driven-workflow/bin/agent-module enable <modulo>`
       - Claude Code: `python3 ~/.claude/skills/issue-driven-workflow/bin/agent-module enable <modulo>`
-   3. **Freno Obligatorio (Stop & Ask):** Prohibido taxativamente ejecutar barridos masivos o búsquedas en el anfitrión (`find /`, `find $HOME`, `grep`). Detenerse de inmediato y emitir comando terminal-ready (`cd <dotfiles> && ./build.sh all`) u ofrecer andamiaje estático directo mediante `write_to_file`.
+   3. **Freno Obligatorio (Stop & Ask):** Prohibido taxativamente ejecutar barridos masivos o búsquedas en el anfitrión (`find /`, `find $HOME`, `grep`). Detenerse de inmediato y emitir comando terminal-ready (`cd <dotfiles> && ./build.sh all`) u ofrecer andamiaje estático directo mediante herramientas nativas de archivos.
 
 3. **Operaciones del Ciclo de Vida:**
    - Consultar módulos disponibles: `agent-module list`.

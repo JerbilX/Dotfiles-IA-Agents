@@ -49,7 +49,7 @@ Para preservar la prohibición estricta de push directo o reescritura de histori
    *En ambos casos, el flag `--no-commit` previene que Git abra un editor interactivo en terminal y permite formatear el mensaje de commit de manera determinista y controlada.*
 
 4. **Commit Atómico de Reversión:**
-   Redactar el mensaje convencional en `.commit_msg` con la herramienta nativa `write_to_file`:
+   Redactar el mensaje convencional en `.commit_msg` mediante herramientas nativas de archivos:
    ```markdown
    fix(revert): revert PR #<pr_id> - <motivo breve>
 
@@ -77,7 +77,7 @@ Para preservar la prohibición estricta de push directo o reescritura de histori
 Una reversión no debe dejar cabos sueltos ni tarjetas en estados inconsistentes:
 
 1. **Apertura del Pull Request de Reversión:**
-   Redactar el cuerpo del PR en `.pr_body` con `write_to_file`:
+   Redactar el cuerpo del PR en `.pr_body` mediante herramientas nativas de archivos:
    ```markdown
    ### Diagnóstico de Emergencia
    [Descripción de la anomalía o regresión que motiva la reversión]
@@ -127,7 +127,7 @@ Si el Pull Request revertido introdujo un Architectural Decision Record en `docs
 
 1. **Deprecación Inmediata:**
    - No eliminar el archivo ADR revertido; preservar la historia arquitectónica actualizando su estado.
-   - Modificar exclusivamente el YAML frontmatter del ADR mediante `replace_file_content`:
+   - Modificar exclusivamente el YAML frontmatter del ADR mediante herramientas nativas de edición:
      ```yaml
      status: deprecated
      ```

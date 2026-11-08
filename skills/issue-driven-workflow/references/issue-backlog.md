@@ -14,7 +14,7 @@ Guía operativa exhaustiva para el registro, especificación técnica, jerarquí
 
 ## 2. Estructura Canónica del Cuerpo del Issue
 
-El cuerpo del ticket debe ser exhaustivo y autosuficiente para eliminar la necesidad de redactar prompts manuales posteriores. Debe redactarse mediante la API nativa de archivos (`write_to_file`) en el archivo temporal `.issue_body` con la siguiente estructura técnica:
+El cuerpo del ticket debe ser exhaustivo y autosuficiente para eliminar la necesidad de redactar prompts manuales posteriores. Debe redactarse mediante herramientas nativas de archivos en el archivo temporal `.issue_body` con la siguiente estructura técnica:
 
 ```markdown
 ### Diagnóstico del Problema
@@ -80,7 +80,7 @@ Toda propuesta en la especificación de una issue (`.issue_body`) o plan de impl
 
 Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix matching* cuando se utilizan comillas complejas o cadenas multilínea en la terminal, el cuerpo debe transferirse mediante archivo temporal y el perfil tipificarse vía label:
 
-1. Redactar la especificación técnica en `.issue_body` con `write_to_file`.
+1. Redactar la especificación técnica en `.issue_body` mediante herramientas nativas de archivos.
 2. Crear el issue mediante GitHub CLI especificando su perfil de ejecución:
    ```bash
    gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"
@@ -192,6 +192,6 @@ Para desacoplar el comportamiento del flujo de trabajo y la integración con Git
 ### 12.2 Resolución Dinámica con Fallback Determinista
 
 Al consultar o interactuar con GitHub Projects v2 (`gh project item-list`, `gh project item-add`, `gh project link`), el agente debe:
-1. Verificar si existe `.repo-config.json` en la raíz del workspace activo mediante herramientas nativas de archivos (`view_file`).
+1. Verificar si existe `.repo-config.json` en la raíz del workspace activo mediante herramientas nativas de lectura o inspección de archivos.
 2. Extraer `project_number` y `project_owner` declarados.
 3. Si el archivo no existe o alguna de las claves está omitida, aplicar de forma automática e inmediata los valores por defecto (`project_number: 1`, `project_owner: "@me"`), garantizando completa compatibilidad hacia atrás y cero intervención manual del usuario.

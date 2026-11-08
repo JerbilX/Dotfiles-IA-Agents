@@ -42,10 +42,9 @@ class TestProjectDocumentation(unittest.TestCase):
         with open(self.template_file, "r", encoding="utf-8") as f:
             content = f.read()
 
-        self.assertIn("view_file", content)
-        self.assertIn("grep_search", content)
-        self.assertIn("write_to_file", content)
-        self.assertIn("replace_file_content", content)
+        self.assertIn("inspección", content)
+        self.assertIn("lectura de archivos", content)
+        self.assertIn("escritura o edición", content)
         self.assertIn("PROHIBIDO", content)
         self.assertIn("Solo Lectura", content)
 

@@ -19,7 +19,7 @@ Este documento recopila los principales anti-patrones y trampas técnicas observ
 - **Anti-Patrón:** Usar `git commit -m "..."` o `gh pr create --body "..."` con textos largos o caracteres de escape en la terminal.
 - **Síntoma:** Pérdida del *prefix matching* de seguridad; el agente dispara modales interactivos continuos de confirmación humana o fallos de parseo.
 - **Causa Raíz:** El evaluador de permisos de Antigravity desactiva la coincidencia por prefijo de comando cuando detecta saltos de línea, comillas anidadas o expansiones dinámicas de variables.
-- **Solución Canónica:** Redactar el contenido mediante herramientas nativas de archivos (`write_to_file`) en archivos temporales desacoplados (`.commit_msg`, `.pr_body`, `.issue_body`), transferir con flags atómicos (`-F .commit_msg` o `--body-file .pr_body`) y limpiar de inmediato (`rm -f <archivo>`).
+- **Solución Canónica:** Redactar el contenido mediante herramientas nativas de archivos en archivos temporales desacoplados (`.commit_msg`, `.pr_body`, `.issue_body`), transferir con flags atómicos (`-F .commit_msg` o `--body-file .pr_body`) y limpiar de inmediato (`rm -f <archivo>`).
 - **Precedentes de Referencia:**
   - [ADR-0001: Blindaje de Sandbox y Gestión de Permisos de Git](file:///home/jerbilx/Proyectos-IA-V3/Dotfiles-IA-Agents/docs/adr/0001-blindaje-de-sandbox-y-gestion-de-permisos.md)
   - [ADR-0012: Optimización de Latencia y Eliminación de Fricción Operativa](file:///home/jerbilx/Proyectos-IA-V3/Dotfiles-IA-Agents/docs/adr/0012-optimizacion-de-latencia-y-eliminacion-de-friccion-operativa.md)

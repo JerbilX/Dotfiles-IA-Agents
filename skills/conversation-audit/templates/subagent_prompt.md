@@ -18,7 +18,7 @@ Auditar la sesión identificada por:
 1. **Restricción Estricta de Herramientas (Exclusividad de `agent-audit`):**
    - **PROHIBIDO TAXATIVAMENTE** ejecutar comandos de terminal diferentes a `agent-audit`.
    - Queda estrictamente vetado invocar intérpretes (`python3`, `python3 -c`, `node`, `ruby`), wrappers intermedios vía `subprocess`, comandos de lectura/búsqueda en shell (`cat`, `grep`, `awk`, `sed`, `head`, `tail`, `jq`) o subshells (`bash`, `sh`).
-   - Queda prohibido el uso de herramientas nativas de lectura o búsqueda sobre la transcripción externa (`view_file`, `grep_search`). Toda la telemetría y diagnóstico deben resolverse 100% mediante el CLI determinista `agent-audit`.
+   - Queda prohibido el uso de herramientas nativas de lectura o búsqueda sobre la transcripción externa. Toda la telemetría y diagnóstico deben resolverse 100% mediante el CLI determinista `agent-audit`.
 
 2. **Presupuesto Finito de Herramientas (Tool Budget: Máximo 3 Invocaciones):**
    - Cuentas con un presupuesto máximo estricto de **2 a 3 invocaciones de herramientas** en toda la sesión:

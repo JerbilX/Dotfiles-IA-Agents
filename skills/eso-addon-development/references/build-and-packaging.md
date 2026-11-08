@@ -69,7 +69,7 @@ Para mitigar desbordes de buffer (`CONTEXT_TRUNCATION`) y saturación de la vent
     4. Stack trace acotado y legible (sin bucles de inspección).
 * **Modo Silencioso / Compacto por Defecto:**
   * La ejecución estándar del arnés (`luajit tests/run.lua` o `lua tests/run.lua`) debe operar en modo silencioso o conciso.
-  * La verbosidad detallada o volcados adicionales deben quedar condicionados a una bandera explícita (ej. `--verbose` o `-v`), garantizando que las invocaciones por defecto desde herramientas de automatización (`run_command`) preserven la ventana de contexto.
+  * La verbosidad detallada o volcados adicionales deben quedar condicionados a una bandera explícita (ej. `--verbose` o `-v`), garantizando que las invocaciones por defecto desde herramientas de ejecución de comandos en terminal preserven la ventana de contexto.
 * **Diseño y Actualización Atómica de Mocks (Anti-Ping-Pong):**
   * Para prevenir ciclos pendulares de edición fragmentaria (`PING_PONG_TOOL_LOOP`), queda prohibido realizar ediciones microscópicas sucesivas alternadas con ejecuciones de prueba para inferir gradualmente las dependencias faltantes en el arnés.
   * Los arneses de mock en `tests/` deben modelar desde su diseño inicial las entidades y métodos canónicos requeridos (`WINDOW_MANAGER`, `GuiRoot`, métodos de control: `SetAnchor`, `ClearAnchors`, `SetDimensions`, `SetHidden`, `SetHandler`, etc.).

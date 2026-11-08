@@ -13,7 +13,7 @@ Guía metodológica, catálogo de métricas y protocolo operativo para la audito
 ## 1. Principios Fundamentales
 
 1. **Ahorro de Presupuesto de Contexto (Context-Saving):**
-   - Prohibido volcar transcripciones extensas (`transcript.jsonl`, JSON de sesiones) directamente al contexto del LLM mediante herramientas de lectura masiva (`view_file`, `cat`).
+   - Prohibido volcar transcripciones extensas (`transcript.jsonl`, JSON de sesiones) directamente al contexto del LLM mediante herramientas de lectura masiva (lectura de archivos sin paginar, `cat`).
    - La ingesta y agregación de métricas debe delegarse de forma determinista al binario local `agent-audit`, ingresando al contexto del agente únicamente el informe procesado o resumen tabular.
    - En auditorías extensas, históricas o en lote, la ejecución y análisis de `agent-audit` debe desacoplarse hacia un subagente en background (modelo `flash`), preservando el hilo de chat principal libre de trazas intermedias.
 2. **Agnosticismo de Runtime:**
@@ -33,7 +33,7 @@ Guía metodológica, catálogo de métricas y protocolo operativo para la audito
 | **Tiempo** | **Wall-Clock Duration** | Segundos / Minutos | Tiempo transcurrido total entre la marca de tiempo del primer paso y el último paso registrado. |
 | **Tiempo** | **Step Latency (Promedio / Máxima)** | Segundos | Delta temporal calculado entre eventos consecutivos. Refleja el tiempo de inferencia del modelo y la ejecución de herramientas. |
 | **Ejecución** | **Turnos por Fuente** | Conteo | Cantidad de pasos desglosados en: Usuario (`USER`), Agente (`MODEL`) y Sistema/Herramientas (`SYSTEM`). |
-| **Herramientas** | **Invocaciones por Tool** | Conteo | Total de llamadas acumuladas por cada herramienta nativa o MCP (`view_file`, `replace_file_content`, `run_command`, etc.). |
+| **Herramientas** | **Invocaciones por Tool** | Conteo | Total de llamadas acumuladas por cada herramienta nativa o MCP (lectura, edición, comandos de terminal, etc.). |
 | **Herramientas** | **Tasa de Falla (Error Rate)** | Porcentaje (%) | Porcentaje de invocaciones que concluyeron en estado `ERROR` o con excepciones reportadas en el resultado. |
 | **Razonamiento** | **Pasos con Thinking** | Conteo | Cantidad de turnos donde el modelo emitió cadenas de razonamiento previo (`thinking` / chain-of-thought). |
 | **Razonamiento** | **Volumen de Thinking** | Caracteres | Promedio y total de caracteres dedicados a planificación interna por turno. |
@@ -48,11 +48,11 @@ Guía metodológica, catálogo de métricas y protocolo operativo para la audito
 | `REPETITIVE_TOOL_LOOP` | **ALTA** | Bucle Repetitivo de Herramienta | Dos o más invocaciones consecutivas de la misma herramienta con argumentos idénticos sin progreso intermedio. | Detenerse y verificar si el agente no leyó el output previo o quedó atrapado en un ciclo ciego de reintento. |
 | `CONSECUTIVE_TOOL_ERRORS` | **CRÍTICA** | Errores Consecutivos en Herramientas | Dos o más fallos de ejecución de herramientas consecutivos. | Activar de inmediato el disyuntor de seguridad (Stop & Ask). Prohibido seguir probando variaciones sin hipótesis fundada. |
 | `HIGH_LATENCY_STEP` | **MEDIA** | Paso de Alta Latencia | Pasos con duración individual superior al umbral configurado (ej. > 60s). | Investigar llamadas bloqueantes de red, búsquedas sin filtro o procesamiento excesivo en terminal. |
-| `TERMINAL_PIPELINING` | **MEDIA** | Encadenamiento en Terminal | Uso de operadores (`&&`, `\|`, `;`, tuberías) en comandos de terminal (`run_command`), rompiendo el *prefix matching* de permisos. | Desacoplar en llamadas CLI atómicas o utilizar herramientas nativas de archivos (`write_to_file`, `replace_file_content`). |
+| `TERMINAL_PIPELINING` | **MEDIA** | Encadenamiento en Terminal | Uso de operadores (`&&`, `\|`, `;`, tuberías) en comandos de terminal, rompiendo el *prefix matching* de permisos. | Desacoplar en llamadas CLI atómicas o utilizar herramientas nativas de archivos (escritura, edición atómica). |
 | `TERMINAL_REPL_LOOP` | **ALTA** | Bucle REPL Iterativo en Terminal | Secuencia o alta densidad de ejecuciones de evaluación en línea en terminal (`python3 -c`, `node -e`, `bash -c`) o wrappers vía `subprocess` para pruebas, exploración o filtrado de utilidades. | Desalentar el uso de terminal como REPL/wrapper e indicar el consumo de flags nativos del CLI, refactorización hacia un script dedicado en scratch (`<appDataDir>/brain/<conversation-id>/scratch/`) o tests locales. |
-| `CONTEXT_TRUNCATION` | **BAJA** | Campo Truncado en el Registro | Pasos con `truncated_fields`: el runtime recortó el campo al persistir el transcript. Señal de volumen; no prueba pérdida de contexto del modelo (verificar si pasos posteriores usan el contenido). | Acotar lecturas o salidas voluminosas recurrentes (`grep_search`, `--jq`, paginación). |
-| `UNPAGINATED_FILE_READ` | **ALTA** | Lectura No Paginada de Archivos | Invocación de herramientas de lectura de archivos (`view_file` o equivalentes) sin delimitar `StartLine`/`EndLine` o con ventanas excesivas (> 200 líneas). | Utilizar `grep_search` para localización previa y acotamiento de ventana mediante `StartLine` y `EndLine`. |
-| `READ_ONLY_LOOP` | **ALTA** | Bucle de Solo Lectura / Parálisis | Secuencia de 4 o más lecturas pasivas consecutivas (`view_file`, `grep_search`, `find_by_name`, `list_dir`) sin acción observable intermedia (mutación o comando). | Detener lecturas exploratorias, formular hipótesis y proceder a mutar código, ejecutar pruebas o detenerse con síntesis. |
+| `CONTEXT_TRUNCATION` | **BAJA** | Campo Truncado en el Registro | Pasos con `truncated_fields`: el runtime recortó el campo al persistir el transcript. Señal de volumen; no prueba pérdida de contexto del modelo (verificar si pasos posteriores usan el contenido). | Acotar lecturas o salidas voluminosas recurrentes (búsqueda por contenido, `--jq`, paginación). |
+| `UNPAGINATED_FILE_READ` | **ALTA** | Lectura No Paginada de Archivos | Invocación de herramientas de lectura de archivos sin delimitar rango o paginado o con ventanas excesivas (> 200 líneas). | Utilizar búsqueda por contenido para localización previa y acotamiento de ventana mediante rangos de líneas o paginado. |
+| `READ_ONLY_LOOP` | **ALTA** | Bucle de Solo Lectura / Parálisis | Secuencia de 4 o más lecturas pasivas consecutivas (lectura de archivos, búsqueda por contenido, búsqueda por nombre o listado) sin acción observable intermedia (mutación o comando). | Detener lecturas exploratorias, formular hipótesis y proceder a mutar código, ejecutar pruebas o detenerse con síntesis. |
 | `PING_PONG_TOOL_LOOP` | **ALTA** | Bucle Cíclico Alternante | Patrón cíclico repetitivo entre 2 o 3 llamadas alternantes (ej. A -> B -> A -> B) eludiendo límites por archivo. | Romper la alternancia ciega entre archivos; aplicar disyuntor de seguridad y solicitar clarificación o validar hipótesis en tests. |
 | `COMPLACENCY_DETECTED` | **BAJA** | Complacencia o Adulación Vacía | Respuestas del modelo con frases serviles ("¡Gran idea!", "tienes toda la razón", "disculpa las molestias"). | Cumplir estrictamente `core/01-critical-feedback.md`. Mantener tono asertivo, objetivo y neutro. |
 
@@ -72,11 +72,11 @@ Cuando el usuario solicite auditar una conversación previa o cuando se requiera
 
 ### Paso 2: Invocación del CLI Determinista (`agent-audit`)
 
-La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder a las rutas externas al workspace donde residen los logs del runtime).
+La invocación debe ejecutarse con bypass de sandbox (ej. `BypassSandbox: true` en Antigravity, requerido para acceder a las rutas externas al workspace donde residen los logs del runtime).
 
 - **Consumo Exclusivo de Opciones Nativas y Veto a Wrappers:**
   - Toda la extracción, filtrado e inspección de telemetría debe consumirse exclusivamente mediante las opciones nativas de `agent-audit` (`--format`, `--inspect-step`, `--inspect-steps`, `--filter-tool`, `--failed-steps`, `--metadata-only`, etc.).
-  - Prohibido taxativamente envolver `agent-audit` en llamadas intermedias vía `subprocess` dentro de scripts en subshell o evaluadores (`python3 -c`, `bash -c`), así como canalizar su salida por tuberías hacia scripts ad-hoc. El procesamiento debe operar sobre la salida directa del CLI o aislarse en un script formal en `scratch/` confinado (`BypassSandbox: false`).
+  - Prohibido taxativamente envolver `agent-audit` en llamadas intermedias vía `subprocess` dentro de scripts en subshell o evaluadores (`python3 -c`, `bash -c`), así como canalizar su salida por tuberías hacia scripts ad-hoc. El procesamiento debe operar sobre la salida directa del CLI o aislarse en un script formal en `scratch/` confinado en sandbox (ej. `BypassSandbox: false` en Antigravity).
   - Ante agregaciones cuantitativas no soportadas por el CLI, exportar a JSON (`--format json`) y procesar en una única ejecución en `scratch/` o delegar a subagente `flash`, evitando bucles interactivos o sobreanálisis ad-hoc en el hilo principal.
 
 #### Jerarquía Determinista de Invocación (Degradación Elegante):
@@ -89,7 +89,7 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
    *(Esta es la forma canónica recomendada. Asegura que el motor de permisos de Antigravity reconozca un único prefijo global permanente mediante la Opción 4).*
 
 2. **Vía de Fallback Determinista (Ante ausencia en `$PATH` o `command not found`):**
-   Si la subshell no incluye `~/.local/bin` o no se ha ejecutado `./build.sh skills` en el host, resolver directamente la ruta sin recurrir a búsquedas ciegas (`find_by_name`, `ls`):
+   Si la subshell no incluye `~/.local/bin` o no se ha ejecutado `./build.sh skills` en el host, resolver directamente la ruta sin recurrir a búsquedas ciegas (búsquedas por nombre de archivo, `ls`):
    - **Dentro de este repositorio (`Dotfiles-IA-Agents`):**
      ```bash
      ./skills/conversation-audit/bin/agent-audit <target>
@@ -114,7 +114,7 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
 - **Ejemplos Canónicos de Inspección Frecuente:**
   - Pasos lentos: `agent-audit <id> --threshold-latency 30`
   - Pasos fallidos: `agent-audit <id> --failed-steps`
-  - Filtrar por herramienta: `agent-audit <id> --filter-tool run_command`
+  - Filtrar por herramienta: `agent-audit <id> --filter-tool <tool>`
   - Rango acotado de pasos: `agent-audit <id> --inspect-steps 25-45`
 
 - Salida en texto tabular en consola (predeterminada):
@@ -157,9 +157,9 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
   ```
 - Filtrado nativo avanzado por herramienta (aislado o en combinación con rangos o fallos, sin scripts evaluadores):
   ```bash
-  agent-audit <target> --filter-tool run_command
-  agent-audit <target> --inspect-steps 87-105 --filter-tool run_command
-  agent-audit <target> --failed-steps --filter-tool run_command
+  agent-audit <target> --filter-tool <tool>
+  agent-audit <target> --inspect-steps 87-105 --filter-tool <tool>
+  agent-audit <target> --failed-steps --filter-tool <tool>
   ```
 - Listado exclusivo de pasos con errores o excepciones en herramientas:
   ```bash
@@ -184,7 +184,7 @@ La invocación debe ejecutarse con `BypassSandbox: true` (requerido para acceder
   ```
 
 ### Paso 3: Evaluación de Hallazgos
-- Contrastar el desglose de herramientas: identificar si herramientas pesadas como `search_web` o `run_command` monopolizan el tiempo de ejecución.
+- Contrastar el desglose de herramientas: identificar si herramientas pesadas (búsquedas web, ejecución de comandos en terminal) monopolizan el tiempo de ejecución.
 - Inspeccionar si existen antipatrones de `CONSECUTIVE_TOOL_ERRORS`, `REPETITIVE_TOOL_LOOP`, `TERMINAL_REPL_LOOP` o `UNPAGINATED_FILE_READ`.
 - Revisar los pasos de mayor latencia y contrastarlos con las operaciones realizadas.
 
@@ -206,10 +206,10 @@ Para auditorías de sesiones extensas, análisis por lotes de múltiples convers
   - Cuando la conversación principal esté en fases activas de desarrollo o revisión y no deba ensuciarse con salidas extensas de CLI o cómputo intermedio de antipatrones.
 
 ### 5.2 Especificación y Contrato del Subagente
-La delegación al subagente se estructura con la herramienta nativa `invoke_subagent`:
+La delegación al subagente se estructura con el mecanismo de subagentes del runtime (ej. `invoke_subagent` en Antigravity):
 
 1. **Parámetros de Configuración del Subagente:**
-   - `TypeName`: `"self"` (hereda el entorno y herramientas completas del agente para invocar `run_command` con `BypassSandbox: true`).
+   - `TypeName`: `"self"` (en Antigravity; hereda el entorno y herramientas completas del agente para invocar comandos de terminal con bypass de sandbox si aplica).
    - `Role`: `"Session Performance Auditor"` o `"Session Auditor"`.
    - `Model`: `"flash"` (modelo ligero de alta velocidad y bajo costo, óptimo para parsear CLI, analizar antipatrones y sintetizar reportes).
    - `Workspace`: `"inherit"` (hereda el workspace sin branching ni duplicación de storage).
@@ -217,7 +217,7 @@ La delegación al subagente se estructura con la herramienta nativa `invoke_suba
 2. **Contrato Operativo y Reglas de Blindaje:**
    - **Restricción Estricta de Herramientas (Exclusividad de `agent-audit`):**
      - Prohibido taxativamente al subagente ejecutar comandos de terminal ajenos a `agent-audit` (veto absoluto de `python3`, `python3 -c`, `node`, `ruby`, `cat`, `grep`, `bash`, scripts ad-hoc o wrappers vía `subprocess`).
-     - Prohibido el uso de herramientas nativas de lectura o búsqueda (`view_file`, `grep_search`) sobre transcripciones externas. Toda la telemetría se extrae de forma 100% determinista mediante `agent-audit`.
+     - Prohibido el uso de herramientas nativas de lectura o búsqueda sobre transcripciones externas. Toda la telemetría se extrae de forma 100% determinista mediante `agent-audit`.
    - **Presupuesto Finito de Herramientas (Tool Budget):**
      - Presupuesto máximo estricto de **2 a 3 invocaciones de herramientas** en toda la sesión: 1 ejecución global (`agent-audit <target> --format markdown`) y hasta 2 quirúrgicas opcionales (`agent-audit <target> --failed-steps` o `agent-audit <target> --inspect-step <N>`).
    - **Disyuntor Autónomo de Seguridad (Circuit Breaker - Stop & Synthesize):**
@@ -235,7 +235,7 @@ La delegación al subagente se estructura con la herramienta nativa `invoke_suba
       "Role": "Session Performance Auditor",
       "Model": "flash",
       "Workspace": "inherit",
-      "Prompt": "Ejecuta 'agent-audit <target> --format markdown' con BypassSandbox: true. Presupuesto estricto: máximo 3 tool calls (puedes usar --failed-steps o --inspect-step <N> si hay errores). Prohibido ejecutar comandos de terminal ajenos a agent-audit (vetado python3 -c, cat, grep, bash). Circuit breaker: si hay error o alcanzas 3 llamadas, Stop & Synthesize de inmediato. Devuelve únicamente el Diagnóstico Ejecutivo Consolidado al hilo principal. Ver directivas en skills/conversation-audit/templates/subagent_prompt.md."
+      "Prompt": "Ejecuta 'agent-audit <target> --format markdown' (con bypass de sandbox si aplica). Presupuesto estricto: máximo 3 tool calls (puedes usar --failed-steps o --inspect-step <N> si hay errores). Prohibido ejecutar comandos de terminal ajenos a agent-audit (vetado python3 -c, cat, grep, bash). Circuit breaker: si hay error o alcanzas 3 llamadas, Stop & Synthesize de inmediato. Devuelve únicamente el Diagnóstico Ejecutivo Consolidado al hilo principal. Ver directivas en skills/conversation-audit/templates/subagent_prompt.md."
     }
   ]
 }

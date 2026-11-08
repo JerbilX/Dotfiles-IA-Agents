@@ -6,7 +6,7 @@ Guía canónica para delegar exploraciones de amplio espectro al subagente nativ
 
 ## 1. Fundamentos y Diagnóstico de Ahorro de Tokens
 
-Durante las fases de ingesta (Paso 1) y planificación (Paso 3) del flujo de trabajo, las exploraciones extensas de código o repositorios múltiples (utilizando llamadas sucesivas a `view_file` o `grep_search` sin acotamiento estricto) vuelcan grandes volúmenes de texto en la transcripción de la sesión principal.
+Durante las fases de ingesta (Paso 1) y planificación (Paso 3) del flujo de trabajo, las exploraciones extensas de código o repositorios múltiples (utilizando llamadas sucesivas a herramientas de lectura o búsqueda por contenido sin acotamiento estricto) vuelcan grandes volúmenes de texto en la transcripción de la sesión principal.
 
 En arquitecturas de modelos de lenguaje, el contexto es **estrictamente acumulativo**:
 * Cada bloque de código leído en la sesión principal persiste en el historial y se reenvía en cada turno subsiguiente.
@@ -22,7 +22,7 @@ Rige un límite estricto para diferenciar lecturas directas de investigaciones d
 
 * **Inspección Quirúrgica Confinada (≤ 8 archivos):**
   * Permitida directamente en la sesión principal solo cuando se conozcan de antemano las rutas exactas y el alcance se restrinja a un máximo de **8 archivos**.
-  * Se deben utilizar las APIs nativas de lectura (`view_file`, `grep_search`) con rangos de línea acotados.
+  * Se deben utilizar las herramientas nativas de lectura y búsqueda por contenido con rangos de línea acotados.
 
 * **Delegación a Subagente Research (> 8 archivos, Bases Externas o a pedido del usuario):**
   * **Queda estrictamente prohibido** acumular lecturas masivas en la sesión principal si el relevamiento requiere:
@@ -100,7 +100,7 @@ La invocación del subagente debe estructurarse mediante la herramienta nativa `
 * **Espera Reactiva (Prohibición de Polling):** Tras invocar a `research`, el agente no debe consultar activamente en bucle (`manage_subagents` status o sleep). El runtime reactiva la ejecución automáticamente cuando el subagente devuelve su respuesta consolidada.
 * **Integración al Hilo Principal:**
   1. Recibido el informe, el agente principal integra los hallazgos directamente en el análisis de la issue o en el plan de trabajo (`implementation_plan.md`).
-  2. Si requiere inspeccionar una línea puntual para editarla, realiza una lectura dirigida (`view_file` con `StartLine` y `EndLine`), evitando releer el archivo completo.
+  2. Si requiere inspeccionar una línea puntual para editarla, realiza una lectura dirigida (con delimitación de rango o paginado), evitando releer el archivo completo.
   3. La sesión principal conserva un contexto liviano y enfocado para la implementación.
 
 ---

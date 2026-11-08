@@ -135,14 +135,14 @@ La verificación sistemática de calidad documental (cumplimiento estricto del c
 La delegación al subagente se estructura con la herramienta nativa `invoke_subagent`:
 
 1. **Parámetros Canónicos de Configuración:**
-   - `TypeName`: `"research"` (subagente nativo de lectura y análisis, dotado con `view_file`, `grep_search`, `find_by_name`, `list_dir`).
+   - `TypeName`: `"research"` (en Antigravity; subagente de lectura y análisis dotado de herramientas de inspección, o subagente equivalente del runtime).
    - `Role`: `"Static Documentation Auditor"` o `"Documentation Quality Auditor"`.
    - `Model`: `"flash"` o `"flash_lite"` (modelo ligero de alta velocidad y bajo costo, óptimo para parsear Markdown, verificar enlaces y evaluar estructura).
    - `Workspace`: `"inherit"` (hereda el workspace activo con permisos de solo lectura; sin branching ni duplicación de almacenamiento).
 
 2. **Reglas de Blindaje Operativo:**
-   - **Solo Lectura Confinado:** El subagente opera en modo estrictamente pasivo. Tiene terminantemente prohibido utilizar herramientas de escritura (`write_to_file`, `replace_file_content`) o ejecutar comandos mutadores.
-   - **Presupuesto Finito de Herramientas (Tool Budget):** Máximo estricto de **4 a 6 lecturas dirigidas** (`view_file`, `grep_search`). Debe utilizar lecturas dirigidas y acotadas por rango de líneas en lugar de volcar archivos completos.
+   - **Solo Lectura Confinado:** El subagente opera en modo estrictamente pasivo. Tiene terminantemente prohibido utilizar herramientas de escritura y edición de archivos o ejecutar comandos mutadores.
+   - **Presupuesto Finito de Herramientas (Tool Budget):** Máximo estricto de **4 a 6 lecturas dirigidas** (lectura o búsqueda por contenido). Debe utilizar lecturas dirigidas y acotadas por rango de líneas en lugar de volcar archivos completos.
    - **Disyuntor Autónomo de Seguridad (Circuit Breaker - Stop & Synthesize):** Si se alcanza el presupuesto de herramientas o un archivo esperado no existe, el subagente debe detenerse inmediatamente (*Stop & Synthesize*) y reportar los hallazgos en la tabla diagnóstica, sin iterar en búsquedas redundantes.
    - **Contrato de Salida Limpia:** Prohibido reenviar el contenido completo de los archivos analizados. Debe devolver exclusivamente la **Tabla Diagnóstica de Deficiencias y Conformidad** y el **Veredicto Global**.
 
@@ -156,7 +156,7 @@ La delegación al subagente se estructura con la herramienta nativa `invoke_suba
       "Role": "Static Documentation Auditor",
       "Model": "flash",
       "Workspace": "inherit",
-      "Prompt": "Ejecuta la auditoría estática de documentación según la checklist de skills/project-documentation/SKILL.md y la plantilla skills/project-documentation/resources/template-doc-audit-subagent.md. Inspecciona README.md y docs/ con herramientas de lectura nativas (view_file, grep_search). Presupuesto estricto: máximo 6 lecturas dirigidas. Prohibido modificar archivos o volcar texto completo. Devuelve únicamente la Tabla Diagnóstica de Conformidad y el Veredicto Global al hilo principal."
+      "Prompt": "Ejecuta la auditoría estática de documentación según la checklist de skills/project-documentation/SKILL.md y la plantilla skills/project-documentation/resources/template-doc-audit-subagent.md. Inspecciona README.md y docs/ con herramientas de inspección nativas. Presupuesto estricto: máximo 6 lecturas dirigidas. Prohibido modificar archivos o volcar texto completo. Devuelve únicamente la Tabla Diagnóstica de Conformidad y el Veredicto Global al hilo principal."
     }
   ]
 }
