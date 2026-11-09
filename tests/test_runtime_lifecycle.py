@@ -189,20 +189,19 @@ class TestRuntimeLifecycle(unittest.TestCase):
         self.assertIn("bash", guard_content)
 
     def test_environment_standards_prohibit_inline_evaluators_and_wrappers(self):
-        """core/00-router.md defines 1-line residual; agent-guard enforces evaluators (Issue #208, ADR-0048, ADR-0052, #284)."""
-        env_rule = os.path.join(CORE_DIR, "00-router.md")
-        with open(env_rule, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        self.assertIn("Prohibición Universal de REPL en Terminal", content)
-        self.assertIn("scratch/", content)
-
+        """agent-guard mechanically enforces inline evaluators prohibition; scratch/ permitted in issue-driven-workflow (Issue #208, ADR-0048, ADR-0052, ADR-0054)."""
         guard_file = os.path.join(REPO_ROOT, "skills", "conversation-audit", "bin", "agent-guard")
         with open(guard_file, "r", encoding="utf-8") as f:
             guard_content = f.read()
         self.assertIn("python3", guard_content)
         self.assertIn("bash", guard_content)
         self.assertIn("node", guard_content)
+        self.assertIn("scratch/", guard_content)
+
+        workflow_skill = os.path.join(REPO_ROOT, "skills", "issue-driven-workflow", "SKILL.md")
+        with open(workflow_skill, "r", encoding="utf-8") as f:
+            workflow_content = f.read()
+        self.assertIn("scratch/", workflow_content)
 
     def test_conversation_audit_skill_prohibits_subprocess_wrappers(self):
         """skills/conversation-audit/SKILL.md must mandate native options and prohibit subprocess wrappers (Issue #208)."""
