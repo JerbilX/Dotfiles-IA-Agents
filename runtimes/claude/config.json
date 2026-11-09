@@ -5,7 +5,8 @@
     "issue-driven-workflow",
     "autonomous-learning",
     "conversation-audit",
-    "project-documentation"
+    "project-documentation",
+    "smokinggun"
   ],
   "binaries": {
     "agent-audit": "agent-audit",
