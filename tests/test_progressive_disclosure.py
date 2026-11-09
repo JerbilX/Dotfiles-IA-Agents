@@ -5,6 +5,7 @@ Unit tests for the self-sufficient basal prompt (ADR-0047): basal word budget, m
 """
 
 import glob
+import json
 import os
 import re
 import subprocess
@@ -115,10 +116,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
             "Inconsistencia Lógica",
             "Prohibición de Backlogs Locales",
             "Inmutabilidad de Workspace",
-            "Uso Exclusivo de",
             "Límites de Workspace",
-            "Lectura Paginada Obligatoria",
-            "Prohibición Universal de REPL en Terminal",
         ]
 
         for inv in required_invariants:
@@ -126,6 +124,27 @@ class TestProgressiveDisclosure(unittest.TestCase):
                 inv, all_core_content,
                 f"Core invariant marker missing: '{inv}'"
             )
+
+    def test_p0_invariants_mechanically_enforced(self):
+        """P0 mechanical invariants evacuated from core/ (ADR-0054) must have active hooks and test coverage."""
+        hooks_path = os.path.join(RUNTIMES_DIR, "antigravity", "hooks.json")
+        self.assertTrue(os.path.isfile(hooks_path), f"Missing hooks file: {hooks_path}")
+        with open(hooks_path, "r", encoding="utf-8") as f:
+            hooks_data = json.load(f)
+
+        # 1. Circuit breaker activo para herramientas de lectura
+        cb_hooks = hooks_data.get("circuit-breaker", {}).get("PreToolUse", [])
+        self.assertTrue(any("agent-circuit-breaker" in h.get("command", "") for item in cb_hooks for h in item.get("hooks", [])))
+
+        # 2. Guard mecánico P0 activo para comandos y manipulación de archivos
+        guard_hooks = hooks_data.get("guards", {}).get("PreToolUse", [])
+        self.assertTrue(any("agent-guard" in h.get("command", "") for item in guard_hooks for h in item.get("hooks", [])))
+
+        # 3. Binarios ejecutables presentes
+        for bin_name in ("agent-guard", "agent-circuit-breaker"):
+            bin_path = os.path.join(REPO_ROOT, "skills", "conversation-audit", "bin", bin_name)
+            self.assertTrue(os.path.isfile(bin_path), f"Missing executable hook: {bin_path}")
+            self.assertTrue(os.access(bin_path, os.X_OK), f"Hook not executable: {bin_path}")
 
     def test_procedural_rules_delegated_to_skills(self):
         """Procedural rules removed from core/ (ADR-0047, ADR-0048, #284) must live in skills (P1)."""
@@ -263,13 +282,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
             self.assertIn(label, skill_content, f"Missing {label} in issue-driven-workflow SKILL.md")
 
     def test_pagination_and_atomic_edits_invariants(self):
-        """Strict pagination in view_file and atomic granularity in replace_file_content must be enforced."""
-        router_path = os.path.join(CORE_DIR, "00-router.md")
-        with open(router_path, "r", encoding="utf-8") as f:
-            router_content = f.read()
-        self.assertIn("granularidad atómica", router_content)
-        self.assertIn("ventana ≤ 200 líneas", router_content)
-
+        """Strict pagination in view_file and atomic granularity in replace_file_content are defined in P1 (ADR-0054)."""
         skill_path = os.path.join(REPO_ROOT, "skills", "issue-driven-workflow", "SKILL.md")
         with open(skill_path, "r", encoding="utf-8") as f:
             skill_content = f.read()
@@ -277,14 +290,21 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("ventana ≤ 200 líneas", skill_content)
 
     def test_view_file_circuit_breaker_and_prompt_immunity_invariants(self):
-        """core/00-router.md defines 1-line residual; issue-driven-workflow defines two-phase surgical read (ADR-0040, ADR-0048)."""
+        """core/00-router.md defines search circuit breaker; agent-circuit-breaker and lifecycle define read limits (ADR-0040, ADR-0048, ADR-0054)."""
         router_path = os.path.join(CORE_DIR, "00-router.md")
         with open(router_path, "r", encoding="utf-8") as f:
             router_content = f.read()
 
         self.assertIn("Circuit Breaker", router_content)
-        self.assertIn("6 lecturas consecutivas", router_content)
-        self.assertIn("ventana ≤ 200 líneas", router_content)
+
+        cb_bin_path = os.path.join(
+            REPO_ROOT, "skills", "conversation-audit", "bin", "agent-circuit-breaker"
+        )
+        with open(cb_bin_path, "r", encoding="utf-8") as f:
+            cb_content = f.read()
+        self.assertIn("DEFAULT_MAX_PASSIVE_READS = 6", cb_content)
+        self.assertIn("lecturas pasivas", cb_content)
+        self.assertIn("consecutivas", cb_content)
 
         lifecycle_ref_path = os.path.join(
             REPO_ROOT, "skills", "issue-driven-workflow", "references", "branch-lifecycle.md"
@@ -418,7 +438,8 @@ class TestProgressiveDisclosure(unittest.TestCase):
                 f"Trailing metadata comment without associated rule at {rel}"
             )
 
-        self.assertGreaterEqual(total_rules, 30, f"Expected at least 30 audited rules, found {total_rules}")
+        # 27 reglas basales tras evacuar 3 reglas P0 puras a hooks mecánicos (ADR-0054)
+        self.assertGreaterEqual(total_rules, 27, f"Expected at least 27 audited rules, found {total_rules}")
 
     def test_p0_rules_word_budget_in_basal(self):
         """Rules marked P0 must not exceed the hard cap of 100 words in the basal prompt (#286, ADR-0048)."""
