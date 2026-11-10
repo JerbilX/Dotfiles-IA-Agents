@@ -135,6 +135,17 @@ class TestAgentGuardHostRecon(unittest.TestCase):
 class TestAgentGuardTerminalFileIO(unittest.TestCase):
     """Verifica uso exclusivo de APIs nativas y control de falsos positivos (ENV_NATIVE_FILE_API)."""
 
+    def setUp(self):
+        super().setUp()
+        self._orig_get_branch = guard_mod.get_current_git_branch
+        guard_mod.get_current_git_branch = lambda workspace_hint=None: (
+            self._orig_get_branch(workspace_hint) if workspace_hint else "feat/test"
+        )
+
+    def tearDown(self):
+        guard_mod.get_current_git_branch = self._orig_get_branch
+        super().tearDown()
+
     def test_terminal_cat_file_denied(self):
         for cmd in (
             "cat README.md",
@@ -317,6 +328,14 @@ class TestAgentGuardMainProtection(unittest.TestCase):
             for cmd in ("git push", "git push fork", "git push origin HEAD"):
                 err = guard_mod.evaluate_shell_command(cmd, cwd=tmpdir)
                 self.assertIsNotNone(err, f"Esperaba bloqueo para: {cmd}")
+
+    def test_push_without_refspec_on_feature_branch_allowed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / ".git").mkdir()
+            (Path(tmpdir) / ".git" / "HEAD").write_text("ref: refs/heads/feat/test\n", encoding="utf-8")
+            for cmd in ("git push", "git push fork", "git push origin HEAD"):
+                err = guard_mod.evaluate_shell_command(cmd, cwd=tmpdir)
+                self.assertIsNone(err, f"Push sin refspec en rama efímera no debería bloquearse: {cmd}")
 
 
 class TestAgentGuardBannedFiles(unittest.TestCase):
