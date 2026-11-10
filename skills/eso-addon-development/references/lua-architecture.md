@@ -206,11 +206,97 @@ La creación dinámica de controles de interfaz mediante la API de Zenimax exige
   local myWindow = WINDOW_MANAGER:CreateControl("MyAddonTopLevelWindow", GuiRoot, CT_TOPLEVELCONTROL)
   ```
   Evitar pasar paneles secundarios o controles nativos como argumento `parent` al crear un `CT_TOPLEVELCONTROL`.
-* **Integración Visual y Anclaje (`SetAnchor`):** Para posicionar o integrar visualmente una ventana a un panel nativo (ej. `ZO_SharedRightPanelBackground`, paneles de inventario o diario), se debe mantener la ventana en el nivel superior y vincularla espacialmente mediante `:SetAnchor()`:
-  ```lua
-  myWindow:SetDimensions(350, 500)
-  myWindow:ClearAnchors()
-  myWindow:SetAnchor(TOPLEFT, ZO_SharedRightPanelBackground, TOPLEFT, 10, 10)
-  ```
+* **Diferenciación Canónica de Anclaje y Anti-Patrón Multicolumna:**
+  Al posicionar o integrar visualmente una ventana de nivel superior dentro de escenas nativas (ej. el diario de misiones `ZO_QuestJournal` o escenas de inventario), es crítico distinguir entre el contenedor de escena completo y los fondos secundarios de columna derecha:
+  * **Anti-patrón de Anclaje Multicolumna (`ZO_SharedRightPanelBackground`):** En el motor EsoUI, `ZO_SharedRightPanelBackground` corresponde exclusivamente al fondo apergaminado de la columna derecha de detalles (iniciada en X ≈ 560 px). Anclar un panel completo de 2 columnas (ancho típico ~1000 px: navegación a la izquierda y detalles a la derecha) a `ZO_SharedRightPanelBackground` desplaza la lista de navegación al centro-derecha, deja vacío el 40-50% izquierdo del diario nativo y desborda la columna de detalles fuera de la pantalla.
+  * **Anclaje de Escena Completa / Multicolumna:** Ventanas o paneles que abarcan la escena completa del diario (layout de dos columnas, ancho ~1000 px) deben anclarse al contenedor de escena principal (`ZO_QuestJournal`) o a la huella derecha completa (`ZO_RightPanelFootPrint`):
+    ```lua
+    -- Correcto: Panel completo de 2 columnas anclado al contenedor de escena nativo
+    myJournalWindow:SetDimensions(1000, 700)
+    myJournalWindow:ClearAnchors()
+    myJournalWindow:SetAnchor(TOPLEFT, ZO_QuestJournal, TOPLEFT, 0, 0)
+    myJournalWindow:SetAnchor(BOTTOMRIGHT, ZO_QuestJournal, BOTTOMRIGHT, 0, 0)
+    ```
+  * **Anclaje de Sub-Panel de Columna Derecha (Unicolumna):** El anclaje a `ZO_SharedRightPanelBackground` es válido exclusivamente para sub-paneles o vistas de una sola columna (ancho ~450-500 px) diseñadas para residir dentro del panel de detalles derecho:
+    ```lua
+    -- Correcto: Sub-panel de detalles (1 sola columna) anclado al fondo apergaminado derecho
+    myDetailsSubPanel:SetDimensions(450, 600)
+    myDetailsSubPanel:ClearAnchors()
+    myDetailsSubPanel:SetAnchor(TOPLEFT, ZO_SharedRightPanelBackground, TOPLEFT, 10, 10)
+    ```
 * **Controles Secundarios (`CT_CONTROL`):** Si se desea anidar controles directamente dentro de un contenedor o panel secundario existente sin crear una ventana independiente, se debe utilizar `CT_CONTROL` (o tipos derivados como `CT_LABEL`, `CT_BUTTON`, `CT_TEXTURE`), asignando el contenedor destino como `parent`.
+
+---
+
+## 9. Controles de Entrada Interactiva de Texto (`CT_EDITBOX`)
+
+La captura de texto dinámico del usuario (formularios, notas, títulos, descripciones de misiones) mediante controles `CT_EDITBOX` exige configuraciones explícitas de motor y arneses herméticos para evitar fallos de renderizado o pérdida de foco:
+
+### 9.1 Configuración Obligatoria en Runtime EsoUI
+* **Jerarquía con Fondo (`CT_BACKDROP`):** En EsoUI, los controles `CT_EDITBOX` son invisibles per se y carecen de bordes. Deben crearse como hijos de un `CT_BACKDROP` (ej. instanciado con plantilla nativa como `ZO_DefaultBackdrop` o configurado con texturas de borde/centro) para delimitar el área interactiva:
+  ```lua
+  local bg = WINDOW_MANAGER:CreateControl("MyAddonEditBackdrop", parentContainer, CT_BACKDROP)
+  bg:SetDimensions(300, 32)
+  bg:SetAnchor(TOPLEFT, parentContainer, TOPLEFT, 0, 0)
+
+  local editBox = WINDOW_MANAGER:CreateControl("MyAddonEditBox", bg, CT_EDITBOX)
+  editBox:SetAnchorFill()
+  ```
+* **Tipografía Obligatoria (`SetFont`):** Todo `CT_EDITBOX` debe definir explícitamente una fuente del motor (`ZoFontGame`, `ZoFontEditBox`, `ZoFontGameLarge`). Omitir `SetFont` provoca que el texto ingresado sea invisible o genere fallos de métricas en el renderizado.
+* **Límite de Longitud (`SetMaxInputChars`):** Es imperativo acotar la longitud máxima de entrada (`editBox:SetMaxInputChars(maxLength)`) para proteger la integridad de las `SavedVariables` y prevenir desbordamientos visuales o saturación de memoria.
+* **Modo Multilínea (`SetMultiLine`):** Para entradas narrativas, notas o descripciones extensas, habilitar explícitamente `editBox:SetMultiLine(true)`. Por defecto, los editboxes son de una sola línea (`SetMultiLine(false)`).
+* **Control de Foco y Habilitación:**
+  * Invocar `editBox:SetEditEnabled(true)` para habilitar edición.
+  * Gestionar el foco mediante `editBox:TakeFocus()` y `editBox:LoseFocus()`. Para entradas en pantalla completa o ventanas modales, interceptar `OnFocusLost` para confirmar o cancelar la edición.
+* **Manejador de Cambios (`OnTextChanged`):**
+  * Registrar siempre el callback `OnTextChanged` evaluando el parámetro booleano `isUserInteraction`:
+    ```lua
+    editBox:SetHandler("OnTextChanged", function(control, isUserInteraction)
+        if not isUserInteraction then return end -- Ignorar actualizaciones programáticas via SetText
+        local text = control:GetText()
+        MyAddon:OnUserInput(text)
+    end)
+    ```
+  * Distinguir `isUserInteraction` evita bucles infinitos de sincronización entre el estado del modelo y la vista.
+
+### 9.2 Emulación y Mocks Herméticos en Pruebas Unitarias (`eso_ui_mock.lua`)
+En suites unitarias herméticas ejecutadas fuera del cliente (ej. CLI de Lua o Busted):
+* **Firma de Métodos Requerida:** El mock de `CT_EDITBOX` debe implementar como mínimo:
+  * `SetText(text)` y `GetText()` -> string.
+  * `SetFont(font)` y `GetFont()` -> string.
+  * `SetMaxInputChars(max)` y `GetMaxInputChars()` -> number.
+  * `SetMultiLine(multiLine)` y `IsMultiLine()` -> boolean.
+  * `SetEditEnabled(enabled)` y `IsEditEnabled()` -> boolean.
+  * `TakeFocus()`, `LoseFocus()` y `HasFocus()` -> boolean.
+* **Comportamiento Fiel del Mock:**
+  * Al invocar `SetText(text)`, el mock debe aplicar el límite de caracteres si `maxInputChars` fue definido (truncar con `string.sub(text, 1, max)`).
+  * Al disparar eventos registrados con `SetHandler("OnTextChanged", callback)`, el harness debe proveer `(control, isUserInteraction)` de forma determinista para verificar que los callbacks ignoran mutaciones programáticas.
+
+---
+
+## 10. Ciclo de Vida y Formalización de Borradores (`Draft Lifecycle`)
+
+En componentes interactivos que permiten a los jugadores o directores de rol redactar y configurar misiones o contenidos antes de su publicación o inicio, se debe aplicar un ciclo de vida de borrador estricto para prevenir fugas de estado, colisiones de identificadores y confusión visual en la interfaz:
+
+### 10.1 Contrato de Identificador Único (`id`)
+* **Estado en Preparación:** Durante la edición, el borrador puede operar con un identificador provisional o mantener `id = nil` mientras se construyen sus objetivos y datos narrativos.
+* **Gate de Formalización Obligatorio:** Antes de invocar la activación de la misión (`StartQuest`) o consolidarla en la tabla persistente de misiones activas:
+  1. Debe garantizarse la resolución o asignación de un `id` único determinista (o correlativo autoincremental protegido contra colisiones).
+  2. Prohibido formalizar una misión con identificador vacío, `nil` o colisionante con registros existentes en `SavedVariables`.
+
+### 10.2 Limpieza Proactiva y Aislamiento de Colecciones
+* **Métodos de Saneamiento Explícitos:** El módulo de gestión de borradores debe proveer funciones atómicas de limpieza para toda colección auxiliar temporal:
+  * `ClearDraftObjectives()`: Vía canónica para vaciar la lista de objetivos en preparación.
+  * `ClearDraftAreas()` / `ClearDraftSteps()`: Limpieza de áreas de interés o etapas asociadas.
+  * `ResetDraftState()`: Saneamiento integral del formulario de preparación tras formalizar o descartar.
+* **Invariante Post-Formalización:** Inmediatamente tras guardar, publicar o iniciar una misión a partir de un borrador, se debe disparar la limpieza de las colecciones de borrador. Prohibido conservar residuos de objetivos o pasos previos que puedan filtrarse en la edición de un borrador posterior.
+
+### 10.3 Convención Visual Canónica en Listas (`|c3399FF[✎]|r `)
+* Para diferenciar nítidamente en listas de interfaz (árboles de navegación, selector de misiones del diario) las misiones formalizadas de aquellas en estado de borrador o preparación:
+  * **Prefijo Canónico:** `|c3399FF[✎]|r ` (código de color `#3399FF` / azul claro con glifo de edición `[✎]`).
+  * **Formato de Renderizado:**
+    ```lua
+    local displayName = isDraft and ("|c3399FF[✎]|r " .. questTitle) or questTitle
+    ```
+  * **Ergonomía:** Provee retroalimentación visual inmediata al usuario sin requerir columnas adicionales ni alterar el ancho de los controles de texto en listas compactas.
 
