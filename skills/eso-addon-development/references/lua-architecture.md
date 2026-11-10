@@ -300,3 +300,50 @@ En componentes interactivos que permiten a los jugadores o directores de rol red
     ```
   * **Ergonomía:** Provee retroalimentación visual inmediata al usuario sin requerir columnas adicionales ni alterar el ancho de los controles de texto en listas compactas.
 
+---
+
+## 11. Integración Idiomática en ModeBar de Quest Journal (`ZO_QuestJournal_Keyboard.modeBar` y `ZO_SceneFragmentBar`)
+
+Para añadir paneles personalizados a la ventana nativa del diario de misiones (`ZO_QuestJournal_Keyboard`):
+
+### 11.1 Anti-Patrón: Inyección en `MAIN_MENU_KEYBOARD.sceneGroupInfo["journalSceneGroup"]`
+* **Problema:** Inyectar una escena raíz directamente en `journalSceneGroup` hace que compita con el menú superior principal (top bar) de EsoUI, corrompiendo la selección visual y el estado de los botones de la barra de pestañas.
+* **Solución Canónica:** Tratar la escena de misiones (`questJournal`) como un contenedor unificado y extender exclusivamente la barra de sub-modos interna (`QUEST_JOURNAL_KEYBOARD.modeBar`).
+
+### 11.2 Encapsulamiento en `ZO_FadeSceneFragment` y Sub-Pestañas en `modeBar`
+* **Fragmentos de Escena:** Encapsular los paneles o controles del addon dentro de un `ZO_FadeSceneFragment` (o control derivado) y agregarlo como fragmento secundario a la escena `questJournalScene`:
+  ```lua
+  local fragment = ZO_FadeSceneFragment:New(MyAddonPanelControl)
+  QUEST_JOURNAL_SCENE:AddFragment(fragment)
+  ```
+* **Registro de Sub-Pestaña en `modeBar`:** Utilizar la barra de botones `ZO_SceneFragmentBar` nativa (`QUEST_JOURNAL_KEYBOARD.modeBar`) para agregar la nueva pestaña con su descriptor de botón, callback y fragmentos asociados:
+  ```lua
+  QUEST_JOURNAL_KEYBOARD.modeBar:Add(MY_ADDON_MODE, fragment, buttonData)
+  ```
+
+### 11.3 Hooking Defensivo de `ZO_QuestJournal_Keyboard.OnShowing`
+* **Lógica Binaria Nativa:** El manejador nativo `OnShowing` de `ZO_QuestJournal_Keyboard` asume un flujo binario entre misiones estándar y rumores (`Quests` vs `Rumors`). Al abrir el diario, si el modo actual no es `QUEST_JOURNAL_KEYBOARD_MODE_QUESTS`, la lógica de ZOS restablece o selecciona incorrectamente el modo de rumores.
+* **Protección de Modo Personalizado:** Hookear preventivamente `OnShowing` (o `ZO_PreHook`) para preservar el modo activo cuando pertenezca al addon, evitando que ZOS sobreescriba la navegación del usuario al alternar entre menús o pestañas.
+
+---
+
+## 12. Calibración de Radio Cartográfico y Normalización en EsoUI (`WorldMap Custom Pins`)
+
+En el sistema cartográfico de EsoUI, las coordenadas y radios operan normalizados en el rango de `[0.0, 1.0]`:
+
+### 12.1 Extensión de Radio y Submapas Urbanos vs Provinciales
+* **Normalización Global:** Dado que el plano del mapa abarca de `0.0` a `1.0`, un radio de `0.50` cubre el 100% del diámetro cartográfico disponible.
+* **Submapas Urbanos e Interiores (`IsUrbanSubmap`):** En submapas de ciudades o interiores de escala reducida, radios mayores (hasta `0.50`) son válidos para delimitar perímetros amplios del recinto o distrito.
+* **Mapas de Zona Provinciales:** En mapas extensos provinciales o regionales (ej. Western Skyrim, Deshaan, Glenumbra), los radios deben calibrarse estrictamente a rangos de exploración locales (típicamente $\le 0.08$ o radios proporcionales de punto de interés) para prevenir que un área de misión cubra la provincia entera.
+
+### 12.2 Transición Transparente de Borradores a Misiones Activas y Refresco de Pines
+* **Sincronización de Pines con el Ciclo de Vida:** Al formalizar misiones activas y purgar el borrador (`draftAreas` / `draftObjectives`), los gestores de pines deben alternar transparentemente sus fuentes de datos:
+  1. Dejar de referenciar las estructuras efímeras del borrador.
+  2. Apuntar de inmediato a las áreas y objetivos consolidados de la misión activa.
+* **Forzado Obligatorio de Redibujado:** Para sincronizar la interfaz cartográfica inmediatamente sin esperar a que el jugador cambie de mapa o zona:
+  ```lua
+  ZO_WorldMap_RefreshCustomPins(pinType)
+  ```
+  Esto garantiza la remoción inmediata de pines/áreas temporales de preparación y el renderizado fiel de los nuevos pines de exploración activos.
+
+
