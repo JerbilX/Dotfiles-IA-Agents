@@ -169,6 +169,10 @@ Si el issue cuenta con la etiqueta `automerge` en GitHub o la orden inicial del 
 3. **Higiene Atómica Post-Merge:**
    - Ejecutar inmediatamente `git-prune-gone --sync` y reportar la culminación del ciclo E2E al usuario.
 
+> [!NOTE]
+> **Auto-Despliegue Post-Merge en el Host (ADR-0055):**
+> Al ejecutarse `git-prune-gone --sync` (o `git pull`) en la rama base tras la fusión remota, si el repositorio tiene configurado `deployCommand` en `.repo-config.json`, el hook global de Git `post-merge` se dispara automáticamente en el entorno del host fuera del sandbox, ejecutando el despliegue del servicio/binarios sin intervención manual.
+
 #### Vía B: Fusión Manual en GitHub Web (Vía Alternativa / Fallback)
 1. El usuario revisa, aprueba y fusiona el PR en la interfaz web de GitHub.
 2. Ante la siguiente interacción o confirmación en chat, el agente ejecuta la higiene atómica:

@@ -67,6 +67,26 @@ setup_git_hooks() {
     fi
 }
 
+# Configura hooks globales de Git para auto-despliegue desatendido en el host (ADR-0055)
+setup_global_git_hooks() {
+    echo "==> [link] Asegurando configuración global de hooks de Git (ADR-0055)..."
+    local global_hooks_dir="${HOME}/.config/git/hooks"
+    local src_hook="${SCRIPT_DIR}/git/hooks/post-merge"
+    local dst_hook="${global_hooks_dir}/post-merge"
+
+    if [ ! -f "${src_hook}" ]; then
+        echo "  [!] Advertencia: Hook global no encontrado en ${src_hook}." >&2
+        return 0
+    fi
+
+    safe_symlink "${src_hook}" "${dst_hook}" "Git Global post-merge Hook"
+
+    if command -v git >/dev/null 2>&1; then
+        git config --global core.hooksPath "${global_hooks_dir}"
+        echo "  [✓] Git core.hooksPath global configurado en ${global_hooks_dir}."
+    fi
+}
+
 link_runtime_hooks() {
     local r="$1"
     local dist_hooks_file
@@ -116,6 +136,7 @@ cmd_link() {
     done
     setup_gh_aliases
     setup_git_hooks
+    setup_global_git_hooks
 }
 
 rollback_runtime() {

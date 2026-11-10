@@ -172,6 +172,9 @@ setup_gh_aliases() {{
 setup_git_hooks() {{
     :
 }}
+setup_global_git_hooks() {{
+    :
+}}
 
 cmd_link "antigravity"
 echo "Skills invoked: ${{invoked_skills[*]}}"
@@ -192,6 +195,7 @@ skills_runtime() {{ return 1; }}
 link_runtime() {{ :; }}
 setup_gh_aliases() {{ echo "aliases-ok"; }}
 setup_git_hooks() {{ echo "hooks-ok"; }}
+setup_global_git_hooks() {{ echo "global-hooks-ok"; }}
 
 cmd_link "antigravity"
 """
@@ -199,6 +203,7 @@ cmd_link "antigravity"
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertIn("aliases-ok", res.stdout)
         self.assertIn("hooks-ok", res.stdout)
+        self.assertIn("global-hooks-ok", res.stdout)
         self.assertIn("Falló el aprovisionamiento de skills", res.stderr)
 
     def test_check_sh_modular_domain_submodules(self):
