@@ -226,6 +226,18 @@ check_p0_guards() {
         echo "  [✓] Guards P0: Git hook pre-commit verificado"
     fi
 
+    # Git hook global post-merge (git/hooks/post-merge, ADR-0055)
+    local global_post_merge="${SCRIPT_DIR}/git/hooks/post-merge"
+    if [ ! -f "${global_post_merge}" ] || [ ! -x "${global_post_merge}" ]; then
+        echo "  [✗] Git hook global post-merge no encontrado o no ejecutable en ${global_post_merge}" >&2
+        p0_errors=$((p0_errors + 1))
+    elif ! bash -n "${global_post_merge}" >/dev/null 2>&1; then
+        echo "  [✗] Error de sintaxis bash en ${global_post_merge}" >&2
+        p0_errors=$((p0_errors + 1))
+    else
+        echo "  [✓] Git hook global post-merge verificado (ADR-0055)"
+    fi
+
     # 3. Ausencia total de backlogs locales o archivos prohibidos
     local banned_found=0
     for bf in TODO.md todo.md TODO todo backlog.md backlog GEMINI.md historial.md HISTORIAL.md; do

@@ -55,6 +55,20 @@ Si el usuario **confirma**:
    ```
    *(Donde `<project_number>` y `<project_owner>` se resuelven desde `.repo-config.json`, aplicando `1` y `@me` por defecto).*
 
+### 3.1 Configuración de Auto-Despliegue Post-Merge (ADR-0055)
+
+En repositorios con servicios del sistema o tooling local (ej. unidades systemd, demonios o ejecutables locales) que requieran actualización desatendida en el host tras fusionar un PR:
+
+1. Declarar la clave opcional `deployCommand` en `.repo-config.json`:
+   ```json
+   {
+     "projectNumber": 1,
+     "projectOwner": "@me",
+     "deployCommand": "./build.sh deploy"
+   }
+   ```
+2. El hook global `post-merge` de Git configurado por los dotfiles ejecutará el comando en el entorno del host (fuera del sandbox del agente) tras cada `gh pr merge` o `git pull` en ramas base (`main`, `master`, `dev`). Si el archivo o la clave no existen, el hook finaliza silenciosamente.
+
 Si el usuario **rechaza**:
 - El repositorio permanece exclusivamente bajo control de versiones local hasta nueva orden explícita.
 

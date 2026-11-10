@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# git/hooks/post-merge - Hook global de Git para auto-despliegue desatendido (ADR-0055)
+# Se ejecuta en el host fuera del sandbox de IA tras 'git pull' o 'git merge'.
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+[ -z "${REPO_ROOT}" ] && exit 0
+cd "${REPO_ROOT}" || exit 0
+
+# 1. Filtrar ramas base de integración (main, master, dev)
+CURRENT_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+case "${CURRENT_BRANCH}" in
+    main|master|dev) ;;
+    *) exit 0 ;;
+esac
+
+# 2. Encadenamiento con hooks locales si existen y no son este mismo script
+# (Respaldo por si el repositorio no tiene core.hooksPath local pero tiene .git/hooks/post-merge.local)
+LOCAL_HOOK="${REPO_ROOT}/.git/hooks/post-merge.local"
+if [ -x "${LOCAL_HOOK}" ]; then
+    "${LOCAL_HOOK}" "$@" || true
+fi
+
+# 3. Contrato Opt-In vía .repo-config.json (deployCommand)
+CONFIG_FILE="${REPO_ROOT}/.repo-config.json"
+[ -f "${CONFIG_FILE}" ] || exit 0
+
+DEPLOY_CMD=""
+if command -v python3 >/dev/null 2>&1; then
+    DEPLOY_CMD="$(python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as f:
+        data = json.load(f)
+    cmd = data.get("deployCommand", "") or ""
+    print(str(cmd).strip())
+except Exception:
+    pass
+' "${CONFIG_FILE}" 2>/dev/null || true)"
+fi
+
+# Fallback si python3 no está disponible
+if [ -z "${DEPLOY_CMD}" ] && command -v jq >/dev/null 2>&1; then
+    DEPLOY_CMD="$(jq -r '.deployCommand // empty' "${CONFIG_FILE}" 2>/dev/null || true)"
+fi
+
+if [ -n "${DEPLOY_CMD}" ]; then
+    echo "==> [git post-merge] Auto-despliegue detectado en .repo-config.json: ${DEPLOY_CMD}"
+    if eval "${DEPLOY_CMD}"; then
+        echo "==> [git post-merge] Despliegue completado con éxito."
+    else
+        echo "==> [git post-merge] Advertencia: El comando de despliegue finalizó con error." >&2
+    fi
+fi
+
+exit 0
