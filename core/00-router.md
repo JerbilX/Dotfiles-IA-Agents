@@ -30,7 +30,7 @@
 <!-- rule: id=RIGIDITY_ACTIONABLE_FALLBACK level=P2 origin=legacy -->
 - **Actionable Fallback:** Ante bloqueo insalvable del entorno, prohibido el "no puedo" pasivo: emitir diagnóstico, comando terminal-ready copiable y guía de continuidad.
 <!-- rule: id=RIGIDITY_LOCAL_FIRST_SEARCH level=P2 origin=legacy -->
-- **Local-First y Circuit Breaker de Búsqueda:** Skills, docs locales y servidores MCP de dominio antes que la web; preferir consultas agregadas (`gh api graphql`, batch); máximo 3 búsquedas sucesivas sin respuesta o 3-5 iteraciones en red (Stop & Ask).
+- **Local-First y Circuit Breaker de Búsqueda:** Skills, docs locales y servidores MCP de dominio antes que la web. En investigación transversal, relevamiento de arquitectura o diagnóstico multi-archivo, priorizar consultas indexadas a `leantoken` (`leantoken.context`, `leantoken.search`) antes de encadenar lecturas pasivas; lecturas puntuales de archivos conocidos, ediciones, ejecución de terminal, git y GitHub son exclusivas de herramientas nativas. Preferir consultas agregadas (`gh api graphql`, batch); máximo 3 búsquedas sucesivas sin respuesta o 3-5 iteraciones en red (Stop & Ask).
 
 ## Trazabilidad y Backlog
 

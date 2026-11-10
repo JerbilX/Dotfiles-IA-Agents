@@ -341,6 +341,25 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("vacíos documentales confirmados", eso_skill_content)
         self.assertNotIn("Límite Externo", eso_skill_content)
 
+    def test_leantoken_precedence_in_core_router_and_compiled_prompts(self):
+        """core/00-router.md and compiled prompts must enforce LeanToken precedence for transversal search (#315)."""
+        router_path = os.path.join(CORE_DIR, "00-router.md")
+        with open(router_path, "r", encoding="utf-8") as f:
+            router_content = f.read()
+
+        self.assertIn("leantoken.context", router_content)
+        self.assertIn("leantoken.search", router_content)
+        self.assertIn("investigación transversal", router_content)
+        self.assertIn("exclusivas de herramientas nativas", router_content)
+
+        for runtime in ("antigravity", "claude"):
+            dist_prompt = os.path.join(DIST_DIR, runtime, "AGENTS.md")
+            with open(dist_prompt, "r", encoding="utf-8") as f:
+                prompt_content = f.read()
+            self.assertIn("leantoken.context", prompt_content)
+            self.assertIn("leantoken.search", prompt_content)
+            self.assertIn("exclusivas de herramientas nativas", prompt_content)
+
     def test_eso_lookup_flow_order_and_single_circuit_breaker(self):
         """skills/eso-addon-development/SKILL.md must consult local references before web and define the circuit breaker once (#266)."""
         eso_skill_path = os.path.join(REPO_ROOT, "skills", "eso-addon-development", "SKILL.md")
