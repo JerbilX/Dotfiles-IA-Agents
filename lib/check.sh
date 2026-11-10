@@ -85,3 +85,19 @@ cmd_check() {
     fi
     return 0
 }
+
+cmd_test() {
+    local pattern="${1:-test_*.py}"
+    local repo_root="${SCRIPT_DIR:-$(cd "${CHECK_LIB_DIR}/.." && pwd)}"
+    local tests_dir="${repo_root}/tests"
+    if [ ! -d "${tests_dir}" ]; then
+        echo "  [✗] Error: Directorio de pruebas no encontrado: ${tests_dir}" >&2
+        return 1
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "  [✗] Error: python3 no está disponible en el entorno" >&2
+        return 1
+    fi
+    echo "==> [test] Ejecutando suite de pruebas unitarias (${pattern})..."
+    python3 -m unittest discover -s "${tests_dir}" -p "${pattern}"
+}
