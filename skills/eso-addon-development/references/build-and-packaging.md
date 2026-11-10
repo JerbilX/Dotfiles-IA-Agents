@@ -79,4 +79,10 @@ Para mitigar desbordes de buffer (`CONTEXT_TRUNCATION`) y saturación de la vent
   * Invocación Canónica: Ejecutar las pruebas siempre mediante comandos o runners CLI atómicos:
     * Runner centralizado: `luajit tests/run.lua`
     * Test puntual específico: `luajit tests/test_journal.lua`
+* **Validación Estática Temprana de Sintaxis (Syntax Pre-check):**
+  * Exigencia de comprobación estática previa con `luajit -b "$file" /dev/null` (o `luac -p`) en el runner antes de ejecutar suites de prueba para interceptar tempranamente errores de desbalance de bloques (`<eof> expected near 'end'`).
+  * Esta validación previa evita que errores sintácticos elementales generen fallos confusos en tiempo de ejecución o trazas crípticas en los mocks.
+* **Emulación Canónica de Contenedores de Panel Derecho (`ZO_RightPanelFootPrint`):**
+  * Especificación del contrato para contenedores de panel derecho (`ZO_QuestJournal`): deben modelarse como `TopLevelControl` parentado a `GuiRoot`, con dimensiones canónicas de 1000x700px, estado inicial `hidden = true` y tabla global `ZO_RightPanelFootPrint`.
+  * Garantiza que cualquier lógica de anclaje, visibilidad, huella gráfica o verificación de dimensiones del panel derecho opere de manera fidedigna frente al comportamiento real de EsoUI sin requerir parches ad-hoc.
 
