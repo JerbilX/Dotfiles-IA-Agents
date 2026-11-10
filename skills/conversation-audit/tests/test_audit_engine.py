@@ -1258,6 +1258,172 @@ class TestTranscriptTruncationSeverity(unittest.TestCase):
         self.assertIn("no evidencia pérdida de contexto", found[0].description)
 
 
+class TestTestRetryChurnAntipattern(unittest.TestCase):
+    """Pruebas unitarias para la detección del antipatrón TEST_RETRY_CHURN."""
+
+    def _make_edit_step(self, step_index: int, target_file: str = "main.py") -> NormalizedStep:
+        return NormalizedStep(
+            step_index=step_index,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            tool_calls=[
+                NormalizedToolCall(
+                    name="replace_file_content",
+                    args={"TargetFile": target_file, "ReplacementContent": "foo"},
+                    status="DONE",
+                )
+            ],
+        )
+
+    def _make_test_step(
+        self,
+        step_index: int,
+        cmd: str = "python3 -m unittest discover",
+        status: str = "ERROR",
+        error: str = "AssertionError: 1 != 2",
+    ) -> NormalizedStep:
+        return NormalizedStep(
+            step_index=step_index,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            status=status,
+            tool_calls=[
+                NormalizedToolCall(
+                    name="run_command",
+                    args={"CommandLine": cmd},
+                    status=status,
+                    error=error if status == "ERROR" else None,
+                )
+            ],
+        )
+
+    def test_three_failed_cycles_triggers_antipattern(self):
+        """Verifica que 3 ciclos de edición + test fallido detecten TEST_RETRY_CHURN."""
+        steps = [
+            self._make_edit_step(1),
+            self._make_test_step(2),
+            self._make_edit_step(3),
+            self._make_test_step(4),
+            self._make_edit_step(5),
+            self._make_test_step(6),
+        ]
+        engine = AuditEngine()
+        antipatterns = engine._detect_antipatterns(steps)
+        churn = [a for a in antipatterns if a.code == "TEST_RETRY_CHURN"]
+        self.assertEqual(len(churn), 1)
+        self.assertEqual(churn[0].severity, "ALTA")
+        self.assertEqual(churn[0].step_index, 6)
+        self.assertIn("3 ciclos alternantes", churn[0].description)
+        self.assertIn("entre los pasos 1 y 6", churn[0].description)
+        self.assertIn("Stop & Read Holístico", churn[0].recommendation)
+
+    def test_two_failed_cycles_does_not_trigger(self):
+        """Verifica que menos de 3 ciclos de edición + test fallido no disparen el antipatrón."""
+        steps = [
+            self._make_edit_step(1),
+            self._make_test_step(2),
+            self._make_edit_step(3),
+            self._make_test_step(4),
+        ]
+        engine = AuditEngine()
+        antipatterns = engine._detect_antipatterns(steps)
+        churn = [a for a in antipatterns if a.code == "TEST_RETRY_CHURN"]
+        self.assertEqual(len(churn), 0)
+
+    def test_intermediate_read_steps_do_not_break_churn(self):
+        """Verifica que lecturas intermedias de código o error no interrumpan la detección."""
+        read_step_1 = NormalizedStep(
+            step_index=3,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            tool_calls=[
+                NormalizedToolCall(
+                    name="view_file",
+                    args={"AbsolutePath": "main.py", "StartLine": 1, "EndLine": 30},
+                    status="DONE",
+                )
+            ],
+        )
+        read_step_2 = NormalizedStep(
+            step_index=6,
+            source="MODEL",
+            step_type="PLANNER_RESPONSE",
+            tool_calls=[
+                NormalizedToolCall(
+                    name="grep_search",
+                    args={"SearchPath": "main.py", "Query": "foo"},
+                    status="DONE",
+                )
+            ],
+        )
+        steps = [
+            self._make_edit_step(1),
+            self._make_test_step(2),
+            read_step_1,
+            self._make_edit_step(4),
+            self._make_test_step(5),
+            read_step_2,
+            self._make_edit_step(7),
+            self._make_test_step(8),
+        ]
+        engine = AuditEngine()
+        antipatterns = engine._detect_antipatterns(steps)
+        churn = [a for a in antipatterns if a.code == "TEST_RETRY_CHURN"]
+        self.assertEqual(len(churn), 1)
+        self.assertEqual(churn[0].step_index, 8)
+        self.assertIn("entre los pasos 1 y 8", churn[0].description)
+
+    def test_passing_test_resets_churn_when_under_threshold(self):
+        """Verifica que un test exitoso antes de alcanzar 3 fallos reinicie el contador."""
+        steps = [
+            self._make_edit_step(1),
+            self._make_test_step(2, status="ERROR"),
+            self._make_edit_step(3),
+            self._make_test_step(4, status="ERROR"),
+            self._make_edit_step(5),
+            self._make_test_step(6, status="DONE", error=""),
+        ]
+        engine = AuditEngine()
+        antipatterns = engine._detect_antipatterns(steps)
+        churn = [a for a in antipatterns if a.code == "TEST_RETRY_CHURN"]
+        self.assertEqual(len(churn), 0)
+
+    def test_passing_test_flushes_churn_when_ge_three(self):
+        """Verifica que si tras >= 3 fallos se pasa el test, el antipatrón se registre debidamente."""
+        steps = [
+            self._make_edit_step(1),
+            self._make_test_step(2, status="ERROR"),
+            self._make_edit_step(3),
+            self._make_test_step(4, status="ERROR"),
+            self._make_edit_step(5),
+            self._make_test_step(6, status="ERROR"),
+            self._make_edit_step(7),
+            self._make_test_step(8, status="DONE", error=""),
+        ]
+        engine = AuditEngine()
+        antipatterns = engine._detect_antipatterns(steps)
+        churn = [a for a in antipatterns if a.code == "TEST_RETRY_CHURN"]
+        self.assertEqual(len(churn), 1)
+        self.assertEqual(churn[0].step_index, 6)
+        self.assertIn("entre los pasos 1 y 6", churn[0].description)
+
+    def test_busted_lua_test_command_detected(self):
+        """Verifica la detección con comandos de test específicos (ej. busted en Lua)."""
+        steps = [
+            self._make_edit_step(1, target_file="journal.lua"),
+            self._make_test_step(2, cmd="busted test_journal.lua"),
+            self._make_edit_step(3, target_file="journal.lua"),
+            self._make_test_step(4, cmd="lua test_journal.lua"),
+            self._make_edit_step(5, target_file="journal.lua"),
+            self._make_test_step(6, cmd="./build.sh check"),
+        ]
+        engine = AuditEngine()
+        antipatterns = engine._detect_antipatterns(steps)
+        churn = [a for a in antipatterns if a.code == "TEST_RETRY_CHURN"]
+        self.assertEqual(len(churn), 1)
+        self.assertEqual(churn[0].severity, "ALTA")
+
+
 if __name__ == "__main__":
     unittest.main()
 

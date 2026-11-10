@@ -23,6 +23,7 @@ ANTIPATTERN_RULE_MAP: Dict[str, str] = {
     "COMPLACENCY_DETECTED": "CRIT_ZERO_COMPLACENCY",
     "REPETITIVE_TOOL_LOOP": "RIGIDITY_DIRECTIVE_BOUNDARY",
     "CONSECUTIVE_TOOL_ERRORS": "LOGIC_INCONSISTENCY_STOP_ASK",
+    "TEST_RETRY_CHURN": "LOGIC_INCONSISTENCY_STOP_ASK",
     "PING_PONG_TOOL_LOOP": "RIGIDITY_DIRECTIVE_BOUNDARY",
     "P0_HOOK_BLOCK": "RIGIDITY_DIRECTIVE_BOUNDARY",
 }
@@ -266,6 +267,30 @@ class AuditEngine:
         "readfile",
         "read_local_file",
     }
+
+    EDIT_TOOL_NAMES = {
+        "replace_file_content",
+        "write_to_file",
+        "write_file",
+        "write",
+        "edit_file",
+        "edit",
+    }
+
+    TEST_COMMAND_REGEX = re.compile(
+        r"\b(pytest|unittest|busted|jest|mocha|vitest|ctest)\b|"
+        r"(?:cargo|npm|yarn|pnpm|go|make|rake|mix)\s+(?:test|check)|"
+        r"(?:build\.sh|\./build\.sh)\s+check|"
+        r"\b(?:test|tests)\b|"
+        r"(?:\b|_)(?:test|tests)_[a-zA-Z0-9_-]+|"
+        r"[a-zA-Z0-9_-]+_(?:test|tests)(?:\.[a-zA-Z0-9]+)?\b",
+        re.IGNORECASE,
+    )
+
+    TEST_FAILURE_REGEX = re.compile(
+        r"(?:FAIL|FAILED|AssertionError|failures=|test\s+failed|tests\s+failed|assertion\s+failed|exited with code [1-9])",
+        re.IGNORECASE,
+    )
 
     PASSIVE_INSPECTION_TOOLS = {
         "view_file",
@@ -977,9 +1002,106 @@ class AuditEngine:
                         ),
                     )
                 )
-        # K. Bloqueos de Hooks Deterministas P0
+        # K. Bucle de Parches Ciegos en Pruebas (TEST_RETRY_CHURN)
+        antipatterns.extend(self._detect_test_retry_churn(steps))
+
+        # L. Bloqueos de Hooks Deterministas P0
         antipatterns.extend(self._detect_p0_hook_blocks(steps))
 
+        return antipatterns
+
+    def _is_test_tool_call(self, tc: NormalizedToolCall) -> bool:
+        """Determina si un tool call corresponde a la ejecución de una prueba o verificación."""
+        if tc.name.lower() not in self.TERMINAL_TOOL_NAMES:
+            return False
+        cmd = str(tc.args.get("CommandLine") or tc.args.get("command") or tc.args.get("cmd") or "") if isinstance(tc.args, dict) else ""
+        if self.TEST_COMMAND_REGEX.search(cmd):
+            return True
+        action_summary = f"{tc.tool_action or ''} {tc.tool_summary or ''}".lower()
+        if re.search(r"\b(test|tests|check|prueba|pruebas|verific|suite)\b", action_summary):
+            return True
+        out_err = f"{tc.raw_output or ''} {tc.error or ''}"
+        if self.TEST_FAILURE_REGEX.search(out_err):
+            return True
+        return False
+
+    def _is_failed_test_call(self, tc: NormalizedToolCall, s: NormalizedStep) -> bool:
+        """Determina si un comando de prueba finalizó con error o fallo de aserción/ejecución."""
+        if tc.status == "ERROR" or bool(tc.error) or s.status == "ERROR":
+            return True
+        out_err = f"{tc.raw_output or ''} {tc.error or ''}"
+        if self.TEST_FAILURE_REGEX.search(out_err):
+            return True
+        return False
+
+    def _detect_test_retry_churn(self, steps: List[NormalizedStep]) -> List[DetectedAntipattern]:
+        """Detecta secuencias alternantes de edición y fallos en pruebas (>= 3 repeticiones)."""
+        antipatterns: List[DetectedAntipattern] = []
+        current_cycles: List[Tuple[int, int]] = []
+        pending_edit_step: Optional[int] = None
+
+        def flush_cycles():
+            nonlocal current_cycles, pending_edit_step
+            if len(current_cycles) >= 3:
+                start_step = current_cycles[0][0]
+                end_step = current_cycles[-1][1]
+                count = len(current_cycles)
+                antipatterns.append(
+                    DetectedAntipattern(
+                        severity="ALTA",
+                        code="TEST_RETRY_CHURN",
+                        title="Bucle de Parches Ciegos en Pruebas (Test Retry Churn)",
+                        step_index=end_step,
+                        description=(
+                            f"Se detectó una secuencia de {count} ciclos alternantes de edición "
+                            f"y fallos en pruebas de verificación entre los pasos {start_step} y {end_step}. "
+                            f"El agente itera con micro-parches reactivos evadiendo el disyuntor de errores consecutivos."
+                        ),
+                        recommendation=(
+                            "Detener de inmediato los micro-parches reactivos y aplicar un Stop & Read Holístico "
+                            "(inspección contextual del bloque o archivo) para diagnosticar la causa raíz antes de volver a mutar."
+                        ),
+                    )
+                )
+            current_cycles = []
+            pending_edit_step = None
+
+        for s in steps:
+            if s.source == "USER" or s.step_type == "USER_INPUT":
+                flush_cycles()
+                continue
+
+            has_edit = False
+            has_failed_test = False
+            has_passed_test = False
+
+            if s.tool_calls:
+                for tc in s.tool_calls:
+                    name_lower = tc.name.lower()
+                    if name_lower in self.EDIT_TOOL_NAMES and tc.status != "ERROR":
+                        has_edit = True
+
+                    if self._is_test_tool_call(tc):
+                        if self._is_failed_test_call(tc, s):
+                            has_failed_test = True
+                        else:
+                            has_passed_test = True
+
+            if has_edit:
+                if pending_edit_step is None:
+                    pending_edit_step = s.step_index
+
+            if has_failed_test and not has_passed_test:
+                if pending_edit_step is not None:
+                    current_cycles.append((pending_edit_step, s.step_index))
+                    pending_edit_step = None
+                elif current_cycles:
+                    prev_edit, _ = current_cycles[-1]
+                    current_cycles[-1] = (prev_edit, s.step_index)
+            elif has_passed_test:
+                flush_cycles()
+
+        flush_cycles()
         return antipatterns
 
     @classmethod

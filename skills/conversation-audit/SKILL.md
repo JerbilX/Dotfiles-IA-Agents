@@ -47,6 +47,7 @@ Guía metodológica, catálogo de métricas y protocolo operativo para la audito
 | :--- | :---: | :--- | :---: | :--- | :--- |
 | `REPETITIVE_TOOL_LOOP` | **ALTA** | Bucle Repetitivo de Herramienta | `RIGIDITY_DIRECTIVE_BOUNDARY` | Dos o más invocaciones consecutivas de la misma herramienta con argumentos idénticos sin progreso intermedio. | Detenerse y verificar si el agente no leyó el output previo o quedó atrapado en un ciclo ciego de reintento. |
 | `CONSECUTIVE_TOOL_ERRORS` | **CRÍTICA** | Errores Consecutivos en Herramientas | `LOGIC_INCONSISTENCY_STOP_ASK` | Dos o más fallos de ejecución de herramientas consecutivos. | Activar de inmediato el disyuntor de seguridad (Stop & Ask). Prohibido seguir probando variaciones sin hipótesis fundada. |
+| `TEST_RETRY_CHURN` | **ALTA** | Bucle de Parches Ciegos en Pruebas | `LOGIC_INCONSISTENCY_STOP_ASK` | Secuencia alternante de edición y comando de prueba fallido (≥ 3 repeticiones) evadiendo el disyuntor de errores consecutivos. | Detener de inmediato los micro-parches reactivos y aplicar un Stop & Read Holístico (inspección contextual del bloque o archivo) para diagnosticar la causa raíz antes de mutar. |
 | `HIGH_LATENCY_STEP` | **MEDIA** | Paso de Alta Latencia | *Métrica* | Pasos con duración individual superior al umbral configurado (ej. > 60s). | Investigar llamadas bloqueantes de red, búsquedas sin filtro o procesamiento excesivo en terminal. |
 | `TERMINAL_PIPELINING` | **MEDIA** | Encadenamiento en Terminal | `AGY_BYPASS_EXCLUSIVITY` | Uso de operadores (`&&`, `\|`, `;`, tuberías) en comandos de terminal, rompiendo el *prefix matching* de permisos. | Desacoplar en llamadas CLI atómicas o utilizar herramientas nativas de archivos (escritura, edición atómica). |
 | `TERMINAL_REPL_LOOP` | **ALTA** | Bucle REPL Iterativo en Terminal | `ENV_PROHIBITION_REPL` | Secuencia o alta densidad de ejecuciones de evaluación en línea en terminal (`python3 -c`, `node -e`, `bash -c`) o wrappers vía `subprocess` para pruebas, exploración o filtrado de utilidades. | Desalentar el uso de terminal como REPL/wrapper e indicar el consumo de flags nativos del CLI, refactorización hacia un script dedicado en scratch (`<appDataDir>/brain/<conversation-id>/scratch/`) o tests locales. |
@@ -186,7 +187,7 @@ La invocación debe ejecutarse con bypass de sandbox (ej. `BypassSandbox: true` 
 
 ### Paso 3: Evaluación de Hallazgos
 - Contrastar el desglose de herramientas: identificar si herramientas pesadas (búsquedas web, ejecución de comandos en terminal) monopolizan el tiempo de ejecución.
-- Inspeccionar si existen antipatrones de `CONSECUTIVE_TOOL_ERRORS`, `REPETITIVE_TOOL_LOOP`, `TERMINAL_REPL_LOOP` o `UNPAGINATED_FILE_READ`.
+- Inspeccionar si existen antipatrones de `CONSECUTIVE_TOOL_ERRORS`, `TEST_RETRY_CHURN`, `REPETITIVE_TOOL_LOOP`, `TERMINAL_REPL_LOOP` o `UNPAGINATED_FILE_READ`.
 - Revisar los pasos de mayor latencia y contrastarlos con las operaciones realizadas.
 
 ### Paso 4: Registro y Retroalimentación
