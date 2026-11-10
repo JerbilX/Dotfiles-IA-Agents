@@ -77,13 +77,21 @@ Ejecuta una auditoría estática de integridad de **solo lectura** (*read-only*)
 ```
 Inspecciona esquemas JSON, sintaxis, presencia de binarios, aliases de GitHub CLI, colisiones de prefijos numéricos o títulos H1, comandos con bypass entrecomillados en skills, integridad de symlinks en el host, presupuesto de contexto (global y modular) e integridad de la documentación técnica.
 
-### 8. `reconcile`
+### 8. `test`
+Ejecuta la suite de pruebas unitarias del repositorio utilizando la librería estándar `unittest` de Python:
+```bash
+./build.sh test                        # Ejecuta la suite completa (patrón test_*.py)
+./build.sh test test_build_path_safety.py  # Ejecuta un archivo o patrón específico
+```
+Provee un atajo canónico y determinista en sandbox (`BypassSandbox: false`), sin requerir `pytest` ni arneses externos. Retorna `0` ante éxito y `1` si alguna prueba falla o ante la ausencia de `python3`.
+
+### 9. `reconcile`
 Ejecuta la reconciliación y ratificación determinista de Architecture Decision Records (ADRs) tras la fusión de Pull Requests en la rama troncal (`main`). Identifica ADRs en `status: proposed` que ya forman parte del historial de `main` y actualiza atómicamente su metadato a `status: accepted`:
 ```bash
 ./build.sh reconcile
 ```
 
-### 9. `workspace`
+### 10. `workspace`
 Aprovisiona de forma declarativa e idempotente las skills locales (`.agents/skills/`, `.gemini/skills/`, `.claude/skills/`) y las configuraciones de suite de dominio (como `eso`) hacia un directorio de proyecto destino (o el directorio actual si se omite la ruta):
 ```bash
 ./build.sh workspace <modulo> [ruta_destino] [runtime]
@@ -99,7 +107,7 @@ Aprovisiona de forma declarativa e idempotente las skills locales (`.agents/skil
 > O bien solicitarlo conversacionalmente al agente en el chat (*"activa el soporte de eso en este proyecto"*).
 
 
-### 10. `all`
+### 11. `all`
 Flujo completo por defecto. Ejecuta secuencialmente `build`, `link`, `skills`, `status` y la verificación final `check`:
 ```bash
 ./build.sh                  # Flujo completo para runtimes activos (antigravity por defecto)

@@ -68,6 +68,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         check)
             cmd_check "${RUNTIME_ARG}"
             ;;
+        test)
+            cmd_test "${RUNTIME_ARG}"
+            ;;
         reconcile)
             cmd_reconcile "${RUNTIME_ARG}"
             ;;
@@ -78,7 +81,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             cmd_all "${RUNTIME_ARG}"
             ;;
         *)
-            echo "Uso: $0 {build|link|skills|mcp|status|rollback|check|reconcile|workspace|all} [runtime|all]" >&2
+            echo "Uso: $0 {build|link|skills|mcp|status|rollback|check|test|reconcile|workspace|all} [runtime|all]" >&2
             exit 1
             ;;
     esac

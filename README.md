@@ -51,9 +51,10 @@ git clone https://github.com/JerbilX/Dotfiles-IA-Agents.git && cd Dotfiles-IA-Ag
 | `status` | Reporta el estado de symlinks y respaldos en cada runtime. | [docs/cli.md](docs/cli.md#5-status) |
 | `rollback` | Reversión atómica al último respaldo previo ante emergencias. | [docs/cli.md](docs/cli.md#6-rollback) |
 | `check` | Auditoría estática de integridad, esquemas y presupuestos. | [docs/cli.md](docs/cli.md#7-check) |
-| `reconcile` | Ratifica formalmente ADRs post-merge (`proposed` $\rightarrow$ `accepted`). | [docs/cli.md](docs/cli.md#8-reconcile) |
-| `workspace` | Aprovisiona skills y configuraciones de suite de dominio en un proyecto. | [docs/cli.md](docs/cli.md#9-workspace) |
-| `all` | Pipeline completo por defecto (`build` $\rightarrow$ `link` $\rightarrow$ `skills` $\rightarrow$ `status` $\rightarrow$ `check`). | [docs/cli.md](docs/cli.md#10-all) |
+| `test` | Ejecuta la suite de pruebas unitarias (`unittest`). | [docs/cli.md](docs/cli.md#8-test) |
+| `reconcile` | Ratifica formalmente ADRs post-merge (`proposed` $\rightarrow$ `accepted`). | [docs/cli.md](docs/cli.md#9-reconcile) |
+| `workspace` | Aprovisiona skills y configuraciones de suite de dominio en un proyecto. | [docs/cli.md](docs/cli.md#10-workspace) |
+| `all` | Pipeline completo por defecto (`build` $\rightarrow$ `link` $\rightarrow$ `skills` $\rightarrow$ `status` $\rightarrow$ `check`). | [docs/cli.md](docs/cli.md#11-all) |
 
 ### Módulos de Dominio por Workspace (`agent-module`)
 
@@ -66,7 +67,7 @@ agent-module enable <modulo>  # Habilita capacidades en el proyecto (ej. eso)
 agent-module disable <modulo> # Poda y remueve configuraciones del módulo
 ```
 
-También puedes solicitar la activación en el chat (*"activa el soporte de eso en este proyecto"*). Referencia en [docs/cli.md](docs/cli.md#9-workspace).
+También puedes solicitar la activación en el chat (*"activa el soporte de eso en este proyecto"*). Referencia en [docs/cli.md](docs/cli.md#10-workspace).
 
 
 ---

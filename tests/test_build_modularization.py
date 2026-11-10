@@ -224,6 +224,7 @@ required_functions=(
     check_skill_bypass_quotes
     check_p0_guards
     cmd_check
+    cmd_test
 )
 
 for fn in "${{required_functions[@]}}"; do
@@ -237,6 +238,16 @@ echo "all-check-functions-present"
         res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertIn("all-check-functions-present", res.stdout)
+
+    def test_build_test_subcommand(self):
+        """./build.sh test executes unittest discovery for test_build_path_safety.py successfully."""
+        res = subprocess.run(
+            [BUILD_SH, "test", "test_build_path_safety.py"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("Ran 6 tests", res.stderr)
 
 
 
