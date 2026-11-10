@@ -36,6 +36,10 @@ class TestBuildModularization(unittest.TestCase):
             "build_core.sh",
             "link.sh",
             "check.sh",
+            "check_rules.sh",
+            "check_runtime.sh",
+            "check_modules.sh",
+            "check_environment.sh",
             "validate.py",
             "tool_vocabulary.py",
         ]
@@ -196,6 +200,44 @@ cmd_link "antigravity"
         self.assertIn("aliases-ok", res.stdout)
         self.assertIn("hooks-ok", res.stdout)
         self.assertIn("Falló el aprovisionamiento de skills", res.stderr)
+
+    def test_check_sh_modular_domain_submodules(self):
+        """lib/check.sh must source domain submodules and expose all check functions (#307)."""
+        bash_cmd = f"""
+set -euo pipefail
+source "{REPO_ROOT}/lib/common.sh"
+source "{REPO_ROOT}/lib/check.sh"
+
+required_functions=(
+    check_core_rules
+    check_basal_rules_admission
+    check_prompt_tool_crossings
+    check_runtime
+    check_local_bin_symlinks
+    check_domain_modules
+    check_global_mcp_purity
+    check_global_skills_purity
+    cmd_workspace
+    check_documentation
+    check_unit_tests
+    check_gh_aliases
+    check_skill_bypass_quotes
+    check_p0_guards
+    cmd_check
+)
+
+for fn in "${{required_functions[@]}}"; do
+    if ! declare -F "$fn" >/dev/null; then
+        echo "Missing function: $fn" >&2
+        exit 1
+    fi
+done
+echo "all-check-functions-present"
+"""
+        res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("all-check-functions-present", res.stdout)
+
 
 
 if __name__ == "__main__":
