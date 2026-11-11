@@ -188,7 +188,7 @@ Para desacoplar el comportamiento del flujo de trabajo y la integración con Git
 }
 ```
 
-* **`repository_type`** *(string, opcional)*: Estrategia troncal del repositorio. Admite `"category_a"` (Trunk-Based / `main` única) o `"category_b"` (Git-Flow / `dev` -> `main`). Default: `"category_a"`.
+* **`repository_type`** *(string, opcional)*: Estrategia troncal del repositorio. Admite `"category_a"` (Trunk-Based / `main` única) o `"category_b"` (Git-Flow / `dev` -> `main`). Default: `"category_a"` (previa clasificación heurística; ver `branch-lifecycle.md` §1.1.1).
 * **`base_branch`** *(string, opcional)*: Rama base de integración y verificación. Default: `"main"` (o `"dev"` en Categoría B).
 * **`project_number`** *(integer, opcional)*: Número del tablero en GitHub Projects v2 al que pertenece el repositorio. Default: `1`.
 * **`project_owner`** *(string, opcional)*: Identificador del propietario del tablero en GitHub Projects v2 (ej. `"@me"` para el usuario autenticado, o el nombre de una organización/usuario específico). Default: `"@me"`.

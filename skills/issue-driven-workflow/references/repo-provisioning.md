@@ -40,6 +40,39 @@ Protocolo determinista para inicializar repositorios locales y aprovisionar repo
   rm -f .commit_msg scratch/.commit_msg
   ```
 
+### 1.1 Clasificación Heurística Proactiva de Categoría (A vs B) y Configuración Base
+
+Antes de fijar la rama base o crear ramas de trabajo, el agente debe clasificar proactivamente el repositorio en **Categoría A** o **Categoría B**:
+
+1. **Indicadores de Categoría B (Servicios, APIs, Bots y Aplicaciones con Despliegue Físico/Continuo):**
+   * Arquitectura: Backend, servicios web, microservicios, APIs REST/GraphQL, bots, daemons o workers.
+   * Infraestructura y contenedores: Presencia de `Dockerfile`, `docker-compose.yml`, `Containerfile` o scripts de orquestación.
+   * Unidades de sistema: Archivos de unidad systemd (`*.service`), scripts de daemonización o monitoreo en host.
+   * Entornos y pipelines: Archivos de entorno (`.env.example`, `config/staging/`, `config/production/`), flujos de CD orientados a despliegue (`.github/workflows/deploy*.yml`).
+   * Backlog: Issues o epics que aludan a staging, producción, servidores, hosting, puertos o despliegues continuos.
+2. **Indicadores de Categoría A (Herramientas Locales, Librerías, Tooling y Dotfiles):**
+   * CLI puro ejecutado en la terminal del usuario.
+   * Librerías, paquetes o módulos reutilizables sin infraestructura de servidor ni despliegue propio.
+   * Tooling local de desarrollo, dotfiles o utilidades de workspace.
+   * Plugins, extensiones de editor o addons de cliente sin infraestructura propia.
+3. **Acción Proactiva según Categoría:**
+   * **Si se detectan indicadores de Categoría B:**
+     * Configurar directamente `.repo-config.json` en la raíz con `"base_branch": "dev"` y `"repository_type": "category_b"` de forma proactiva y justificada, sin esperar corrección humana:
+       ```json
+       {
+         "repository_type": "category_b",
+         "base_branch": "dev",
+         "project_number": 1,
+         "project_owner": "@me"
+       }
+       ```
+     * *(Si el servicio requiere autodespliegue post-merge en el host según ADR-0055, incorporar además `"deployCommand": "./build.sh deploy"`).*
+   * **Si se confirma Categoría A:**
+     * Configurar `.repo-config.json` con `"base_branch": "main"` y `"repository_type": "category_a"`.
+   * **Revisión del Fallback por Defecto:**
+     * Prohibido asumir ciegamente Categoría A en ausencia de `.repo-config.json`.
+     * El fallback hacia Categoría A (`main`) solo opera cuando el análisis heurístico exhaustivo haya descartado positivamente todo indicador de Categoría B (sin backend, APIs, bots, contenedores ni despliegues). Ante señales mixtas, consultar al usuario (*Stop & Ask*).
+
 ---
 
 ## 2. Gate de Confirmación para Remoto (Origin)
@@ -58,11 +91,17 @@ Si el usuario **confirma**:
    gh repo create <nombre-del-directorio> --private --source=. --remote=origin --push
    ```
    *(Crea el repositorio bajo la cuenta del usuario actual).*
-2. Inmediatamente después, configurar la eliminación automática de ramas fusionadas en el repositorio remoto:
+2. **Creación de Rama de Integración `dev` (Paso 0 en Categoría B):**
+   Si el repositorio corresponde a **Categoría B**, crear y publicar inmediatamente la rama `dev` en el remoto a partir de `main` como paso 0 del aprovisionamiento:
+   ```bash
+   git push -u origin main:dev
+   ```
+   *(Garantiza que la troncal de integración continua `dev` exista en GitHub antes del despacho de las primeras issues y PRs).*
+3. Inmediatamente después, configurar la eliminación automática de ramas fusionadas en el repositorio remoto:
    ```bash
    gh repo edit --delete-branch-on-merge
    ```
-3. Si el entorno cuenta con permisos para Projects (`gh project`), proceder a enlazar el repositorio al tablero central:
+4. Si el entorno cuenta con permisos para Projects (`gh project`), proceder a enlazar el repositorio al tablero central:
    ```bash
    gh project link <project_number> --owner <project_owner> --repo <nombre-del-directorio>
    ```

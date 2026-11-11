@@ -10,10 +10,27 @@ Todo desarrollo (código, scripts de entorno/tooling, lanzadores, configuracione
 
 ### 1.1 Estrategia de Ramas Troncales (Categorías A y B)
 La estructura de ramas responde a la configuración raíz declarada en `.repo-config.json`:
-* **Categoría A (Predeterminada - Repositorios Compactos / Tooling / Dotfiles / Librerías):** Troncal única `main`. Las ramas efímeras nacen de `main` y los Pull Requests apuntan directamente a `main`.
-* **Categoría B (Aplicaciones con Despliegue Físico):** Troncal de integración continua `dev` (staging) y troncal de producción `main`. Las ramas efímeras nacen de `dev`, los PRs apuntan a `dev` (`gh pr create --base dev`), y la promoción a `main` se formaliza exclusivamente mediante un *Release PR* con tag SemVer (`vX.Y.Z`).
+* **Categoría A (Repositorios Compactos / Tooling / Dotfiles / Librerías):** Troncal única `main`. Las ramas efímeras nacen de `main` y los Pull Requests apuntan directamente a `main`.
+* **Categoría B (Servicios / APIs / Bots / Aplicaciones con Despliegue Físico o Continuo):** Troncal de integración continua `dev` (staging) y troncal de producción `main`. Las ramas efímeras nacen de `dev`, los PRs apuntan a `dev` (`gh pr create --base dev`), y la promoción a `main` se formaliza exclusivamente mediante un *Release PR* con tag SemVer (`vX.Y.Z`).
 
-*(En ausencia de `.repo-config.json` o si no se explicitan sus propiedades, se adopta por defecto Categoría A con `base_branch: "main"`, `project_number: 1` y `project_owner: "@me"`).*
+#### 1.1.1 Clasificación Heurística Proactiva de Categoría
+En ausencia de `.repo-config.json` o si no se explicitan sus propiedades, **queda prohibido asumir ciegamente Categoría A**. Antes de fijar la rama base o crear ramas de trabajo, el agente debe ejecutar una clasificación heurística automática del repositorio:
+
+1. **Indicadores de Categoría B:**
+   * Arquitectura: Mención en código o documentación de backend, servicios web, microservicios, APIs (REST, GraphQL), daemons, bots o workers.
+   * Contenedores e infraestructura: Presencia de `Dockerfile`, `docker-compose.yml`, `Containerfile` o configuraciones de orquestación.
+   * Unidades de sistema: Archivos `.service` (systemd) o scripts de daemonización en host.
+   * Entornos y pipelines: Archivos `.env.example`, directorios de configuración por entorno (`staging`, `production`), flujos de CD orientados a despliegue (`.github/workflows/deploy*.yml`).
+   * Backlog: Issues o epics que aludan a staging, producción, servidores, hosting, puertos o despliegues físicos continuos.
+2. **Indicadores de Categoría A:**
+   * CLI puro ejecutado en la terminal del usuario.
+   * Librerías, paquetes o utilidades reutilizables sin infraestructura de servidor ni despliegue propio.
+   * Tooling local de desarrollo, dotfiles o utilidades de workspace.
+   * Plugins, extensiones de editor o addons de cliente sin infraestructura propia.
+3. **Acción Proactiva según Categoría:**
+   * **Categoría B detectada:** Proponer/configurar directamente `.repo-config.json` con `"base_branch": "dev"` y `"repository_type": "category_b"` de forma proactiva y justificada, sin esperar corrección humana. Si la rama `dev` no existe en el remoto, crearla como paso 0 del aprovisionamiento (`git push -u origin main:dev`).
+   * **Categoría A confirmada:** Configurar `.repo-config.json` con `"base_branch": "main"` y `"repository_type": "category_a"`.
+   * **Revisión del Fallback por Defecto:** Categoría A con `base_branch: "main"`, `project_number: 1` y `project_owner: "@me"` opera estrictamente como fallback de último recurso cuando la heurística haya descartado de forma concluyente la existencia de cualquier indicador de servicio o despliegue.
 
 ### 1.2 Nomenclatura Canónica de Ramas Efímeras
 * **Nomenclatura Obligatoria:**
@@ -49,12 +66,14 @@ Toda tarea despachada debe cumplir secuencialmente con las siguientes 8 fases:
 
 #### 2.1 Camino Preferente de Aislamiento (≤ 2 llamadas)
 Para minimizar turnos y prompts interactivos, el arranque de una nueva tarea no requiere conmutar a la rama base local ni podar ramas (la poda se posterga a la Fase 8 post-merge):
-1. **Sincronizar referencias remotas con poda sin conmutar a la base:**
+1. **Resolución de Rama Base (`<base_branch>`):**
+   Resolver `<base_branch>` leyendo `.repo-config.json`. Si no existe el archivo, ejecutar inmediatamente la clasificación heurística proactiva (§1.1.1) para configurar `.repo-config.json` antes de aislar la rama.
+2. **Sincronizar referencias remotas con poda sin conmutar a la base:**
    ```bash
    git fetch --prune origin
    ```
    *(Canalizar toda poda remota vía fetch o pull con `--prune` en lugar de `git remote prune`).*
-2. **Crear y conmutar a la rama efímera desacoplada desde `origin/<base_branch>`:**
+3. **Crear y conmutar a la rama efímera desacoplada desde `origin/<base_branch>`:**
    ```bash
    git switch --no-track -c <nombre-de-rama> origin/<base_branch>
    ```
