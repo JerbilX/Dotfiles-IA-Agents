@@ -287,13 +287,13 @@ class TestGitPruneGone(unittest.TestCase):
         return remote_dir
 
     def test_sync_dirty_worktree_aborts(self):
-        """Verifica que --sync aborte con código 1 y 'dirty_worktree' si hay cambios pendientes."""
+        """Verifica que --sync aborte con código 1 y 'dirty_worktree' si hay cambios pendientes en archivos rastreados."""
         remote_dir = self._setup_local_remote()
         try:
-            # Crear cambio no commiteado (untracked o modificado)
-            dirty_file = os.path.join(self.test_dir, "dirty.txt")
-            with open(dirty_file, "w", encoding="utf-8") as f:
-                f.write("cambios sin commitear\n")
+            # Modificar archivo rastreado (README.md) sin commitear
+            readme_file = os.path.join(self.test_dir, "README.md")
+            with open(readme_file, "a", encoding="utf-8") as f:
+                f.write("cambios sin commitear en archivo rastreado\n")
 
             res = self._run_cli(["--sync", "--json"])
             self.assertEqual(res.returncode, 1)
@@ -305,6 +305,24 @@ class TestGitPruneGone(unittest.TestCase):
             res_txt = self._run_cli(["--sync"])
             self.assertEqual(res_txt.returncode, 1)
             self.assertIn("Error: El árbol de trabajo contiene", res_txt.stderr)
+        finally:
+            shutil.rmtree(remote_dir, ignore_errors=True)
+
+    def test_sync_allows_untracked_files(self):
+        """Verifica que --sync continúe exitosamente si sólo existen archivos no rastreados (untracked)."""
+        remote_dir = self._setup_local_remote()
+        try:
+            untracked_file = os.path.join(self.test_dir, "untracked.txt")
+            with open(untracked_file, "w", encoding="utf-8") as f:
+                f.write("archivo untracked\n")
+
+            res = self._run_cli(["--sync", "--json"])
+            self.assertEqual(res.returncode, 0, f"Fallo con untracked files: {res.stderr}\n{res.stdout}")
+            data = json.loads(res.stdout)
+            self.assertEqual(data["status"], "clean")
+            self.assertEqual(data["sync"]["status"], "synced")
+            # El archivo untracked debe preservarse
+            self.assertTrue(os.path.exists(untracked_file))
         finally:
             shutil.rmtree(remote_dir, ignore_errors=True)
 
