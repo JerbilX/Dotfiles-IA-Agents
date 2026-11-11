@@ -120,15 +120,16 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
      git add <ruta1> <ruta2> ...
      ```
      *(Indicar rutas explícitas; no usar `git add .` ni `git add -A`).*
-   - Redactar el mensaje en el archivo temporal `.commit_msg` mediante herramientas nativas de archivos siguiendo el estándar convencional:
+   - Redactar el mensaje en el archivo temporal `.commit_msg` (o `scratch/.commit_msg` en runtimes confinados) mediante herramientas nativas de archivos siguiendo el estándar convencional:
      `fix(<alcance>): atender feedback de code review en PR #<id>`
    - Ejecutar el commit leyendo el archivo:
      ```bash
      git commit -F .commit_msg
      ```
+     *(o `git commit -F scratch/.commit_msg` si se redactó en `scratch/`).*
    - Limpiar el archivo temporal en el mismo turno:
      ```bash
-     rm -f .commit_msg
+     rm -f .commit_msg scratch/.commit_msg
      ```
 5. **Publicación Remota:**
    - Subir los commits a la rama del Pull Request:
@@ -168,22 +169,23 @@ Protocolo operativo determinista para atender observaciones, revisiones humanas 
    Al usar `--all <pr_id>`, incluye además `prNumber` y `totalFound`. La resolución múltiple y `--all` opera internamente en lotes de hasta 50 hilos mediante una única mutación GraphQL con alias (`t0`, `t1`, ...), ejecutando $\lceil N/50 \rceil$ llamadas en lugar de $N$. Si algún hilo falla (ej. ID inválido o eliminado), se reporta en `errors` con su respectivo `threadId` y mensaje sin interrumpir la resolución de los demás hilos del lote.
 
 2. **Réplica Opcional a un Hilo de Revisión Específico:**
-   Si se requiere dejar constancia explícita sobre un hilo puntual antes o después de resolverlo, redactar el texto en el archivo temporal `.reply_body` mediante herramientas nativas de archivos y enviarlo mediante `--body-file` para preservar el prefix matching en runtimes con permisos como Antigravity:
+   Si se requiere dejar constancia explícita sobre un hilo puntual antes o después de resolverlo, redactar el texto en el archivo temporal `.reply_body` (o `scratch/.reply_body` en runtimes confinados) mediante herramientas nativas de archivos y enviarlo mediante `--body-file` para preservar el prefix matching en runtimes con permisos como Antigravity:
    ```bash
    gh-pr-review reply <thread_id> --body-file .reply_body
    ```
-   *(Limpiar el archivo temporal con `rm -f .reply_body` en el mismo turno).*
+   *(o `--body-file scratch/.reply_body`; limpiar el archivo temporal con `rm -f .reply_body scratch/.reply_body` en el mismo turno).*
 
 3. **Comentario Consolidado en el Pull Request:**
    Para notificar formalmente al revisor humano que todas las observaciones fueron atendidas:
-   - Redactar el resumen en `.pr_comment` mediante herramientas nativas de archivos.
+   - Redactar el resumen en `.pr_comment` (o `scratch/.pr_comment` en runtimes confinados) mediante herramientas nativas de archivos.
    - Publicar el comentario en el PR:
      ```bash
      gh pr comment <pr_id> --body-file .pr_comment
      ```
+     *(o `--body-file scratch/.pr_comment` si se redactó en `scratch/`).*
    - Limpiar el archivo temporal en el mismo turno:
      ```bash
-     rm -f .pr_comment
+     rm -f .pr_comment scratch/.pr_comment
      ```
 
 4. **Gobernanza del Estado en Projects v2 y Resiliencia de ADRs:**

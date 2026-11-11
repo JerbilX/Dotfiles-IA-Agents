@@ -82,7 +82,7 @@ git-prune-gone --sync
 * **Lectura Paginada Obligatoria y Lectura Quirúrgica en Dos Fases:** Toda lectura de archivos exige delimitar rango o paginado (ventana ≤ 200 líneas) sin excepción; prohibidas lecturas no acotadas. Lectura Quirúrgica en Dos Fases: en archivos > 150 líneas, localizar por búsqueda de contenido y restringir la lectura a ventana quirúrgica (≤ 50 líneas). Ignorar avisos de contenido no mostrado.
 * **Granularidad Atómica en Ediciones:** Particionar cambios en bloques acotados de edición para prevenir truncamientos en la respuesta y degradación por latencia. Prohibido reemplazar archivos completos monolíticamente.
 * **Precedencia de Entornos Locales:** Priorizar binarios locales (`.venv/bin/`, `node_modules/.bin/`) sobre intérpretes o linters globales.
-* **Higiene de Salida y Pruebas:** Acotar salidas (`head -n 20`, `--jq`). En desarrollo o diagnóstico, pruebas filtradas (archivo o caso puntual) o de baja verbosidad; suite integral solo en la verificación final previa al commit. Temporales (`.commit_msg`, `.pr_body`, `.issue_body`, `.issue_comment`) se eliminan tras su uso.
+* **Higiene de Salida y Pruebas:** Acotar salidas (`head -n 20`, `--jq`). En desarrollo o diagnóstico, pruebas filtradas (archivo o caso puntual) o de baja verbosidad; suite integral solo en la verificación final previa al commit. Temporales (`.commit_msg`, `.pr_body`, `.issue_body`, `.issue_comment` en `scratch/` o raíz según runtime) se eliminan tras su uso.
 * **Disyuntor de Parches en Pruebas (Stop & Read Holístico):** Ante 3 fallos consecutivos en suites de pruebas tras micro-ediciones sucesivas (antipatrón `TEST_RETRY_CHURN`), el agente debe detener de inmediato los parches reactivos y realizar una lectura contextual amplia del bloque o archivo involucrado para comprender la causa raíz antes de volver a mutar.
 * Validar compilación, linters y suites de prueba locales (`./build.sh check`).
 * **Promoción Atómica del ADR:** Al comenzar a codificar, actualizar el YAML frontmatter del ADR a `status: accepted` en la rama de trabajo para ratificación atómica al mergear.
@@ -94,7 +94,7 @@ git-prune-gone --sync
    ```
    *(Indicar rutas explícitas; no usar `git add .` ni `git add -A`).*
 2. **Redacción y Commit Atómico:**
-   * Evitar `git commit -m "..."` (anula el prefix matching de permisos al contener comillas). Redactar mensaje convencional en `.commit_msg` con herramientas nativas de archivos.
+   * Evitar `git commit -m "..."` (anula el prefix matching de permisos al contener comillas). Redactar mensaje convencional en `.commit_msg` (o `scratch/.commit_msg` en runtimes confinados) con herramientas nativas de archivos.
    * Incluir obligatoriamente al final del mensaje (separado por una línea en blanco) el trailer canónico de atribución:
      ```gitcommit
      <tipo>(<alcance>): <descripción>
@@ -106,11 +106,12 @@ git-prune-gone --sync
      ```bash
      git commit -F .commit_msg
      ```
+     *(o `git commit -F scratch/.commit_msg` si se redactó en `scratch/`).*
    * Limpiar el archivo temporal:
      ```bash
-     rm -f .commit_msg
+     rm -f .commit_msg scratch/.commit_msg
      ```
-     *(Emitir `rm -f .commit_msg` en paralelo con la siguiente llamada del turno).*
+     *(Emitir `rm -f ...` en paralelo con la siguiente llamada del turno).*
 
 ### Paso 6: Publicación Remota
 Subir la rama al repositorio remoto:
@@ -119,12 +120,12 @@ git push -u origin <nombre-de-rama>
 ```
 
 ### Paso 7: Apertura de Pull Request (👀 In Review / PR)
-1. Redactar el cuerpo del PR en `.pr_body` mediante herramientas nativas de archivos, incluyendo obligatoriamente `Closes #<id>` (o vinculación múltiple si aplica).
+1. Redactar el cuerpo del PR en `.pr_body` (o `scratch/.pr_body` en runtimes confinados) mediante herramientas nativas de archivos, incluyendo obligatoriamente `Closes #<id>` (o vinculación múltiple si aplica).
 2. Publicar mediante GitHub CLI:
    ```bash
    gh pr create --base <base_branch> --title "<tipo>(<alcance>): <descripción>" --body-file .pr_body
    ```
-   *(Si `<base_branch>` es la default del repositorio, `--base` puede omitirse; en Categoría B explicitar `--base dev`).*
+   *(o `--body-file scratch/.pr_body` si se redactó en `scratch/`; si `<base_branch>` es la default del repositorio, `--base` puede omitirse; en Categoría B explicitar `--base dev`).*
 3. **Indexación de Salvaguarda en Projects v2:**
    Para asegurar el ingreso inmediato del PR al tablero central en repositorios de Categoría B (donde la base `dev` no dispara el workflow nativo de indexación automática) o repositorios donde `Auto-add to project` carece de reglas globales, ejecutar inmediatamente la indexación determinista utilizando la URL devuelta por `gh pr create`:
    ```bash
@@ -132,7 +133,7 @@ git push -u origin <nombre-de-rama>
    ```
    *(Donde `<project_number>` y `<project_owner>` se resuelven dinámicamente desde `.repo-config.json`, aplicando `1` y `@me` por defecto cuando no estén declarados).*
 4. La vinculación `Closes #<id>` activa el workflow nativo `Pull request linked to issue` en Projects v2, transicionando la tarjeta a `👀 In Review / PR` sin llamadas manuales de CLI.
-5. Limpiar el archivo temporal (`rm -f .pr_body`, emitido en paralelo con el reporte del turno).
+5. Limpiar el archivo temporal (`rm -f .pr_body scratch/.pr_body`, emitido en paralelo con el reporte del turno).
 
 ### Paso 8: Protocolo de Cierre e Higiene Post-Merge (Done)
 
@@ -256,11 +257,12 @@ El ciclo de vida en Projects v2 se rige por transiciones desacopladas gobernadas
 Cuando una tarea investigativa o spike concluya que **no se requieren cambios de código**:
 1. **Cierre Activo:** No delegar el cierre al usuario; cerrar la issue de forma autónoma.
 2. **Publicación del Informe Técnico:**
-   Redactar reporte en `.issue_comment` con herramientas nativas de archivos y publicar con GitHub CLI:
+   Redactar reporte en `.issue_comment` (o `scratch/.issue_comment` en runtimes confinados) con herramientas nativas de archivos y publicar con GitHub CLI:
    ```bash
    gh issue comment <id> --body-file .issue_comment
    ```
-   Limpiar el temporal: `rm -f .issue_comment`.
+   *(o `--body-file scratch/.issue_comment` si se redactó en `scratch/`).*
+   Limpiar el temporal: `rm -f .issue_comment scratch/.issue_comment`.
 3. **Cierre Autónomo:**
    ```bash
    gh issue close <id>
