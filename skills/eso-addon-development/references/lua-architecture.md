@@ -336,7 +336,14 @@ En el sistema cartográfico de EsoUI, las coordenadas y radios operan normalizad
 * **Submapas Urbanos e Interiores (`IsUrbanSubmap`):** En submapas de ciudades o interiores de escala reducida, radios mayores (hasta `0.50`) son válidos para delimitar perímetros amplios del recinto o distrito.
 * **Mapas de Zona Provinciales:** En mapas extensos provinciales o regionales (ej. Western Skyrim, Deshaan, Glenumbra), los radios deben calibrarse estrictamente a rangos de exploración locales (típicamente $\le 0.08$ o radios proporcionales de punto de interés) para prevenir que un área de misión cubra la provincia entera.
 
-### 12.2 Transición Transparente de Borradores a Misiones Activas y Refresco de Pines
+### 12.2 Jerarquía y Convención de Texturas de Mapas en Capítulos y DLCs Multi-Zona
+* **Agrupación en DLCs y Capítulos:** En capítulos y expansiones multi-zona de The Elder Scrolls Online (ej. Greymoor/Western Skyrim, The Reach, Northern/Southern Elsweyr, Thieves Guild, Dark Brotherhood, High Isle, Necrom), ZOS agrupa zonas provinciales completas bajo carpetas compartidas utilizando el sufijo `_base_0` (ej. `maps/skyrim/westernskyrim_base_0`, `maps/skyrim/reach_base_0`, `maps/thieves/hewsbane_base_0`).
+* **Discriminación de Mapas Base vs Submapas Urbanos:**
+  * **Mapas Provinciales Base (`_base_`):** La presencia de la subcadena `_base_` en la ruta o nombre de la textura identifica invariablemente un mapa de zona provincial o exterior por defecto.
+  * **Submapas Urbanos e Interiores Legítimos:** Se caracterizan por carecer de `_base_` en sus sufijos (ej. `maps/skyrim/solitude_0`, `maps/deshaan/mournhold_0`) o por coincidir con identificadores urbanos o recintos tipados (`IsUrbanSubmap`).
+* **Prevención de Falsos Positivos Cartográficos:** Queda estrictamente prohibido asumir heurísticas simplistas basadas en que cualquier textura cuyo nombre difiera del nombre de la carpeta contenedora (`maps/<folder>/<folder>_base_0`) es un submapa urbano interior (`SUBMAP_RADIUS = 0.50`). Dicha suposición errónea provoca que la selección de un objetivo al aire libre desborde la provincia entera al asignar un radio metropolitano a una zona provincial completa.
+
+### 12.3 Transición Transparente de Borradores a Misiones Activas y Refresco de Pines
 * **Sincronización de Pines con el Ciclo de Vida:** Al formalizar misiones activas y purgar el borrador (`draftAreas` / `draftObjectives`), los gestores de pines deben alternar transparentemente sus fuentes de datos:
   1. Dejar de referenciar las estructuras efímeras del borrador.
   2. Apuntar de inmediato a las áreas y objetivos consolidados de la misión activa.

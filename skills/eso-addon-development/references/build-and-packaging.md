@@ -85,4 +85,9 @@ Para mitigar desbordes de buffer (`CONTEXT_TRUNCATION`) y saturación de la vent
 * **Emulación Canónica de Contenedores de Panel Derecho (`ZO_RightPanelFootPrint`):**
   * Especificación del contrato para contenedores de panel derecho (`ZO_QuestJournal`): deben modelarse como `TopLevelControl` parentado a `GuiRoot`, con dimensiones canónicas de 1000x700px, estado inicial `hidden = true` y tabla global `ZO_RightPanelFootPrint`.
   * Garantiza que cualquier lógica de anclaje, visibilidad, huella gráfica o verificación de dimensiones del panel derecho opere de manera fidedigna frente al comportamiento real de EsoUI sin requerir parches ad-hoc.
+* **Paridad del Arnés frente al Manifiesto del Addon (Manifest Load Order Parity):**
+  * Todo archivo o runner de prueba en `tests/` (tanto suites unitarias como arneses de componentes aislados) **DEBE** replicar fielmente la secuencia y orden de carga de módulos declarada en el manifiesto oficial del addon (`<Addon>.txt`).
+  * En arquitecturas con módulos interdependientes donde archivos posteriores consumen servicios, utilidades o namespaces inicializados previamente, omitir o alterar la carga en el arnés de pruebas induce degradaciones silenciosas a `nil` y roturas ficticias en tiempo de diseño que no reflejan el comportamiento real del motor de EsoUI.
+  * Queda prohibido crear archivos de prueba desarticulados que carguen módulos avanzados asumiendo dependencias globales sin haber requerido o inicializado fidedignamente sus predecesores conforme a la lista de carga del manifiesto.
+
 
