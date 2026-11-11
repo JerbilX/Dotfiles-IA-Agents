@@ -17,7 +17,7 @@ Subordinado a las directivas basales compiladas en el prompt del runtime:
 * **Backlog Canónico:** Prohibido `TODO.md` o `tasks/`; registro en Issues e indexación en Projects v2 con perfiles según MBR (`profile:flash-low`, `profile:flash-medium`, `profile:flash-high`, `profile:pro`).
 * **Ceremonia y Trazabilidad:** N0 (consultas, `scratch/`: sin issue ni rama), N1 (cambio acotado, evidente, sin `core/`, `runtimes/` ni ADR: issue mínima, sin plan, ADR ni perfil), N2 (feature, ambigüedad, `core/`, `runtimes/` o ADR: ciclo completo). Precedencia de Entornos Locales: priorizar binarios locales (`.venv/bin/`, `node_modules/.bin/`) sobre intérpretes globales.
 * **Inmutabilidad y PRs:** Inmutabilidad estricta de workspace (tooling y scripts constituyen desarrollo). Prohibido push directo a `main`. Ramas efímeras (`feat/` o `fix/`) y entrega vía PR.
-* **Higiene, Pruebas y Atomicidad:** I/O solo con herramientas nativas de archivos; delimitación obligatoria de rango o paginado (ventana ≤ 200 líneas); circuit breaker e inmunidad heurística; granularidad atómica en ediciones; acotar salidas (`head -n 20`, `--jq`) y pruebas filtradas en desarrollo (suite integral solo previa al commit); commits vía `.commit_msg` y eliminación inmediata de temporales.
+* **Higiene, Pruebas y Atomicidad:** I/O solo con herramientas nativas de archivos; delimitación obligatoria de rango o paginado (ventana ≤ 200 líneas); circuit breaker e inmunidad heurística; granularidad atómica en ediciones; acotar salidas (`head -n 20`, `--jq`) y pruebas filtradas en desarrollo (suite integral solo previa al commit); temporales de intercambio (`.commit_msg`, `.pr_body`, `.issue_body`) en `scratch/` (o raíz según runtime), commits vía `-F` y eliminación inmediata tras su uso.
 * **Sandbox:** Subordinado a `runtimes/*/rules/01-sandbox.md`. Comandos de red, git mutadores (`init`, `checkout`, `switch`, `branch`, `add`, `commit`, `merge`, `push`, `pull`, `revert`), `gh` y tooling autorizado (`agent-audit`, `agent-module`, `gh-pr-review`, `git-prune-gone`) operan con bypass de sandbox (ej. `BypassSandbox: true` en Antigravity). Validaciones locales, checks (`./build.sh check`), inspección git pasiva y remoción de archivos temporales (`rm -f`) operan en sandbox confinado (ej. `BypassSandbox: false` en Antigravity).
 * **Resiliencia de Binarios:** Ante fallo de invocación de tooling autorizado (`command not found` o ausencia en `$PATH`), resolver directamente la ruta canónica (`./skills/<skill>/bin/<cmd>` en este repo; `<skills_dir del runtime>/<skill>/bin/<cmd>` en workspaces externos) o aplicar fallback nativo (`git checkout <base> && git pull --prune --ff-only` y `git branch -D <rama>` solo si su PR está `MERGED`); prohibido realizar búsquedas exploratorias ciegas (`find`, `which`, `ls`).
 
@@ -69,26 +69,28 @@ Para relevamientos técnicos que requieran inspeccionar más de 8 archivos, expl
 2. **Consolidación:** El subagente entrega un resumen ejecutivo consolidado al hilo principal, protegiendo el contexto de la sesión. Ver [`references/exploratory-research.md`](references/exploratory-research.md).
 
 ### 3.5 Creación y Tipificación de Issues en Backlog
-Toda tarea futura, bug o deuda técnica detectada se lista al usuario y, con su confirmación, se registra formalmente en GitHub Issues tipificando su perfil de ejecución (`profile:<perfil>`). Issue mínima (N1, ejecutada en el mismo turno): mismo comando con `.issue_body` de 1-2 líneas, sin `--label` de perfil ni plan/ADR:
-1. Redactar especificación técnica en `.issue_body` mediante herramientas nativas de archivos.
+Toda tarea futura, bug o deuda técnica detectada se lista al usuario y, con su confirmación, se registra formalmente en GitHub Issues tipificando su perfil de ejecución (`profile:<perfil>`). Issue mínima (N1, ejecutada en el mismo turno): mismo comando con `.issue_body` (o `scratch/.issue_body`) de 1-2 líneas, sin `--label` de perfil ni plan/ADR:
+1. Redactar especificación técnica en `.issue_body` (o `scratch/.issue_body` en runtimes confinados) mediante herramientas nativas de archivos.
 2. Crear issue determinista:
 ```bash
 gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"
 ```
-3. Limpiar temporal: `rm -f .issue_body` (en paralelo en el mismo turno).
+*(o `--body-file scratch/.issue_body` si se redactó en `scratch/`).*
+3. Limpiar temporal: `rm -f .issue_body scratch/.issue_body` (en paralelo en el mismo turno).
 4. Indexar inmediatamente en tablero central:
 ```bash
 gh project item-add <project_number> --owner <project_owner> --url <issue_url>
 ```
 *(Resueltos desde `.repo-config.json` o fallback `1` y `@me`).*
 
-**Atribución de Agente:** El cuerpo de toda issue (local o cruzada) y de todo PR termina con la línea `Creado por: <runtime> (<modelo>)`, y todo commit incluye el trailer `Generated-by: <runtime> (<modelo>)` en `.commit_msg`, con los valores que declara la regla del runtime activo (ej. `Generated-by: Claude Code (claude-opus-5-5)` o `Generated-by: Antigravity (Gemini 3.8 Flash)`). Es informativa: sin labels.
+**Atribución de Agente:** El cuerpo de toda issue (local o cruzada) y de todo PR termina con la línea `Creado por: <runtime> (<modelo>)`, y todo commit incluye el trailer `Generated-by: <runtime> (<modelo>)` en `.commit_msg` (o `scratch/.commit_msg`), con los valores que declara la regla del runtime activo (ej. `Generated-by: Claude Code (claude-opus-5-5)` o `Generated-by: Antigravity (Gemini 3.8 Flash)`). Es informativa: sin labels.
 
 **Issues cruzadas (ADR-0045):** Si el hallazgo afecta a otro repositorio del owner, registrarlo allí desde el workspace actual, con confirmación del usuario y sin clonar ni leer archivos del repo destino. El cuerpo debe ser autocontenido (evidencia, origen y criterios de aceptación), porque el agente que lo ejecute no tendrá este contexto:
 ```bash
 gh issue create -R <owner>/<repo> --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"
 gh project item-add <project_number> --owner <project_owner> --url <issue_url>
 ```
+*(o `--body-file scratch/.issue_body` según corresponda).*
 Si el label `profile:<perfil>` no existe en el repo destino, omitirlo y mencionarlo en el cuerpo.
 
 ---
@@ -105,9 +107,9 @@ Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](refe
 - [ ] **2. Higiene:** Aislamiento preferente en ≤ 2 llamadas (`git fetch --prune origin` y `git switch --no-track -c <rama> origin/<base>`); poda diferida a Fase 8.
 - [ ] **3. Plan/ADR:** Fast-Track por defecto (sin pausa bloqueante en tickets con criterios claros en `Ready for Dev`); *Stop & Plan* con gate bloqueante ante ADRs nuevos/modificados, alternativas divergentes o diagnósticos inciertos; *Fast-path*: orden ejecutiva ("procedé") tras debate en el chat habilita implementar.
 - [ ] **4. Desarrollo:** Promover ADR a `status: accepted` al iniciar desarrollo, I/O nativo con lectura paginada estricta (delimitación de rango o paginado ≤ 200 líneas, circuit breaker ≤ 6 lecturas consecutivas globales e inmunidad heurística), ediciones atómicas acotadas y verificar con `./build.sh check`.
-- [ ] **5. Commit:** Staging explícito (`git add <rutas>`; no usar `git add .`/`-A`), redactar en `.commit_msg` con trailer canónico `Generated-by: <runtime> (<modelo>)`, `git commit -F .commit_msg` y limpiar `.commit_msg` en paralelo con la siguiente llamada en el mismo turno.
+- [ ] **5. Commit:** Staging explícito (`git add <rutas>`; no usar `git add .`/`-A`), redactar en `.commit_msg` (o `scratch/.commit_msg` en runtimes confinados) con trailer canónico `Generated-by: <runtime> (<modelo>)`, `git commit -F .commit_msg` (o `-F scratch/.commit_msg`) y limpiar el temporal en paralelo con la siguiente llamada en el mismo turno.
 - [ ] **6. Push:** Publicar con `git push -u origin <rama>`.
-- [ ] **7. PR:** PR con `Closes #<id>` y línea de atribución (§3.5) vía `.pr_body` (ADR viaja como `accepted`); salvaguarda de indexación inmediata con `gh project item-add <project_number> --owner <project_owner> --url <pr_url>` (resueltos desde `.repo-config.json` o fallback `1` y `@me`); limpiar `.pr_body` en paralelo con el reporte del turno. Built-in Workflow avanza tarjeta a `👀 In Review / PR`.
+- [ ] **7. PR:** PR con `Closes #<id>` y línea de atribución (§3.5) vía `.pr_body` (o `scratch/.pr_body`; ADR viaja como `accepted`); salvaguarda de indexación inmediata con `gh project item-add <project_number> --owner <project_owner> --url <pr_url>` (resueltos desde `.repo-config.json` o fallback `1` y `@me`); limpiar el temporal en paralelo con el reporte del turno. Built-in Workflow avanza tarjeta a `👀 In Review / PR`.
 - [ ] **8. Cierre & Higiene (Done):** Fusión remota con `gh pr merge <id> --squash --delete-branch` (Riel 1 Default: orden humana en chat; Riel 2 Opt-in: autónomo si tiene label `automerge` y supera circuit breakers) o web; Built-in Workflows cierran issue y avanzan a `Done`. Higiene atómica post-merge en ≤ 2 llamadas con `git-prune-gone --sync` (fallback determinista: ruta canónica del skill o Git nativo `git checkout <base> && git pull --prune --ff-only` + `git branch -D <rama>` si su PR está `MERGED`; prohibidas búsquedas ciegas `find`/`which`). Ver [`references/branch-lifecycle.md`](references/branch-lifecycle.md).
 
 ---
@@ -120,10 +122,10 @@ Guía procedimental: [`references/code-review.md`](references/code-review.md).
 2. **Ingesta:** `gh-pr-review comments <pr_id>` (unifica veredicto, reviews, comentarios generales e hilos en una sola llamada).
 3. **Resolución:**
    - I/O nativo y validación con `./build.sh check`.
-   - Commit `fix(<alcance>): atender feedback de code review en PR #<id>` vía `.commit_msg` y `git push`.
+   - Commit `fix(<alcance>): atender feedback de code review en PR #<id>` vía `.commit_msg` (o `scratch/.commit_msg`) y `git push`.
 4. **Cierre de Hilos:**
    - Resolver: `gh-pr-review resolve <thread_id>` (o `--all <pr_id>` en mutación por lotes).
-   - Comentar PR con `.pr_comment` y mantener en `👀 In Review / PR`.
+   - Comentar PR con `.pr_comment` (o `scratch/.pr_comment`) y mantener en `👀 In Review / PR`.
 
 ---
 
@@ -131,7 +133,7 @@ Guía procedimental: [`references/code-review.md`](references/code-review.md).
 
 Para tareas sin cambios de código ([`references/branch-lifecycle.md`](references/branch-lifecycle.md)):
 
-1. Informe técnico: `gh issue comment <id> --body-file .issue_comment`.
+1. Informe técnico: `gh issue comment <id> --body-file .issue_comment` (o `--body-file scratch/.issue_comment`).
 2. Cerrar: `gh issue close <id>`.
 3. La acción nativa de cierre transiciona automáticamente la tarjeta a `Done` en Projects v2 mediante Built-in Workflows (sin `gh project item-edit`).
 4. Confirmar en chat; no delegar el cierre al usuario.

@@ -14,17 +14,30 @@ Protocolo determinista para inicializar repositorios locales y aprovisionar repo
   ```bash
   git branch -M main
   ```
+- Garantizar la existencia de `.gitignore` excluyendo temporales y el directorio efímero `scratch/`:
+  ```gitignore
+  # Temporales y directorio efímero
+  *.bak
+  *.tmp
+  .commit_msg
+  .pr_body
+  .pr_comment
+  .issue_body
+  .issue_comment
+  scratch/
+  ```
 - Preparar los archivos para el commit inicial:
   ```bash
   git add .
   ```
-- Redactar el mensaje inicial en `.commit_msg` mediante herramientas nativas de archivos y crear el commit inicial:
+- Redactar el mensaje inicial en `.commit_msg` (o `scratch/.commit_msg` en runtimes confinados) mediante herramientas nativas de archivos y crear el commit inicial:
   ```bash
   git commit -F .commit_msg
   ```
+  *(o `git commit -F scratch/.commit_msg` si se redactó en `scratch/`).*
 - Limpiar el archivo temporal:
   ```bash
-  rm -f .commit_msg
+  rm -f .commit_msg scratch/.commit_msg
   ```
 
 ---
