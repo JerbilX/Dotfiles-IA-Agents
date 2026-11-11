@@ -82,7 +82,7 @@ git-prune-gone --sync
 * **Lectura Paginada Obligatoria y Lectura Quirúrgica en Dos Fases:** Toda lectura de archivos exige delimitar rango o paginado (ventana ≤ 200 líneas) sin excepción; prohibidas lecturas no acotadas. Lectura Quirúrgica en Dos Fases: en archivos > 150 líneas, localizar por búsqueda de contenido y restringir la lectura a ventana quirúrgica (≤ 50 líneas). Ignorar avisos de contenido no mostrado.
 * **Granularidad Atómica en Ediciones:** Particionar cambios en bloques acotados de edición para prevenir truncamientos en la respuesta y degradación por latencia. Prohibido reemplazar archivos completos monolíticamente.
 * **Precedencia de Entornos Locales:** Priorizar binarios locales (`.venv/bin/`, `node_modules/.bin/`) sobre intérpretes o linters globales.
-* **Higiene de Salida y Pruebas:** Acotar salidas (`head -n 20`, `--jq`). En desarrollo o diagnóstico, pruebas filtradas (archivo o caso puntual) o de baja verbosidad; suite integral solo en la verificación final previa al commit. Temporales (`.commit_msg`, `.pr_body`, `.issue_body`, `.issue_comment`) se eliminan tras su uso.
+* **Higiene de Salida y Pruebas:** Acotar salidas (`head -n 20`, `--jq`). En desarrollo o diagnóstico, pruebas filtradas (archivo o caso puntual) o de baja verbosidad; suite integral solo en la verificación final previa al commit. Temporales (`.commit_msg`, `.pr_body`, `.issue_body`, `.issue_comment` en `scratch/` o raíz según runtime; en Antigravity la ruta física de `scratch/` para I/O nativo es `<appDataDir>/brain/<conversation-id>/scratch/`) se eliminan tras su uso.
 * **Disyuntor de Parches en Pruebas (Stop & Read Holístico):** Ante 3 fallos consecutivos en suites de pruebas tras micro-ediciones sucesivas (antipatrón `TEST_RETRY_CHURN`), el agente debe detener de inmediato los parches reactivos y realizar una lectura contextual amplia del bloque o archivo involucrado para comprender la causa raíz antes de volver a mutar.
 * Validar compilación, linters y suites de prueba locales (`./build.sh check`).
 * **Promoción Atómica del ADR:** Al comenzar a codificar, actualizar el YAML frontmatter del ADR a `status: accepted` en la rama de trabajo para ratificación atómica al mergear.
@@ -94,7 +94,7 @@ git-prune-gone --sync
    ```
    *(Indicar rutas explícitas; no usar `git add .` ni `git add -A`).*
 2. **Redacción y Commit Atómico:**
-   * Evitar `git commit -m "..."` (anula el prefix matching de permisos al contener comillas). Redactar mensaje convencional en `.commit_msg` con herramientas nativas de archivos.
+   * Evitar `git commit -m "..."` (anula el prefix matching de permisos al contener comillas). Redactar mensaje convencional en `.commit_msg` (o en runtimes confinados como Antigravity bajo `<appDataDir>/brain/<conversation-id>/scratch/.commit_msg` para I/O nativo) con herramientas nativas de archivos.
    * Incluir obligatoriamente al final del mensaje (separado por una línea en blanco) el trailer canónico de atribución:
      ```gitcommit
      <tipo>(<alcance>): <descripción>
@@ -105,12 +105,15 @@ git-prune-gone --sync
    * Ejecutar el commit:
      ```bash
      git commit -F .commit_msg
+     # o en Antigravity / runtimes confinados:
+     git commit -F <appDataDir>/brain/<conversation-id>/scratch/.commit_msg
      ```
    * Limpiar el archivo temporal:
      ```bash
      rm -f .commit_msg
+     # o en Antigravity: rm -f <appDataDir>/brain/<conversation-id>/scratch/.commit_msg
      ```
-     *(Emitir `rm -f .commit_msg` en paralelo con la siguiente llamada del turno).*
+     *(Emitir la limpieza en paralelo con la siguiente llamada del turno).*
 
 ### Paso 6: Publicación Remota
 Subir la rama al repositorio remoto:
@@ -119,10 +122,11 @@ git push -u origin <nombre-de-rama>
 ```
 
 ### Paso 7: Apertura de Pull Request (👀 In Review / PR)
-1. Redactar el cuerpo del PR en `.pr_body` mediante herramientas nativas de archivos, incluyendo obligatoriamente `Closes #<id>` (o vinculación múltiple si aplica).
+1. Redactar el cuerpo del PR en `.pr_body` (o en Antigravity bajo `<appDataDir>/brain/<conversation-id>/scratch/.pr_body`) mediante herramientas nativas de archivos, incluyendo obligatoriamente `Closes #<id>` (o vinculación múltiple si aplica).
 2. Publicar mediante GitHub CLI:
    ```bash
    gh pr create --base <base_branch> --title "<tipo>(<alcance>): <descripción>" --body-file .pr_body
+   # o en Antigravity: --body-file <appDataDir>/brain/<conversation-id>/scratch/.pr_body
    ```
    *(Si `<base_branch>` es la default del repositorio, `--base` puede omitirse; en Categoría B explicitar `--base dev`).*
 3. **Indexación de Salvaguarda en Projects v2:**
@@ -132,7 +136,7 @@ git push -u origin <nombre-de-rama>
    ```
    *(Donde `<project_number>` y `<project_owner>` se resuelven dinámicamente desde `.repo-config.json`, aplicando `1` y `@me` por defecto cuando no estén declarados).*
 4. La vinculación `Closes #<id>` activa el workflow nativo `Pull request linked to issue` en Projects v2, transicionando la tarjeta a `👀 In Review / PR` sin llamadas manuales de CLI.
-5. Limpiar el archivo temporal (`rm -f .pr_body`, emitido en paralelo con el reporte del turno).
+5. Limpiar el archivo temporal (`rm -f .pr_body` o `rm -f <appDataDir>/brain/<conversation-id>/scratch/.pr_body`, emitido en paralelo con el reporte del turno).
 
 ### Paso 8: Protocolo de Cierre e Higiene Post-Merge (Done)
 
