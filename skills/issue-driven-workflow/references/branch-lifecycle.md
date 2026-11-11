@@ -156,6 +156,20 @@ git push -u origin <nombre-de-rama>
    *(Donde `<project_number>` y `<project_owner>` se resuelven dinámicamente desde `.repo-config.json`, aplicando `1` y `@me` por defecto cuando no estén declarados).*
 4. La vinculación `Closes #<id>` activa el workflow nativo `Pull request linked to issue` en Projects v2, transicionando la tarjeta a `👀 In Review / PR` sin llamadas manuales de CLI.
 5. Limpiar el archivo temporal (`rm -f .pr_body` o `rm -f <appDataDir>/brain/<conversation-id>/scratch/.pr_body`, emitido en paralelo con el reporte del turno).
+6. **Inspección Determinista de CI y Fallos de Ejecución (GitHub Actions):**
+   Ante fallos en los checks de integración continua (`gh pr checks <pr_id>`):
+   * **Prohibición de Invocación Interactiva:** Prohibido invocar `gh run view --log-failed` sin especificar el identificador numérico de la ejecución (`<run_id>`). La omisión de este argumento activa un selector interactivo en terminal (`Select a workflow run [Use arrows to move...]`), provocando el bloqueo del agente a la espera de entrada interactiva por `stdin`.
+   * **Resolución Determinista del ID de Ejecución:**
+     Resolver primero el identificador numérico de la ejecución más reciente en la rama o commit:
+     ```bash
+     gh run list --branch <nombre-de-rama> --limit 1 --json databaseId --jq '.[0].databaseId'
+     ```
+     *(O resolver vía commit: `gh run list --commit <commit_sha> --limit 1 --json databaseId --jq '.[0].databaseId'`).*
+   * **Inspección Determinista de Logs:**
+     Invocación directa pasando el ID resuelto:
+     ```bash
+     gh run view <run_id> --log-failed
+     ```
 
 ### Paso 8: Protocolo de Cierre e Higiene Post-Merge (Done)
 
@@ -176,8 +190,16 @@ Tras la apertura del PR en el flujo estándar de 1 Gate, el agente reporta el PR
    * Si se usó worktree efímero, desmontarlo: `git worktree remove .worktrees/issue-<id>`.
    * Ante ausencia en `$PATH`, aplicar de inmediato el [Protocolo de Invocación y Resiliencia de git-prune-gone](#protocolo-de-invocación-y-resiliencia-de-git-prune-gone).
 3. **Cierre Automático y Verificación Condicional:**
-   * La directiva `Closes #<id>` y el merge exitoso activan Built-in Workflows (*Pull request merged* e *Item closed*), cerrando la issue y avanzando la tarjeta a `Done` en Projects v2 de forma desatendida.
-   * `gh issue view` o `gh issue close` queda reservado como fallback condicional ante errores de cierre remoto.
+   * **Categoría A (Rama base predeterminada, ej. `main`):** La directiva `Closes #<id>` y el merge exitoso activan Built-in Workflows (*Pull request merged* e *Item closed*), cerrando la issue y avanzando la tarjeta a `Done` en Projects v2 de forma desatendida. `gh issue view` o `gh issue close` queda reservado como fallback condicional ante errores de cierre remoto.
+   * **Categoría B (Rama base secundaria / no predeterminada, ej. `dev`):** GitHub **únicamente** ejecuta el auto-cierre de issues vinculadas con `Closes #<id>` cuando el Pull Request se fusiona contra la *default branch* del repositorio. Al fusionar contra `dev` (o cualquier rama secundaria), las issues vinculadas permanecen en estado `OPEN`. Tras el merge, el agente **debe verificar el estado de la issue** y cerrarla explícitamente vía CLI:
+     ```bash
+     gh issue view <id> --json state --jq .state
+     ```
+     Si el estado retornado es `OPEN`, ejecutar de inmediato:
+     ```bash
+     gh issue close <id>
+     ```
+     El workflow nativo de Projects v2 (*Item closed*) transicionará la tarjeta a `Done` automáticamente tras el cierre.
 
 #### Vía A2: Auto-Merge Autónomo por CLI (Riel 2 Opt-in - 0 Gates)
 Si el issue cuenta con la etiqueta `automerge` en GitHub o la orden inicial del usuario en el chat lo declaró explícitamente (*"implementa y automergea el issue #<id>"*):
@@ -189,8 +211,10 @@ Si el issue cuenta con la etiqueta `automerge` en GitHub o la orden inicial del 
      ```bash
      gh pr merge <id> --squash --delete-branch
      ```
-3. **Higiene Atómica Post-Merge:**
-   - Ejecutar inmediatamente `git-prune-gone --sync` y reportar la culminación del ciclo E2E al usuario.
+3. **Higiene Atómica Post-Merge y Cierre en Categoría B:**
+   - Ejecutar inmediatamente `git-prune-gone --sync`.
+   - En repositorios de Categoría B (o con ramas base secundarias como `dev`), verificar si la issue sigue en `OPEN` y cerrarla deterministamente con `gh issue close <id>`.
+   - Reportar la culminación del ciclo E2E al usuario.
 
 > [!NOTE]
 > **Auto-Despliegue Post-Merge en el Host (ADR-0055):**
@@ -202,7 +226,7 @@ Si el issue cuenta con la etiqueta `automerge` en GitHub o la orden inicial del 
    ```bash
    git-prune-gone --sync
    ```
-3. Built-in Workflows avanza la tarjeta a `Done` automáticamente al detectarse el merge.
+3. Built-in Workflows avanza la tarjeta a `Done` automáticamente al detectarse el merge (en repositorios de Categoría B o con ramas base secundarias, verificar y ejecutar `gh issue close <id>` si la issue permanece abierta).
 
 * **Higiene Post-Merge:** Al iniciar la siguiente tarea de desarrollo o tras confirmarse un merge, si la rama actual trackea un PR fusionado/cerrado o `[gone]`, ejecutar este paso de higiene. No se ejecuta ante simples consultas.
 
