@@ -53,16 +53,46 @@ ACTIVE_TOOLS = {
 # ADR-0046: 6 deja pasar el 89% de las rachas naturales de exploración y corta la cola de parálisis (10+).
 DEFAULT_MAX_PASSIVE_READS = 6
 
+DIR_LISTING_TOOLS = {"list_dir", "LS"}
+
+
+def extract_dir_target(tool_name: str, args: Dict[str, Any]) -> str:
+    """Extrae y normaliza la ruta del directorio objetivo para herramientas de listado."""
+    if not isinstance(args, dict) or tool_name not in DIR_LISTING_TOOLS:
+        return ""
+    for k in (
+        "DirectoryPath", "directory_path", "SearchDirectory", "search_directory",
+        "dir_path", "path", "directory", "AbsolutePath", "TargetFile"
+    ):
+        if k in args and args[k]:
+            val = str(args[k]).strip('\'"')
+            if val:
+                return os.path.normpath(val)
+    for k, v in args.items():
+        norm_k = k.lower().replace("_", "")
+        if norm_k in ("directorypath", "searchdirectory", "dirpath", "path", "directory", "absolutepath"):
+            if v:
+                val = str(v).strip('\'"')
+                if val:
+                    return os.path.normpath(val)
+    return ""
+
 
 def extract_file_target(args: Dict[str, Any]) -> str:
-    """Extrae la ruta del archivo objetivo desde los argumentos si está disponible."""
+    """Extrae la ruta del archivo o directorio objetivo desde los argumentos si está disponible."""
     if not isinstance(args, dict):
         return ""
-    for k in ("AbsolutePath", "TargetFile", "file_path", "filePath", "path", "filename", "file"):
+    for k in (
+        "AbsolutePath", "TargetFile", "DirectoryPath", "SearchDirectory",
+        "file_path", "filePath", "path", "filename", "file", "dir_path", "directory"
+    ):
         if k in args and args[k]:
             return str(args[k]).strip('\'"')
     for k, v in args.items():
-        if k.lower().replace("_", "") in ("absolutepath", "targetfile", "filepath", "path", "file"):
+        if k.lower().replace("_", "") in (
+            "absolutepath", "targetfile", "directorypath", "searchdirectory",
+            "filepath", "path", "file", "dirpath", "directory"
+        ):
             if v:
                 return str(v).strip('\'"')
     return ""
@@ -168,6 +198,58 @@ def extract_recent_tool_events(records: List[Dict[str, Any]]) -> List[str]:
     return events
 
 
+def analyze_passive_streak(records: List[Dict[str, Any]]) -> tuple[int, set[str], int]:
+    """
+    Analiza la racha reciente de herramientas pasivas desde la última acción activa o input del usuario.
+    Distingue la exploración jerárquica estructurada (list_dir/LS en rutas únicas) de lecturas repetidas.
+    Retorna:
+    - consecutive_passive_count: cantidad de lecturas pasivas ciegas o repetidas
+    - seen_dirs: conjunto de rutas de directorio normalizadas exploradas en la racha
+    - total_passive_steps: total de pasos de inspección en la racha
+    """
+    streak_records = []
+    for rec in reversed(records):
+        source = rec.get("source")
+        rec_type = rec.get("type")
+        if source in ("USER", "USER_EXPLICIT") or rec_type == "USER_INPUT":
+            break
+        tcs = rec.get("tool_calls", [])
+        if not tcs:
+            continue
+        if any(tc.get("name") in ACTIVE_TOOLS for tc in tcs):
+            break
+        streak_records.append(rec)
+
+    streak_records.reverse()
+
+    seen_dirs: set[str] = set()
+    consecutive_passive_count = 0
+    total_passive_steps = 0
+
+    for rec in streak_records:
+        tcs = rec.get("tool_calls", [])
+        has_passive = False
+        step_is_distinct_dir = False
+
+        for tc in tcs:
+            name = tc.get("name", "")
+            if name in PASSIVE_TOOLS:
+                has_passive = True
+                if name in DIR_LISTING_TOOLS:
+                    args = tc.get("args", {})
+                    dir_target = extract_dir_target(name, args if isinstance(args, dict) else {})
+                    if dir_target and dir_target not in seen_dirs:
+                        seen_dirs.add(dir_target)
+                        step_is_distinct_dir = True
+
+        if has_passive:
+            total_passive_steps += 1
+            if not step_is_distinct_dir:
+                consecutive_passive_count += 1
+
+    return consecutive_passive_count, seen_dirs, total_passive_steps
+
+
 def inspect_transcript_for_passive_reads(
     transcript_or_records: Union[Path, List[Dict[str, Any]]],
     max_reads: int = DEFAULT_MAX_PASSIVE_READS
@@ -178,29 +260,7 @@ def inspect_transcript_for_passive_reads(
     else:
         records = transcript_or_records
 
-    consecutive_passive_count = 0
-    for rec in reversed(records):
-        source = rec.get("source")
-        rec_type = rec.get("type")
-
-        # La intervención del usuario reinicia la cuenta
-        if source in ("USER", "USER_EXPLICIT") or rec_type == "USER_INPUT":
-            break
-
-        tcs = rec.get("tool_calls", [])
-        if not tcs:
-            continue
-
-        has_active = any(tc.get("name") in ACTIVE_TOOLS for tc in tcs)
-        if has_active:
-            break
-
-        has_passive = any(tc.get("name") in PASSIVE_TOOLS for tc in tcs)
-        if has_passive:
-            consecutive_passive_count += 1
-        else:
-            break
-
+    consecutive_passive_count, _, _ = analyze_passive_streak(records)
     return consecutive_passive_count
 
 
@@ -219,11 +279,17 @@ def evaluate_pre_tool_use(payload: dict) -> dict:
         return {"decision": "allow"}
 
     recent_records = read_recent_transcript_records(tpath)
-    candidate_sig = get_tool_signature(tool_name, tool_args if isinstance(tool_args, dict) else {})
-    return evaluate_loops(tool_name, candidate_sig, recent_records)
+    tool_args_dict = tool_args if isinstance(tool_args, dict) else {}
+    candidate_sig = get_tool_signature(tool_name, tool_args_dict)
+    return evaluate_loops(tool_name, candidate_sig, recent_records, tool_args_dict)
 
 
-def evaluate_loops(tool_name: str, candidate_sig: str, recent_records: List[Dict[str, Any]]) -> dict:
+def evaluate_loops(
+    tool_name: str,
+    candidate_sig: str,
+    recent_records: List[Dict[str, Any]],
+    candidate_args: Optional[Dict[str, Any]] = None,
+) -> dict:
     """Aplica la detección de ping-pong y el umbral de lecturas pasivas sobre registros normalizados."""
     # 1. Detección de bucle cíclico alternante (Ping-Pong)
     transcript_events = extract_recent_tool_events(recent_records)
@@ -249,11 +315,11 @@ def evaluate_loops(tool_name: str, candidate_sig: str, recent_records: List[Dict
     if tool_name not in PASSIVE_TOOLS:
         return {"decision": "allow"}
 
-    # 3. Límite de lecturas pasivas consecutivas
+    # 3. Límite de lecturas pasivas consecutivas y evaluación de navegación jerárquica
     max_reads = int(os.environ.get("AGENT_CIRCUIT_BREAKER_MAX_READS", str(DEFAULT_MAX_PASSIVE_READS)))
-    consecutive_reads = inspect_transcript_for_passive_reads(recent_records, max_reads)
+    consecutive_reads, seen_dirs, total_passive_steps = analyze_passive_streak(recent_records)
 
-    # Si ya se alcanzó o superó el umbral, la llamada actual excede el límite permitido
+    # Si ya se alcanzó o superó el umbral de lecturas ciegas o repetidas, denegar
     if consecutive_reads >= max_reads:
         reason = (
             f"Hard Circuit Breaker Activado: Has alcanzado el límite de {max_reads} lecturas pasivas "
@@ -267,6 +333,22 @@ def evaluate_loops(tool_name: str, candidate_sig: str, recent_records: List[Dict
             "decision": "deny",
             "reason": reason,
         }
+
+    # Si es una herramienta de listado de directorios y repite un directorio ya visitado
+    # tras una racha de inspección que alcanzó el umbral, cortar el bucle de relectura
+    if tool_name in DIR_LISTING_TOOLS:
+        cand_dir = extract_dir_target(tool_name, candidate_args or {})
+        if cand_dir and cand_dir in seen_dirs and total_passive_steps >= max_reads:
+            reason = (
+                f"Hard Circuit Breaker Activado: Has alcanzado el límite de {max_reads} operaciones "
+                f"de inspección y se detectó relectura de un directorio ya visitado ('{cand_dir}'). "
+                f"Detente y sintetiza: resume hallazgos, hipótesis y plan, y consulta al usuario "
+                f"(Stop & Ask) si falta información. Prohibido continuar en bucles de relectura."
+            )
+            return {
+                "decision": "deny",
+                "reason": reason,
+            }
 
     return {"decision": "allow"}
 
@@ -490,7 +572,8 @@ def evaluate_claude_pre_tool_use(payload: dict) -> dict:
     if not transcript_path_str:
         return {"decision": "allow"}
     recent_records = read_recent_claude_records(Path(transcript_path_str))
-    return evaluate_loops(candidate["name"], candidate["sig"], recent_records)
+    tool_input_dict = tool_input if isinstance(tool_input, dict) else {}
+    return evaluate_loops(candidate["name"], candidate["sig"], recent_records, tool_input_dict)
 
 
 def is_claude_payload(payload: dict) -> bool:

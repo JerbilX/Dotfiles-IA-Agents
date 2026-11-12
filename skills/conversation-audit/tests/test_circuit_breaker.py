@@ -102,6 +102,77 @@ class TestAgentCircuitBreaker(unittest.TestCase):
             res = cb_mod.evaluate_pre_tool_use(payload)
             self.assertEqual(res["decision"], "allow")
 
+    def test_list_dir_sequence_distinct_paths_not_blocked(self):
+        """Secuencias de list_dir sobre rutas jerárquicamente distintas y no repetidas no deben ser bloqueadas (Issue #366)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tfile = Path(tmpdir) / "transcript.jsonl"
+            lines = [{"source": "USER", "type": "USER_INPUT", "content": "explora el repo"}]
+            for i in range(8):
+                lines.append({
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "tool_calls": [{"name": "list_dir", "args": {"DirectoryPath": f"/repo/path_{i}"}}],
+                })
+            with open(tfile, "w", encoding="utf-8") as f:
+                for l in lines:
+                    f.write(json.dumps(l) + "\n")
+
+            payload = {
+                "toolCall": {"name": "list_dir", "args": {"DirectoryPath": "/repo/path_8"}},
+                "stepIdx": 9,
+                "transcriptPath": str(tfile),
+            }
+            res = cb_mod.evaluate_pre_tool_use(payload)
+            self.assertEqual(res["decision"], "allow")
+
+    def test_list_dir_repeated_path_exceeding_threshold_denied(self):
+        """Relecturas de directorios repetidos tras alcanzar el umbral de inspección deben ser bloqueadas (Issue #366)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tfile = Path(tmpdir) / "transcript.jsonl"
+            lines = [{"source": "USER", "type": "USER_INPUT", "content": "explora el repo"}]
+            for i in range(6):
+                lines.append({
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "tool_calls": [{"name": "list_dir", "args": {"DirectoryPath": f"/repo/path_{i}"}}],
+                })
+            with open(tfile, "w", encoding="utf-8") as f:
+                for l in lines:
+                    f.write(json.dumps(l) + "\n")
+
+            payload = {
+                "toolCall": {"name": "list_dir", "args": {"DirectoryPath": "/repo/path_0"}},
+                "stepIdx": 7,
+                "transcriptPath": str(tfile),
+            }
+            res = cb_mod.evaluate_pre_tool_use(payload)
+            self.assertEqual(res["decision"], "deny")
+            self.assertIn("Hard Circuit Breaker Activado", res["reason"])
+            self.assertIn("relectura de un directorio ya visitado", res["reason"])
+
+    def test_list_dir_distinct_paths_followed_by_view_file_allowed(self):
+        """La navegación jerárquica no debe agotar preventivamente el cupo de lecturas pasivas de archivos (Issue #366)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tfile = Path(tmpdir) / "transcript.jsonl"
+            lines = [{"source": "USER", "type": "USER_INPUT", "content": "explora el repo"}]
+            for i in range(6):
+                lines.append({
+                    "source": "MODEL",
+                    "type": "PLANNER_RESPONSE",
+                    "tool_calls": [{"name": "list_dir", "args": {"DirectoryPath": f"/repo/dir_{i}"}}],
+                })
+            with open(tfile, "w", encoding="utf-8") as f:
+                for l in lines:
+                    f.write(json.dumps(l) + "\n")
+
+            payload = {
+                "toolCall": {"name": "view_file", "args": {"AbsolutePath": "/repo/dir_5/main.py"}},
+                "stepIdx": 7,
+                "transcriptPath": str(tfile),
+            }
+            res = cb_mod.evaluate_pre_tool_use(payload)
+            self.assertEqual(res["decision"], "allow")
+
     def test_ping_pong_view_file_and_run_command_denied(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tfile = Path(tmpdir) / "transcript.jsonl"
@@ -269,6 +340,22 @@ class TestClaudeCodeSupport(unittest.TestCase):
         return str(p)
 
     # -- Circuit breaker --
+    def test_claude_ls_sequence_distinct_paths_not_blocked(self):
+        """Secuencias de LS sobre rutas distintas no deben bloquear en Claude Code (Issue #366)."""
+        for i in range(8):
+            self.call("LS", {"path": f"/repo/sub_{i}"})
+        res = self.evaluate("LS", {"path": "/repo/sub_8"})
+        self.assertEqual(res["decision"], "allow")
+
+    def test_claude_ls_repeated_path_exceeding_threshold_denied(self):
+        """Relecturas de directorios repetidos en Claude Code tras alcanzar el umbral deben denegarse (Issue #366)."""
+        for i in range(6):
+            self.call("LS", {"path": f"/repo/sub_{i}"})
+        res = self.evaluate("LS", {"path": "/repo/sub_0"})
+        self.assertEqual(res["decision"], "deny")
+        self.assertIn("Hard Circuit Breaker Activado", res["reason"])
+        self.assertIn("relectura de un directorio ya visitado", res["reason"])
+
     def test_seventh_passive_read_denied(self):
         for i in range(6):
             self.call("Read", {"file_path": self.short_file(f"f{i}.py")})
