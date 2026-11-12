@@ -83,6 +83,8 @@ gh project item-add <project_number> --owner <project_owner> --url <issue_url>
 ```
 *(Resueltos desde `.repo-config.json` o fallback `1` y `@me`).*
 
+**Inspección Mínima ante Creación Declarativa de Backlog:** Si el usuario aporta el diagnóstico, comportamiento y solución para registrar issues de forma declarativa (*"registra estos issues"*), queda prohibida la exploración pasiva multi-archivo en el código. Limitar la inspección a confirmar nombres de componentes si es estrictamente necesario, o proceder directamente a redactar y crear las issues sin agotar el presupuesto del Circuit Breaker (ver [`references/issue-backlog.md`](references/issue-backlog.md) §6.1).
+
 **Atribución de Agente:** El cuerpo de toda issue (local o cruzada) y de todo PR termina con la línea `Creado por: <runtime> (<modelo>)`, y todo commit incluye el trailer `Generated-by: <runtime> (<modelo>)` en `.commit_msg` (o `scratch/.commit_msg`), con los valores que declara la regla del runtime activo (ej. `Generated-by: Claude Code (claude-opus-5-5)` o `Generated-by: Antigravity (Gemini 3.8 Flash)`). Es informativa: sin labels.
 
 **Issues cruzadas (ADR-0045):** Si el hallazgo afecta a otro repositorio del owner, registrarlo allí desde el workspace actual, con confirmación del usuario y sin clonar ni leer archivos del repo destino. El cuerpo debe ser autocontenido (evidencia, origen y criterios de aceptación), porque el agente que lo ejecute no tendrá este contexto:
