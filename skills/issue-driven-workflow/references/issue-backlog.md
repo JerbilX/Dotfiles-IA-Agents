@@ -94,6 +94,12 @@ Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix
    rm -f .issue_body
    ```
 
+### 6.1 Inspección Mínima ante Creación Declarativa de Backlog
+Cuando el usuario proporciona una lista explícita de defectos, mejoras de diseño o requerimientos UI/UX acompañada de diagnóstico, comportamiento observado y comportamiento esperado, instruyendo al agente con una directiva declarativa de backlog (ej. *"agrega los issues correspondientes"* o *"registra estos tickets"*):
+- **Prohibición de Exploración Exhaustiva:** El agente NO debe realizar exploraciones de código en profundidad, rastreos exhaustivos de implementación ni lecturas pasivas multi-archivo (búsquedas de texto, listados de directorios o inspección de archivos) en el código de producción.
+- **Alcance Estricto de Inspección:** La inspección pasiva se restringe estrictamente a verificar nombres de módulos o componentes clave si es indispensable para delimitar con precisión el título o alcance (`<tipo>(<alcance>): <descripción>`). Si la descripción provista por el usuario ya identifica el área o subsistema afectado, se debe proceder de inmediato a la redacción e indexación de los tickets sin realizar lecturas previas.
+- **Progreso Observable y Conservación del Circuit Breaker:** La redacción en archivo temporal (mediante herramientas nativas en `.issue_body` o `scratch/.issue_body`), la creación determinista en GitHub CLI (`gh issue create`) y la indexación en Projects v2 (`gh project item-add`) constituyen progreso observable y acción atómica. Incurrir en lecturas pasivas redundantes antes de actuar consume innecesariamente el presupuesto del Hard Circuit Breaker (límite de 6 lecturas pasivas consecutivas), provocando interrupciones mecánicas de la sesión sin aportar valor a la especificación de los tickets.
+
 ---
 
 ## 7. Inyección Inmediata y Agnóstica al Tablero Central (Projects v2)
