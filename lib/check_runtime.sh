@@ -228,10 +228,54 @@ check_runtime() {
     local hooks_source
     hooks_source="$(get_runtime_hooks_source_file "$r")"
     if [ -f "${hooks_source}" ]; then
-        if python3 -c 'import json, sys; json.load(open(sys.argv[1]))' "${hooks_source}" >/dev/null 2>&1; then
-            echo "  [✓] [${r}] Lifecycle Hooks: hooks.json sintácticamente válido"
+        local hooks_report
+        if hooks_report="$(python3 -I -c '
+import json, os, sys
+root, path = sys.argv[1], sys.argv[2]
+try:
+    data = json.load(open(path, encoding="utf-8"))
+except Exception as e:
+    print(f"Error de sintaxis JSON: {e}")
+    sys.exit(1)
+
+errors, count = [], 0
+if not isinstance(data, dict):
+    errors.append("hooks.json debe ser un objeto JSON")
+    data = {}
+
+for section, content in data.items():
+    if not isinstance(content, dict):
+        continue
+    for event, entries in content.items():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            matcher = entry.get("matcher", "")
+            where = f"{section}/{event}/{matcher}"
+            hooks = entry.get("hooks", [])
+            if not isinstance(hooks, list):
+                errors.append(f"{where}: falta lista de hooks")
+                continue
+            for h in hooks:
+                if not isinstance(h, dict):
+                    continue
+                cmd = str(h.get("command", "")).replace("${DOTFILES_ROOT}", root)
+                exe = cmd.split()[0] if cmd.split() else ""
+                if h.get("type") != "command" or not exe:
+                    errors.append(f"{where}: hook sin type=command o sin command")
+                elif os.sep in exe and not os.access(exe, os.X_OK):
+                    errors.append(f"{where}: comando no ejecutable {exe}")
+                else:
+                    count += 1
+print("\n".join(errors) if errors else count)
+sys.exit(1 if errors else 0)
+' "${SCRIPT_DIR}" "${hooks_source}" 2>&1)"; then
+            echo "  [✓] [${r}] Lifecycle Hooks: hooks.json con ${hooks_report} hook(s) resolubles por ruta canónica"
         else
-            echo "  [✗] [${r}] Error de sintaxis JSON en ${hooks_source}" >&2
+            echo "  [✗] [${r}] Lifecycle Hooks inválidos en ${hooks_source}:" >&2
+            echo "${hooks_report}" | sed 's/^/      /' >&2
             CHECK_ERRORS=$((CHECK_ERRORS + 1))
         fi
     fi

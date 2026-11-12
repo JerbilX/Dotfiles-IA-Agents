@@ -213,6 +213,37 @@ class TestRuntimeLifecycle(unittest.TestCase):
         self.assertIn("--format", content)
         self.assertIn("--inspect-step", content)
 
+    def test_antigravity_hooks_canonical_paths_and_compiled_resolution(self):
+        """runtimes/antigravity/hooks.json must use ${DOTFILES_ROOT} and compile to executable absolute paths (Issue #367)."""
+        source_hooks = os.path.join(RUNTIMES_DIR, "antigravity", "hooks.json")
+        with open(source_hooks, "r", encoding="utf-8") as f:
+            source_data = json.load(f)
+
+        for section in ("circuit-breaker", "guards"):
+            entries = source_data.get(section, {}).get("PreToolUse", [])
+            for entry in entries:
+                for h in entry.get("hooks", []):
+                    cmd = h.get("command", "")
+                    self.assertTrue(
+                        cmd.startswith("${DOTFILES_ROOT}/skills/"),
+                        f"Hook command '{cmd}' does not use canonical ${{DOTFILES_ROOT}}/skills/ path"
+                    )
+
+        dist_hooks = os.path.join(REPO_ROOT, "dist", "antigravity", "hooks.json")
+        with open(dist_hooks, "r", encoding="utf-8") as f:
+            dist_data = json.load(f)
+
+        for section in ("circuit-breaker", "guards"):
+            entries = dist_data.get(section, {}).get("PreToolUse", [])
+            for entry in entries:
+                for h in entry.get("hooks", []):
+                    cmd = h.get("command", "")
+                    exe = cmd.split()[0] if cmd.split() else ""
+                    self.assertTrue(os.path.isabs(exe), f"Compiled hook '{exe}' is not an absolute path")
+                    self.assertTrue(os.path.isfile(exe), f"Compiled hook binary not found: '{exe}'")
+                    self.assertTrue(os.access(exe, os.X_OK), f"Compiled hook binary not executable: '{exe}'")
+
+
 
 if __name__ == "__main__":
     unittest.main()
