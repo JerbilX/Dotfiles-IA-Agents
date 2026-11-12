@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "agent-circuit-breaker",
+            "command": "${DOTFILES_ROOT}/skills/conversation-audit/bin/agent-circuit-breaker",
             "timeout": 5
           }
         ]
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "agent-guard",
+            "command": "${DOTFILES_ROOT}/skills/conversation-audit/bin/agent-guard",
             "timeout": 5
           }
         ]

@@ -151,7 +151,7 @@ compile_runtime_hooks() {
     if [ -f "${hooks_source}" ]; then
         echo "==> [build] Compilando configuración de Lifecycle Hooks para runtime '${r}' en ${dist_hooks_file}..."
         mkdir -p "${dist_dir}"
-        cp "${hooks_source}" "${dist_hooks_file}"
+        sed "s|\${DOTFILES_ROOT}|${SCRIPT_DIR}|g" "${hooks_source}" > "${dist_hooks_file}"
         echo "==> [build] Lifecycle Hooks compilados con éxito para '${r}': ${dist_hooks_file}"
     fi
 }
