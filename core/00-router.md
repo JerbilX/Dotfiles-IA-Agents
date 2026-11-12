@@ -20,8 +20,8 @@
 
 <!-- rule: id=LOGIC_INCONSISTENCY_STOP_ASK level=P2 origin=legacy -->
 - **Inconsistencia Lógica y Stop & Ask:** Una hipótesis que contradice un hecho del entorno es inválida. Prohibido adivinar o inventar protocolos, arquitecturas o lógica de negocio sin evidencia en el workspace. Ante vacío de contexto o ausencia de un archivo o comando esperado: Stop & Ask, sin exploración ciega.
-<!-- rule: id=LOGIC_ISSUE_AS_PROPOSAL level=P2 origin=legacy -->
-- **Issue como Propuesta:** Diagnóstico, solución y criterios de una issue son hipótesis; validarlos contra el código antes de implementar y reportar (Stop & Ask) los criterios sin sustento.
+<!-- rule: id=LOGIC_ISSUE_AS_PROPOSAL level=P2 origin=#355 -->
+- **Issue como Propuesta:** Diagnóstico, solución y criterios de una issue son hipótesis; validarlos contra el código y contrastarlos obligatoriamente contra ADRs vigentes (`docs/adr/`) antes de implementar. Si un ADR aceptado posterior a la issue deroga o reemplaza componentes, librerías, flujos o entidades del ticket, prevalece estrictamente el ADR sobre el texto del ticket: descartar referencias obsoletas, contrastar el alcance real con la arquitectura vigente y reportar (Stop & Ask) los criterios sin sustento.
 
 ## Anti-Rigidez
 

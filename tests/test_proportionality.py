@@ -46,5 +46,20 @@ class TestProportionality(unittest.TestCase):
         self.assertLessEqual(len(rules.split()), 300)
 
 
+    def test_issue_as_proposal_reconciles_adrs(self):
+        """Issue como Propuesta must enforce reconciliation with active ADRs (#355)."""
+        router = _read("core", "00-router.md")
+        self.assertIn("Issue como Propuesta", router)
+        self.assertIn("ADRs vigentes", router)
+        self.assertIn("prevalece estrictamente el ADR", router)
+
+        skill = _read("skills", "issue-driven-workflow", "SKILL.md")
+        self.assertIn("ADRs vigentes", skill)
+
+        lifecycle = _read("skills", "issue-driven-workflow", "references", "branch-lifecycle.md")
+        self.assertIn("docs/adr/", lifecycle)
+        self.assertIn("prevalece estrictamente el ADR", lifecycle)
+
+
 if __name__ == "__main__":
     unittest.main()
