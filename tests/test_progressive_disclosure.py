@@ -729,7 +729,29 @@ class TestProgressiveDisclosure(unittest.TestCase):
             self.assertIn("CHECK_ERRORS:0", res.stdout)
             self.assertIn("CHECK_WARNINGS:1", res.stdout)
 
+    def test_hybrid_prompts_passive_reads_containment_invariants(self):
+        """SKILL.md and issue-backlog.md must enforce minimal inspection and containment for hybrid prompts (#363)."""
+        skill_path = os.path.join(REPO_ROOT, "skills", "issue-driven-workflow", "SKILL.md")
+        with open(skill_path, "r", encoding="utf-8") as f:
+            skill_content = f.read()
+
+        self.assertIn("Prompts Híbridos", skill_content)
+        self.assertIn("diseño conceptual", skill_content)
+        self.assertIn("1 o 2 consultas puntuales", skill_content)
+
+        backlog_path = os.path.join(
+            REPO_ROOT, "skills", "issue-driven-workflow", "references", "issue-backlog.md"
+        )
+        with open(backlog_path, "r", encoding="utf-8") as f:
+            backlog_content = f.read()
+
+        self.assertIn("Contención ante Prompts Híbridos", backlog_content)
+        self.assertIn("diseño conceptual", backlog_content)
+        self.assertIn("1 o 2 consultas puntuales", backlog_content)
+        self.assertIn("Hard Circuit Breaker", backlog_content)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

@@ -100,6 +100,12 @@ Cuando el usuario proporciona una lista explícita de defectos, mejoras de dise�
 - **Alcance Estricto de Inspección:** La inspección pasiva se restringe estrictamente a verificar nombres de módulos o componentes clave si es indispensable para delimitar con precisión el título o alcance (`<tipo>(<alcance>): <descripción>`). Si la descripción provista por el usuario ya identifica el área o subsistema afectado, se debe proceder de inmediato a la redacción e indexación de los tickets sin realizar lecturas previas.
 - **Progreso Observable y Conservación del Circuit Breaker:** La redacción en archivo temporal (mediante herramientas nativas en `.issue_body` o `scratch/.issue_body`), la creación determinista en GitHub CLI (`gh issue create`) y la indexación en Projects v2 (`gh project item-add`) constituyen progreso observable y acción atómica. Incurrir en lecturas pasivas redundantes antes de actuar consume innecesariamente el presupuesto del Hard Circuit Breaker (límite de 6 lecturas pasivas consecutivas), provocando interrupciones mecánicas de la sesión sin aportar valor a la especificación de los tickets.
 
+### 6.2 Contención ante Prompts Híbridos (Consultas Técnicas y Registro de Backlog)
+Surgen frecuentemente patrones híbridos donde el usuario combina preguntas técnicas, análisis de viabilidad o consultas exploratorias (ej. *"¿qué se puede hacer?"*, *"¿es posible X?"*, *"¿cómo verificar Y?"*) con la instrucción simultánea de registrar o ampliar el backlog (ej. *"crea los issues correspondientes"* o *"registra los tickets de mejora"*).
+- **Respuesta a Nivel Conceptual:** El agente debe resolver las consultas técnicas a nivel de diseño conceptual, arquitectura y conocimiento del dominio sin encadenar lecturas pasivas profundas de archivos de implementación.
+- **Presupuesto Estricto de Inspección (1-2 Consultas):** La inspección del código fuente en estos casos queda estrictamente acotada a un máximo de 1 o 2 consultas puntuales (ej. validar el nombre exacto de un módulo, clase o archivo clave) para respaldar la respuesta o el alcance del ticket.
+- **Transición Inmediata a la Acción:** El agente debe proceder de inmediato a redactar las issues en archivos temporales, emitir las creaciones con `gh issue create` y presentar la síntesis técnica en su respuesta, conservando el presupuesto del Hard Circuit Breaker (límite de 6 lecturas pasivas consecutivas sin acción intermedia observable) y evitando bloqueos mecánicos por parálisis de análisis.
+
 ---
 
 ## 7. Inyección Inmediata y Agnóstica al Tablero Central (Projects v2)
