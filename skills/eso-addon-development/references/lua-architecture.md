@@ -268,19 +268,22 @@ En suites unitarias herméticas ejecutadas fuera del cliente (ej. CLI de Lua o B
   * `SetMultiLine(multiLine)` y `IsMultiLine()` -> boolean.
   * `SetEditEnabled(enabled)` y `IsEditEnabled()` -> boolean.
   * `TakeFocus()`, `LoseFocus()` y `HasFocus()` -> boolean.
+  * `SelectAll()` -> nil.
+  * `SetCursorPosition(pos)` y `GetCursorPosition()` -> number.
 * **Comportamiento Fiel del Mock:**
   * Al invocar `SetText(text)`, el mock debe aplicar el límite de caracteres si `maxInputChars` fue definido (truncar con `string.sub(text, 1, max)`).
   * Al disparar eventos registrados con `SetHandler("OnTextChanged", callback)`, el harness debe proveer `(control, isUserInteraction)` de forma determinista para verificar que los callbacks ignoran mutaciones programáticas.
 
 ### 9.3 Patrón Canónico de Copiado In-Place y Antipatrón de Modales Secundarios
-* **Copiado In-Place Asistido (`TakeFocus` + `SelectAll`):** Dado que EsoUI carece de una API nativa para escribir directamente al portapapeles del sistema operativo, el patrón canónico para exportar cadenas de texto, serializaciones compactadas o códigos de misiones consiste en:
+* **Copiado In-Place Asistido (`TakeFocus` + `SelectAll` + `SetCursorPosition(0)`):** Dado que EsoUI carece de una API nativa para escribir directamente al portapapeles del sistema operativo, el patrón canónico para exportar cadenas de texto, serializaciones compactadas o comprobantes de completitud consiste en:
   1. Utilizar un control `CT_EDITBOX` interactivo o de solo lectura que contenga la información a transferir.
-  2. Al interactuar con el control o pulsar el disparador de copiado, activar el campo e invocar secuencialmente:
+  2. Al interactuar con el control o pulsar el disparador de copiado (ej. botón *"Copiar"*), enfocar el campo, reiniciar el desplazamiento visual y seleccionar todo el texto:
      ```lua
      editBox:TakeFocus()
+     editBox:SetCursorPosition(0) -- Previene que cadenas extensas queden visualmente desplazadas o recortadas a la derecha
      editBox:SelectAll()
      ```
-  3. Acompañar el elemento con una indicación visual estática e intuitiva (ej. `[Ctrl+C para copiar]`) para guiar inmediatamente la acción del usuario.
+  3. Acompañar el elemento con una indicación visual estática e intuitiva (ej. `[Presiona Ctrl+C para copiar al portapapeles]`) para guiar inmediatamente la acción del usuario sin requerir alertas invasivas.
 * **Antipatrón de Diseño — Modales Secundarios para Copiado:**
   * Queda estrictamente catalogado como antipatrón de diseño la apertura de ventanas emergentes o diálogos modales secundarios (`ZO_Dialogs_ShowDialog` o toplevels dedicados) cuya única finalidad sea presentar un texto para copiado manual.
   * Estos modales introducen fricción innecesaria, desorientación espacial en la pantalla y obligan al usuario a confirmar o cerrar ventanas superpuestas, en contraste con la fluidez de la selección in-place directa en el contenedor activo.
@@ -394,6 +397,17 @@ El diseño de sistemas distribuidos, sincronización de misiones o herramientas 
 * **Compuertas de Logs según Contexto Operativo:**
   * Las salidas de telemetría, spikes técnicos, volcados de estado o confirmaciones de edición deben estar confinados exclusivamente al modo de preparación / Game Master o subordinados a banderas explícitas de depuración (`debug = true`).
   * Durante el flujo de juego normal, mantener al mínimo absoluto la salida hacia el chat ordinario del cliente, reservando notificaciones únicamente para errores críticos irrecuperables o feedback indispensable explícitamente solicitado por el usuario.
+* **Patrón de Desacoplamiento con Parámetro `silent`:**
+  * En módulos de subsistemas, utilidades o spikes técnicos que emiten avisos al chat al ejecutarse manualmente (ej. comandos slash del Master o utilidades como `ActivateAreas(areas, silent)` o `ClearTest(silent)`), sus métodos públicos deben incorporar un parámetro booleano opcional `silent = true`:
+    ```lua
+    function MyModule:ActivateAreas(areas, silent)
+        -- ... ejecución de lógica de áreas ...
+        if not silent and Addon.debugMode then
+            Addon:Msg("Áreas activadas correctamente para la etapa.")
+        end
+    end
+    ```
+  * Al invocar estos métodos desde el ciclo de vida automático del addon (ej. `StartQuest`, `CompleteQuest`, abandono de misión o limpieza de estados), se debe pasar taxativamente `silent = true` para garantizar una experiencia inmersiva limpia y sin residuos de depuración en el chat.
 
 ### 14.2 Reactividad y Ciclo de Vida en Controles de Acción Contextuales
 * **Visibilidad Subordinada al Estado Activo:** Los controles interactivos de navegación, apertura de mapas o localización (ej. botones `showMapBtn` o accesos directos de cartografía) deben gobernar su visibilidad (`control:SetHidden(...)`) de manera estrictamente reactiva respecto al ciclo de vida y vigencia de la entidad o misión asociada.
