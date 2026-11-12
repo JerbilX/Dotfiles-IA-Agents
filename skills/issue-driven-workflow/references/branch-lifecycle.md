@@ -107,12 +107,16 @@ git-prune-gone --sync
 * **Promoción Atómica del ADR:** Al comenzar a codificar, actualizar el YAML frontmatter del ADR a `status: accepted` en la rama de trabajo para ratificación atómica al mergear.
 
 ### Paso 5: Commit Atómico
-1. **Staging Explícito:**
+
+> [!IMPORTANT]
+> **Prohibición de Encadenamiento en Bypass de Sandbox:** Prohibido taxativamente agrupar las operaciones de staging, commit y limpieza en una única línea de comando mediante operadores lógicos o de encadenamiento (`&&`, `;`, `|`), por ejemplo: `git add <rutas> && git commit -F ... && rm -f ...`. Dicho encadenamiento anula el mecanismo de *prefix-matching* de seguridad para auto-aprobaciones en runtimes como Antigravity y mezcla operaciones elevadas con operaciones de limpieza local. La fase de commit debe ejecutarse en llamadas atómicas independientes respetando el nivel de sandbox de cada una.
+
+1. **Paso 5.1: Staging Explícito (ej. `BypassSandbox: true` en Antigravity):**
    ```bash
    git add <ruta1> <ruta2>
    ```
    *(Indicar rutas explícitas; no usar `git add .` ni `git add -A`).*
-2. **Redacción y Commit Atómico:**
+2. **Paso 5.2: Redacción y Commit Atómico (ej. `BypassSandbox: true` en Antigravity):**
    * Evitar `git commit -m "..."` (anula el prefix matching de permisos al contener comillas). Redactar mensaje convencional en `.commit_msg` (o en runtimes confinados como Antigravity bajo `<appDataDir>/brain/<conversation-id>/scratch/.commit_msg` para I/O nativo) con herramientas nativas de archivos.
    * Incluir obligatoriamente al final del mensaje (separado por una línea en blanco) el trailer canónico de atribución:
      ```gitcommit
@@ -121,18 +125,19 @@ git-prune-gone --sync
      Generated-by: <runtime> (<modelo>)
      ```
      *(Con el formato y valor exacto declarado en la directiva del runtime activo: `Antigravity (<modelo de la sesión>)` o `Claude Code (<modelo>)`).*
-   * Ejecutar el commit:
+   * Ejecutar el commit de forma atómica:
      ```bash
      git commit -F .commit_msg
      # o en Antigravity / runtimes confinados:
      git commit -F <appDataDir>/brain/<conversation-id>/scratch/.commit_msg
      ```
-   * Limpiar el archivo temporal:
+3. **Paso 5.3: Limpieza Local Confinada (ej. `BypassSandbox: false` en Antigravity):**
+   * La remoción de archivos temporales es una operación local de workspace que no requiere privilegios ni bypass de sandbox. Ejecutar de forma independiente:
      ```bash
      rm -f .commit_msg
-     # o en Antigravity: rm -f <appDataDir>/brain/<conversation-id>/scratch/.commit_msg
+     # o en Antigravity / runtimes confinados:
+     rm -f <appDataDir>/brain/<conversation-id>/scratch/.commit_msg
      ```
-     *(Emitir la limpieza en paralelo con la siguiente llamada del turno).*
 
 ### Paso 6: Publicación Remota
 Subir la rama al repositorio remoto:
