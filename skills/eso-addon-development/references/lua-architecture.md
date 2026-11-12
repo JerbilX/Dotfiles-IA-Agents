@@ -353,4 +353,24 @@ En el sistema cartográfico de EsoUI, las coordenadas y radios operan normalizad
   ```
   Esto garantiza la remoción inmediata de pines/áreas temporales de preparación y el renderizado fiel de los nuevos pines de exploración activos.
 
+---
+
+## 13. Soberanía Contractual del Addon, Pragmatismo P2P y Arquitectura Zero-Reload
+
+El diseño de sistemas distribuidos, sincronización de misiones o herramientas auxiliares en torno a un addon de EsoUI debe respetar las restricciones operativas y el modelo de confianza intrínseco del juego (consistente con ADR-0012):
+
+### 13.1 Soberanía Contractual del Addon (Addon-Driven Data Model)
+* **Autoridad Suprema del Esquema:** El addon de Lua es la máxima autoridad del esquema y modelo de datos. Está directamente restringido por las capacidades, eventos y limitaciones de memoria del motor de Zenimax (EsoUI, `LibMapPins`, eventos de retícula, coordenadas cartográficas normalizadas y ciclo de vida de la UI).
+* **Subordinación de Sistemas Auxiliares:** Cualquier sistema auxiliar, secundario o periférico (servicios de sincronización, bots comunitarios, visualizadores web, herramientas CLI o scripts externos) debe amoldarse y subordinarse estrictamente al esquema y contratos dictados por el addon, sin forzar abstracciones genéricas o dependencias externas que resulten incompatibles o desalineadas con la ejecución en caliente dentro de ESO.
+
+### 13.2 Pragmatismo P2P y Modelo de Confianza en Rol (Zero Criptofricción)
+* **Canal de Transporte Ligero:** La serialización compactada (`LibDeflate` + Base64 alfanumérico URL-safe) debe concebirse exclusivamente como un canal de transporte de datos de bajo tamaño, alta densidad y libre de fricción, optimizado para portapapeles y límites de entrada del motor.
+* **Prohibición de Criptoseguridad Inútil en Cliente:** En un cliente Lua público y en actividades colaborativas de rol donde impera la confianza comunitaria y la cooperación lúdica, la criptoseguridad client-side (nonces, firmas HMAC complejas, esquemas anti-falsificación pesados) es conceptualmente ineficaz y añade una sobrecarga de ingeniería desproporcionada.
+* **Validación Visual del Máster:** La integridad operativa se sustenta en el principio de confianza interpersonal y en la verificación directa por parte del Game Master (narrador/máster), quien valida visualmente los comprobantes e hitos completados a través de la propia interfaz nativa del addon (ej. contraste de firma determinista o digest Adler32 contra la semilla de la misión sin servicios en la nube).
+
+### 13.3 Arquitectura Zero-Reload In-Game
+* **Prioridad Absoluta al Intercambio en Caliente:** Priorizar en todo momento el intercambio directo e interactivo in-game a través de portapapeles o canales de chat (`/rpq quest import` y `/rpq quest completion`) con validación e hidratación inmediata del estado en la UI nativa.
+* **Prohibición de Flujos Basados en `/reloadui`:** Queda prohibido diseñar arquitecturas de transporte o integración basadas en archivos en disco (ej. intercambio vía `SavedVariables` externas o directorios compartidos) que obliguen a los jugadores o directores a ejecutar `/reloadui` para sincronizar misiones o completitudes. Toda recarga de interfaz interrumpe la inmersión del rol y degrada críticamente la experiencia de usuario.
+
+
 
