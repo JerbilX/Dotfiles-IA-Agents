@@ -68,7 +68,7 @@ Procedimientos detallados y normativas de ingeniería en `references/`:
 | Dominio | Contenido | Referencia Especializada |
 | :--- | :--- | :--- |
 | **Arquitectura Lua** | Aislamiento de namespace, ciclo `EVENT_ADD_ON_LOADED`, persistencia `SavedVariables` e inspección MCP, `ZO_PreHook`/`ZO_PostHook`, recolección de basura, tipado nativo, constantes, anclaje de escenas/diario (`ZO_QuestJournal` vs `ZO_SharedRightPanelBackground`), `CT_EDITBOX`, ciclo de borrador y convención de texturas de mapa en DLCs multi-zona. | [`references/lua-architecture.md`](references/lua-architecture.md) |
-| **Build y Empaquetado** | Comandos slash en README, sincronización de dependencias (`## DependsOn:` vs README), inyección `@BUILD_VERSION@`, prevalencia del motor sobre mocks, estándares de arnés de pruebas y paridad de orden de carga con el manifiesto. | [`references/build-and-packaging.md`](references/build-and-packaging.md) |
+| **Build y Empaquetado** | Comandos slash en README, sincronización de dependencias (`## DependsOn:` vs README), inyección `@BUILD_VERSION@`, prevalencia del motor sobre mocks, estándares de arnés de pruebas, paridad de orden de carga con el manifiesto, flujo de desarrollo in-game vía symlinks y paridad multi-addon. | [`references/build-and-packaging.md`](references/build-and-packaging.md) |
 | **Documentación API** | API oficial de C/Lua, funciones globales, enums, eventos y constantes del motor ZOS. | [`references/ESOUIDocumentation.txt`](references/ESOUIDocumentation.txt) |
 | **Strings y Localización** | Mapeo oficial de textos de interfaz/tooltips en inglés a IDs de strings y enums (`SI_*`). | [`references/localizegeneratedstrings.lua`](references/localizegeneratedstrings.lua) |
 

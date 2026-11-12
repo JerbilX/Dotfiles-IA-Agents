@@ -90,4 +90,36 @@ Para mitigar desbordes de buffer (`CONTEXT_TRUNCATION`) y saturación de la vent
   * En arquitecturas con módulos interdependientes donde archivos posteriores consumen servicios, utilidades o namespaces inicializados previamente, omitir o alterar la carga en el arnés de pruebas induce degradaciones silenciosas a `nil` y roturas ficticias en tiempo de diseño que no reflejan el comportamiento real del motor de EsoUI.
   * Queda prohibido crear archivos de prueba desarticulados que carguen módulos avanzados asumiendo dependencias globales sin haber requerido o inicializado fidedignamente sus predecesores conforme a la lista de carga del manifiesto.
 
+---
+
+## 6. Desarrollo In-Game y Enlaces Simbólicos (Symlink-Driven Workflow)
+
+Para iterar ágilmente durante el ciclo de desarrollo activo in-game sin incurrir en copias manuales de archivos ni empaquetados intermedios, el código de desarrollo debe proyectarse directamente en el entorno de ejecución del juego mediante enlaces simbólicos (*symlinks*).
+
+* **Rutas Canónicas de AddOns por Plataforma:**
+  * **Linux (Steam / Proton):**
+    ```text
+    <SteamLibrary>/steamapps/compatdata/306130/pfx/drive_c/users/steamuser/Documents/Elder Scrolls Online/live/AddOns/
+    ```
+  * **Windows:**
+    ```text
+    %USERPROFILE%\Documents\Elder Scrolls Online\live\AddOns\
+    ```
+* **Procedimiento Estándar de Enlace Simbólico:**
+  * En entornos Linux (Steam/Proton), enlazar el directorio del addon en el repositorio hacia la carpeta `AddOns/` del prefijo:
+    ```bash
+    ln -s /ruta/al/repositorio/addon/MiAddon "<RutaAddOns>/MiAddon"
+    ```
+  * En Windows (PowerShell con permisos o Modo Desarrollador):
+    ```powershell
+    New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\Documents\Elder Scrolls Online\live\AddOns\MiAddon" -Target "C:\ruta\al\repositorio\addon\MiAddon"
+    ```
+* **Regla de Paridad Multi-Addon:**
+  * Si un repositorio gestiona múltiples addons o sub-addons satélite (por ejemplo, `<repo>/addon/<AddonPrincipal>` y módulos de soporte/ingesta asíncrona como `<repo>/addon/<AddonInbox>`), **cada carpeta de addon DEBE poseer su propio enlace simbólico independiente** en el directorio `AddOns/` del juego.
+  * El motor de EsoUI escanea únicamente los directorios inmediatos de primer nivel dentro de `AddOns/` que contienen un manifiesto homónimo (`<CarpetaAddon>/<CarpetaAddon>.txt`). Enlazar únicamente una carpeta contenedora o matriz (ej. `addon/`) hace que los sub-addons sean invisibles para el motor del juego.
+* **Buenas Prácticas de Recarga en Tiempo de Ejecución:**
+  * Al editar archivos `.lua` o `.xml`, sincronizar los cambios ejecutando el comando nativo `/reloadui` en el chat del juego, permitiendo probar modificaciones al instante sin reiniciar el cliente.
+  * Las modificaciones estructurales (añadir nuevos archivos al manifiesto `.txt`, alterar directivas `## DependsOn:` o renombrar carpetas) no son interceptadas por `/reloadui` y demandan reiniciar el cliente de ESO para que el motor reindexe el manifiesto.
+
+
 
