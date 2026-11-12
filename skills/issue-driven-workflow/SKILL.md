@@ -103,7 +103,7 @@ Si el label `profile:<perfil>` no existe en el repo destino, omitirlo y menciona
 
 Guía paso a paso y máquina de estados: [`references/branch-lifecycle.md`](references/branch-lifecycle.md) y [`references/state-machine.md`](references/state-machine.md).
 
-- [ ] **1. Ingesta:** `gh issue view <id>` (sin llamadas a `gh project item-edit`). Relevamientos exploratorios de > 8 archivos o repositorios externos se delegan al subagente de investigación (ej. `research` en Antigravity).
+- [ ] **1. Ingesta:** `gh issue view <id>` (sin llamadas a `gh project item-edit`). Reconciliar obligatoriamente contra ADRs vigentes (`docs/adr/`): si un ADR aceptado posterior deroga o reemplaza entidades o flujos del ticket, prevalece estrictamente el ADR; descartar referencias obsoletas antes de planificar o codificar. Relevamientos exploratorios de > 8 archivos o repositorios externos se delegan al subagente de investigación (ej. `research` en Antigravity).
 - [ ] **2. Higiene:** Aislamiento preferente en ≤ 2 llamadas (`git fetch --prune origin` y `git switch --no-track -c <rama> origin/<base>`); poda diferida a Fase 8.
 - [ ] **3. Plan/ADR:** Fast-Track por defecto (sin pausa bloqueante en tickets con criterios claros en `Ready for Dev`); *Stop & Plan* con gate bloqueante ante ADRs nuevos/modificados, alternativas divergentes o diagnósticos inciertos; *Fast-path*: orden ejecutiva ("procedé") tras debate en el chat habilita implementar.
 - [ ] **4. Desarrollo:** Promover ADR a `status: accepted` al iniciar desarrollo, I/O nativo con lectura paginada estricta (delimitación de rango o paginado ≤ 200 líneas, circuit breaker ≤ 6 lecturas consecutivas globales e inmunidad heurística), ediciones atómicas acotadas y verificar con `./build.sh check`.

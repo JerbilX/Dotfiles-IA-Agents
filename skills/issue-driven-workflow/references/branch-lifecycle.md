@@ -57,10 +57,12 @@ Toda tarea despachada debe cumplir secuencialmente con las siguientes 8 fases:
    ```bash
    gh issue view <id>
    ```
-2. **Protocolo de Investigación Exploratoria (Ahorro de Contexto):**
+2. **Reconciliación con ADRs Vigentes (Prevalencia Arquitectónica):**
+   Contrastar las especificaciones y entidades del ticket contra los ADRs aceptados en `docs/adr/`. Si un ADR aceptado posterior a la issue deroga, reemplaza o declara obsoletos componentes, librerías, flujos, servicios externos o entidades descritas en el ticket, prevalece estrictamente el ADR sobre el texto del ticket. Descartar referencias obsoletas y contrastar el alcance real contra la arquitectura vigente antes de formular cualquier plan o cambio de código.
+3. **Protocolo de Investigación Exploratoria (Ahorro de Contexto):**
    * **Lecturas Acotadas (≤ 8 archivos):** Si la tarea requiere inspección quirúrgica de hasta 8 archivos conocidos, realizar lecturas directas en la sesión principal mediante herramientas nativas de lectura o búsqueda por contenido.
    * **Exploración Extensa (> 8 archivos, repositorios externos o a pedido del usuario):** Evitar saturar la sesión principal con lecturas masivas. Delegar el relevamiento al subagente de investigación (ej. `research` con modelo `flash` en Antigravity, o subagente equivalente del runtime), quien devuelve un resumen ejecutivo consolidado. Ver [`references/exploratory-research.md`](exploratory-research.md).
-3. El análisis sitúa la tarea operativamente en fase de planificación local (`📐 In Planning`), sin mutaciones CLI en GitHub Projects v2.
+4. El análisis sitúa la tarea operativamente en fase de planificación local (`📐 In Planning`), sin mutaciones CLI en GitHub Projects v2.
 
 ### Paso 2: Aislamiento e Higiene del Workspace
 
