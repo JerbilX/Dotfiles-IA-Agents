@@ -272,6 +272,19 @@ En suites unitarias herméticas ejecutadas fuera del cliente (ej. CLI de Lua o B
   * Al invocar `SetText(text)`, el mock debe aplicar el límite de caracteres si `maxInputChars` fue definido (truncar con `string.sub(text, 1, max)`).
   * Al disparar eventos registrados con `SetHandler("OnTextChanged", callback)`, el harness debe proveer `(control, isUserInteraction)` de forma determinista para verificar que los callbacks ignoran mutaciones programáticas.
 
+### 9.3 Patrón Canónico de Copiado In-Place y Antipatrón de Modales Secundarios
+* **Copiado In-Place Asistido (`TakeFocus` + `SelectAll`):** Dado que EsoUI carece de una API nativa para escribir directamente al portapapeles del sistema operativo, el patrón canónico para exportar cadenas de texto, serializaciones compactadas o códigos de misiones consiste en:
+  1. Utilizar un control `CT_EDITBOX` interactivo o de solo lectura que contenga la información a transferir.
+  2. Al interactuar con el control o pulsar el disparador de copiado, activar el campo e invocar secuencialmente:
+     ```lua
+     editBox:TakeFocus()
+     editBox:SelectAll()
+     ```
+  3. Acompañar el elemento con una indicación visual estática e intuitiva (ej. `[Ctrl+C para copiar]`) para guiar inmediatamente la acción del usuario.
+* **Antipatrón de Diseño — Modales Secundarios para Copiado:**
+  * Queda estrictamente catalogado como antipatrón de diseño la apertura de ventanas emergentes o diálogos modales secundarios (`ZO_Dialogs_ShowDialog` o toplevels dedicados) cuya única finalidad sea presentar un texto para copiado manual.
+  * Estos modales introducen fricción innecesaria, desorientación espacial en la pantalla y obligan al usuario a confirmar o cerrar ventanas superpuestas, en contraste con la fluidez de la selección in-place directa en el contenedor activo.
+
 ---
 
 ## 10. Ciclo de Vida y Formalización de Borradores (`Draft Lifecycle`)
@@ -371,6 +384,21 @@ El diseño de sistemas distribuidos, sincronización de misiones o herramientas 
 ### 13.3 Arquitectura Zero-Reload In-Game
 * **Prioridad Absoluta al Intercambio en Caliente:** Priorizar en todo momento el intercambio directo e interactivo in-game a través de portapapeles o canales de chat (`/rpq quest import` y `/rpq quest completion`) con validación e hidratación inmediata del estado en la UI nativa.
 * **Prohibición de Flujos Basados en `/reloadui`:** Queda prohibido diseñar arquitecturas de transporte o integración basadas en archivos en disco (ej. intercambio vía `SavedVariables` externas o directorios compartidos) que obliguen a los jugadores o directores a ejecutar `/reloadui` para sincronizar misiones o completitudes. Toda recarga de interfaz interrumpe la inmersión del rol y degrada críticamente la experiencia de usuario.
+
+---
+
+## 14. Ergonomía de Interacción, Contención de Ruido y Ciclo de Vida Contextual
+
+### 14.1 Cero Ruido en Chat y Compuertas de Logs (Modo Preparación vs Modo Ejecución)
+* **Contención Estricta de Telemetría en Chat:** La ventana de chat del jugador es un recurso crítico de comunicación e inmersión; queda prohibida la contaminación con trazas técnicas o mensajes redundantes de depuración durante la experiencia de juego ordinaria.
+* **Compuertas de Logs según Contexto Operativo:**
+  * Las salidas de telemetría, spikes técnicos, volcados de estado o confirmaciones de edición deben estar confinados exclusivamente al modo de preparación / Game Master o subordinados a banderas explícitas de depuración (`debug = true`).
+  * Durante el flujo de juego normal, mantener al mínimo absoluto la salida hacia el chat ordinario del cliente, reservando notificaciones únicamente para errores críticos irrecuperables o feedback indispensable explícitamente solicitado por el usuario.
+
+### 14.2 Reactividad y Ciclo de Vida en Controles de Acción Contextuales
+* **Visibilidad Subordinada al Estado Activo:** Los controles interactivos de navegación, apertura de mapas o localización (ej. botones `showMapBtn` o accesos directos de cartografía) deben gobernar su visibilidad (`control:SetHidden(...)`) de manera estrictamente reactiva respecto al ciclo de vida y vigencia de la entidad o misión asociada.
+* **Ocultamiento Inmediato ante Inactividad o Completitud:** Cuando una misión o etapa transiciona a estado inactivo, completado o descartado, los controles contextuales asociados deben ocultarse de inmediato (`control:SetHidden(true)`) para prevenir acciones inconsistentes o desfasadas con el estado actual del juego.
+
 
 
 
