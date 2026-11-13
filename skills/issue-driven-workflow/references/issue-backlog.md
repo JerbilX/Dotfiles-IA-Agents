@@ -7,7 +7,7 @@ Guía operativa exhaustiva para el registro, especificación técnica, jerarquí
 ## 1. Prohibición de Backlogs Locales, Trazabilidad y Niveles de Ceremonia
 
 - **Prohibición de Backlogs Locales:** No crear, sincronizar ni depender de archivos `TODO.md`, `backlog.md`, `NOTES.md` o bitácoras informales en cualquier nivel del proyecto. No volcar prompts, especificaciones de tareas ni planes de ejecución en carpetas o archivos temporales huérfanos (ej. `tasks/`, `prompts/`).
-- **Trazabilidad en GitHub Issues:** Todo requerimiento pendiente, mejora, refactor o bug detectado debe formalizarse exclusiva y directamente como una **GitHub Issue** tipificando su perfil de ejecución (`profile:flash-low`, `profile:flash-medium`, `profile:flash-high`, `profile:pro`) e indexada en Projects v2.
+- **Trazabilidad en GitHub Issues:** Todo requerimiento pendiente, mejora, refactor o bug detectado debe formalizarse exclusiva y directamente como una **GitHub Issue** tipificando su perfil de ejecución (`profile:low`, `profile:medium`, `profile:high`, `profile:pro`) e indexada en Projects v2.
 - **Niveles de Ceremonia:**
   - **N0** (consultas, exploración, scripts en `scratch/`): sin issue ni rama. Pedidos informales de scripts sin ticket: snippet en el chat o `scratch/`, nunca en el workspace.
   - **N1** (cambio acotado, evidente, sin tocar `core/`, `runtimes/` ni ADR): issue mínima (cuerpo de 1-2 líneas), sin plan bloqueante, sin ADR ni label de perfil.
@@ -59,18 +59,18 @@ Para habilitar la orquestación desatendida (*headless*) mediante herramientas d
 
 | Nivel MBR | Naturaleza y Alcance Técnico | Perfil de Ejecución | Label de GitHub Issue | Familia y Modo de Thinking Recomendado |
 | :---: | :--- | :--- | :--- | :--- |
-| **0** | Tareas triviales, correcciones de formato, typos, documentación menor o sincronización cosmética. | `flash-low` | `profile:flash-low` | Gemini Flash (Thinking: low / mínimo). Máxima velocidad y latencia mínima. |
-| **1 - 2** | Reglas markdown, configuraciones de runtime, tooling local con tests, scripts y procedimientos operativos de skills. | `flash-medium` | `profile:flash-medium` | Gemini Flash (Thinking: medium / estándar). Balance analítico óptimo y razonamiento guiado. |
-| **3** | Refactors arquitectónicos, manejo de estado o concurrencia, reglas especializadas de runtime, diagnósticos inciertos o con múltiples hipótesis. | `flash-high` | `profile:flash-high` | Gemini Flash (Thinking: high / profundo) o Gemini Pro. Razonamiento intensivo y verificación sistemática. |
-| **4** | Directivas basales (`core/`), blindaje de seguridad de runtime, invariantes universales, impacto transversal o cross-repo. | `pro` | `profile:pro` | Gemini Pro (Thinking: high / exhaustivo). Capacidad de frontera para deducción lógica estricta y contención de riesgo basal. |
+| **0** | Tareas triviales, correcciones de formato, typos, documentación menor o sincronización cosmética. | `Low` | `profile:low` | Modelos ligeros (ej. Gemini Flash thinking low / mínimo, Claude Haiku). Máxima velocidad y latencia mínima. |
+| **1 - 2** | Reglas markdown, configuraciones de runtime, tooling local con tests, scripts y procedimientos operativos de skills. | `Medium` | `profile:medium` | Modelos balanceados (ej. Gemini Flash thinking medium / estándar, Claude Sonnet). Balance analítico óptimo y razonamiento guiado. |
+| **3** | Refactors arquitectónicos, manejo de estado o concurrencia, reglas especializadas de runtime, diagnósticos inciertos o con múltiples hipótesis. | `High` | `profile:high` | Modelos avanzados (ej. Gemini Flash thinking high / profundo o Claude Sonnet pensando). Razonamiento intensivo y verificación sistemática. |
+| **4** | Directivas basales (`core/`), blindaje de seguridad de runtime, invariantes universales, impacto transversal o cross-repo. | `Pro` | `profile:pro` | Modelos frontera (ej. Gemini Pro thinking high / exhaustivo, Claude Opus). Capacidad de frontera para deducción lógica estricta y contención de riesgo basal. |
 
 ### 4.2 Contrato de Metadata Estructurada (Machine-Readable)
 
 Los orquestadores desatendidos consumen la metadata de perfiles directamente a través de GitHub API/CLI (`gh issue list --json labels`, `gh issue view --json labels`), evitando invocar modelos adicionales para clasificar la tarea y eliminando la fragilidad de parsing en lenguaje natural:
-* **`profile:flash-low`**: Asignado a tareas MBR 0 sin impacto estructural ni lógico.
-* **`profile:flash-medium`**: Asignado a tareas MBR 1 y MBR 2 (tooling, skills y configuraciones).
-* **`profile:flash-high`**: Asignado a tareas MBR 3 (refactors, concurrencia, diagnósticos complejos).
-* **`profile:pro`**: Asignado a tareas MBR 4 (invariantes basales, seguridad de runtime, impacto transversal).
+* **`profile:low`**: Asignado a tareas MBR 0 sin impacto estructural ni lógico (Perfil Low).
+* **`profile:medium`**: Asignado a tareas MBR 1 y MBR 2 (tooling, skills y configuraciones; Perfil Medium).
+* **`profile:high`**: Asignado a tareas MBR 3 (refactors, concurrencia, diagnósticos complejos; Perfil High).
+* **`profile:pro`**: Asignado a tareas MBR 4 (invariantes basales, seguridad de runtime, impacto transversal; Perfil Pro).
 
 ---
 

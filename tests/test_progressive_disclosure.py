@@ -257,8 +257,8 @@ class TestProgressiveDisclosure(unittest.TestCase):
         with open(router_path, "r", encoding="utf-8") as f:
             router_content = f.read()
 
-        # ADR-0048 / #284: router delegates profile labels to issue-driven-workflow
-        for label in ("profile:flash-low", "profile:flash-medium", "profile:flash-high", "profile:pro"):
+        # ADR-0048 / #284 / #380: router delegates profile labels to issue-driven-workflow
+        for label in ("profile:low", "profile:medium", "profile:high", "profile:pro"):
             self.assertNotIn(label, router_content, f"Unexpected {label} remaining in core/00-router.md")
 
         backlog_ref_path = os.path.join(
@@ -267,9 +267,18 @@ class TestProgressiveDisclosure(unittest.TestCase):
         with open(backlog_ref_path, "r", encoding="utf-8") as f:
             backlog_ref_content = f.read()
 
-        for label in ("profile:flash-low", "profile:flash-medium", "profile:flash-high", "profile:pro"):
+        for label in ("profile:low", "profile:medium", "profile:high", "profile:pro"):
             self.assertIn(label, backlog_ref_content, f"Missing {label} in issue-backlog.md")
         self.assertIn("Matriz Canónica de Ruteo de Modelos", backlog_ref_content)
+
+        provisioning_ref_path = os.path.join(
+            REPO_ROOT, "skills", "issue-driven-workflow", "references", "repo-provisioning.md"
+        )
+        with open(provisioning_ref_path, "r", encoding="utf-8") as f:
+            provisioning_ref_content = f.read()
+
+        for label in ("profile:low", "profile:medium", "profile:high", "profile:pro"):
+            self.assertIn(label, provisioning_ref_content, f"Missing {label} in repo-provisioning.md")
 
         skill_path = os.path.join(
             REPO_ROOT, "skills", "issue-driven-workflow", "SKILL.md"
@@ -278,7 +287,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
             skill_content = f.read()
 
         self.assertIn('--label "profile:<perfil>"', skill_content)
-        for label in ("profile:flash-low", "profile:flash-medium", "profile:flash-high", "profile:pro"):
+        for label in ("profile:low", "profile:medium", "profile:high", "profile:pro"):
             self.assertIn(label, skill_content, f"Missing {label} in issue-driven-workflow SKILL.md")
 
     def test_pagination_and_atomic_edits_invariants(self):

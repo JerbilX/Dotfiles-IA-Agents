@@ -106,6 +106,15 @@ Si el usuario **confirma**:
    gh project link <project_number> --owner <project_owner> --repo <nombre-del-directorio>
    ```
    *(Donde `<project_number>` y `<project_owner>` se resuelven desde `.repo-config.json`, aplicando `1` y `@me` por defecto).*
+5. **Aprovisionamiento Idempotente de Etiquetas de Perfil Canónicas:**
+   Garantizar la existencia de las 4 etiquetas de perfil de ejecución estándar (`Low`, `Medium`, `High`, `Pro`) para tipificar issues según su MBR:
+   ```bash
+   gh label create "profile:low" --description "Minimal Blast Radius 0: Trivial tasks, formatting, typos" --color "0052cc" --force
+   gh label create "profile:medium" --description "Minimal Blast Radius 1-2: Tooling, skills, scripts, local config" --color "0e8a16" --force
+   gh label create "profile:high" --description "Minimal Blast Radius 3: Architectural refactors, complex diagnoses" --color "fbca04" --force
+   gh label create "profile:pro" --description "Minimal Blast Radius 4: Core basal directives, runtime security, cross-repo" --color "5319e7" --force
+   ```
+   *(La bandera `--force` asegura idempotencia sobrescribiendo atributos si la etiqueta ya existe).*
 
 ### 3.1 Configuración de Auto-Despliegue Post-Merge (ADR-0055)
 

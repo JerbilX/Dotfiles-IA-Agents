@@ -14,7 +14,7 @@ Orquestador canónico para desarrollo guiado por GitHub Issues, Projects v2 y Pu
 
 Subordinado a las directivas basales compiladas en el prompt del runtime:
 
-* **Backlog Canónico:** Prohibido `TODO.md` o `tasks/`; registro en Issues e indexación en Projects v2 con perfiles según MBR (`profile:flash-low`, `profile:flash-medium`, `profile:flash-high`, `profile:pro`).
+* **Backlog Canónico:** Prohibido `TODO.md` o `tasks/`; registro en Issues e indexación en Projects v2 con perfiles según MBR (`profile:low`, `profile:medium`, `profile:high`, `profile:pro`).
 * **Ceremonia y Trazabilidad:** N0 (consultas, `scratch/`: sin issue ni rama), N1 (cambio acotado, evidente, sin `core/`, `runtimes/` ni ADR: issue mínima, sin plan, ADR ni perfil), N2 (feature, ambigüedad, `core/`, `runtimes/` o ADR: ciclo completo). Precedencia de Entornos Locales: priorizar binarios locales (`.venv/bin/`, `node_modules/.bin/`) sobre intérpretes globales.
 * **Inmutabilidad y PRs:** Inmutabilidad estricta de workspace (tooling y scripts constituyen desarrollo). Prohibido push directo a `main`. Ramas efímeras (`feat/` o `fix/`) y entrega vía PR.
 * **Higiene, Pruebas y Atomicidad:** I/O solo con herramientas nativas de archivos; delimitación obligatoria de rango o paginado (ventana ≤ 200 líneas); circuit breaker e inmunidad heurística; granularidad atómica en ediciones; acotar salidas (`head -n 20`, `--jq`) y pruebas filtradas en desarrollo (suite integral solo previa al commit); temporales de intercambio (`.commit_msg`, `.pr_body`, `.issue_body`) en `scratch/` (o raíz según runtime), commits vía `-F` y eliminación inmediata tras su uso.
