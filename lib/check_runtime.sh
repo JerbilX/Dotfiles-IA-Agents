@@ -224,6 +224,19 @@ check_runtime() {
         echo "  [✓] [${r}] Servidores MCP: ${count_mcps} módulo(s) verificado(s)"
     fi
 
+    # 4a. Registro efectivo en el JSON del host para runtimes con fusión MCP (ADR-0057)
+    if [ -n "$(get_runtime_mcp_merge_file "$r")" ] && [ "${count_mcps}" -gt 0 ]; then
+        local registered=()
+        mapfile -t registered < <(get_registered_mcp_servers "${target_mcp_file}")
+        for s_name in "${enabled_mcps[@]}"; do
+            [ -z "${s_name}" ] && continue
+            if [[ " ${registered[*]} " != *" ${s_name} "* ]]; then
+                echo "  [!] Advertencia [${r}]: Servidor MCP '${s_name}' no registrado en ${target_mcp_file} (ejecuta './build.sh link ${r}')" >&2
+                CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+            fi
+        done
+    fi
+
     # 4b. Verificación de Lifecycle Hooks
     local hooks_source
     hooks_source="$(get_runtime_hooks_source_file "$r")"
@@ -533,7 +546,7 @@ for l in links:
         p_base="$(basename "${target_file}")"
         m_base="$(basename "${target_mcp_file}")"
         mapfile -t prompt_baks < <(find "${target_dir}" -maxdepth 1 -name "${p_base}.bak.*" 2>/dev/null | sort -r || true)
-        mapfile -t mcp_baks < <(find "${target_dir}" -maxdepth 1 -name "${m_base}.bak.*" 2>/dev/null | sort -r || true)
+        mapfile -t mcp_baks < <(find "$(dirname "${target_mcp_file}")" -maxdepth 1 -name "${m_base}.bak.*" 2>/dev/null | sort -r || true)
     fi
     local count_prompt_baks=0
     for b in "${prompt_baks[@]}"; do [ -n "$b" ] && [ -e "$b" ] && count_prompt_baks=$((count_prompt_baks + 1)); done

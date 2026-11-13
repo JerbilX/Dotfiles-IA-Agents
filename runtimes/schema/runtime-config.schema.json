@@ -80,6 +80,10 @@
           "type": "string",
           "description": "Nombre del archivo de configuración MCP en el destino (por defecto mcp_config.json)"
         },
+        "mcp_merge_file": {
+          "type": "string",
+          "description": "JSON del anfitrión donde se fusiona la clave mcpServers en lugar de enlazar mcp_filename (ej. ~/.claude.json, ADR-0057)"
+        },
         "hooks_filename": {
           "type": "string",
           "description": "Nombre del archivo de configuración de lifecycle hooks en el destino (por defecto hooks.json)"

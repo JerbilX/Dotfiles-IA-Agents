@@ -103,6 +103,7 @@ load_runtime_config() {
           "config_dir=" + (.target.config_dir // ""),
           "prompt_filename=" + (.target.prompt_filename // "AGENTS.md"),
           "mcp_filename=" + (.target.mcp_filename // "mcp_config.json"),
+          "mcp_merge_file=" + (.target.mcp_merge_file // ""),
           "hooks_filename=" + (.target.hooks_filename // "hooks.json"),
           "skills_dir=" + (.target.skills_dir // ""),
           "skills=" + ((.skills // []) | join("\t")),
@@ -123,6 +124,7 @@ print("status=" + (cfg.get("status") or "active"))
 print("config_dir=" + (cfg.get("target", {}).get("config_dir") or ""))
 print("prompt_filename=" + (cfg.get("target", {}).get("prompt_filename") or "AGENTS.md"))
 print("mcp_filename=" + (cfg.get("target", {}).get("mcp_filename") or "mcp_config.json"))
+print("mcp_merge_file=" + (cfg.get("target", {}).get("mcp_merge_file") or ""))
 print("hooks_filename=" + (cfg.get("target", {}).get("hooks_filename") or "hooks.json"))
 print("skills_dir=" + (cfg.get("target", {}).get("skills_dir") or ""))
 print("skills=" + "\t".join(cfg.get("skills") or []))
@@ -289,7 +291,17 @@ get_runtime_target_prompt_file() {
     echo "${t_dir}/${t_name}"
 }
 
-get_runtime_target_mcp_file() {
+# Archivo JSON del host donde se fusiona mcpServers en lugar de enlazar (ADR-0057); vacío si el runtime usa symlink
+get_runtime_mcp_merge_file() {
+    local r="$1"
+    load_runtime_config "$r"
+    local m_file="${RUNTIME_CONFIG_CACHE["${r}:mcp_merge_file"]:-}"
+    [ -n "${m_file}" ] && expand_path "${m_file}"
+    return 0
+}
+
+# Ruta de symlink MCP en config_dir (heredada en runtimes con mcp_merge_file)
+get_runtime_target_mcp_link() {
     local r="$1"
     load_runtime_config "$r"
     local t_name="${RUNTIME_CONFIG_CACHE["${r}:mcp_filename"]:-}"
@@ -299,6 +311,29 @@ get_runtime_target_mcp_file() {
     local t_dir
     t_dir="$(get_runtime_target_dir "$r")"
     echo "${t_dir}/${t_name}"
+}
+
+# Lista (una por línea) los servidores registrados en mcpServers de un JSON del host
+get_registered_mcp_servers() {
+    [ -f "$1" ] || return 0
+    python3 -I -c '
+import json, sys
+try:
+    print("\n".join(json.load(open(sys.argv[1], encoding="utf-8")).get("mcpServers", {})))
+except Exception:
+    pass
+' "$1"
+}
+
+get_runtime_target_mcp_file() {
+    local r="$1"
+    local m_file
+    m_file="$(get_runtime_mcp_merge_file "$r")"
+    if [ -n "${m_file}" ]; then
+        echo "${m_file}"
+        return 0
+    fi
+    get_runtime_target_mcp_link "$r"
 }
 
 get_runtime_target_hooks_file() {

@@ -10,13 +10,34 @@ link_runtime_mcp() {
     local target_dir
     target_dir="$(get_runtime_target_dir "$r")"
 
-    echo "==> [link] Asegurando enlace simbólico para MCP [${r}] en ${target_dir}..."
     if [ ! -f "${dist_mcp_file}" ]; then
         echo "Error: ${dist_mcp_file} no existe. Ejecuta './build.sh build ${r}' primero." >&2
         return 1
     fi
 
-    safe_symlink "${dist_mcp_file}" "${target_mcp_file}" "${r} MCP"
+    local merge_file
+    merge_file="$(get_runtime_mcp_merge_file "$r")"
+    if [ -z "${merge_file}" ]; then
+        echo "==> [link] Asegurando enlace simbólico para MCP [${r}] en ${target_dir}..."
+        safe_symlink "${dist_mcp_file}" "${target_mcp_file}" "${r} MCP"
+        return
+    fi
+
+    # El runtime no lee el symlink: se fusiona mcpServers en el JSON del host (ADR-0057)
+    local legacy_link
+    legacy_link="$(get_runtime_target_mcp_link "$r")"
+    if [ -L "${legacy_link}" ] && [ "$(readlink "${legacy_link}")" = "${dist_mcp_file}" ]; then
+        echo "==> [link] [${r}] Retirando symlink MCP sin efecto: ${legacy_link}..."
+        rm -f "${legacy_link}"
+    fi
+
+    local managed=()
+    local s
+    for s in "$(get_runtime_mcp_dir "$r")"/*.json; do
+        [ -f "${s}" ] && managed+=("$(basename "${s}" .json)")
+    done
+    echo "==> [link] Combinando servidores MCP de '${r}' en ${merge_file}..."
+    python3 -I "${SCRIPT_DIR}/lib/merge_mcp.py" "${dist_mcp_file}" "${merge_file}" "${managed[@]}"
 }
 
 link_runtime() {
@@ -172,7 +193,7 @@ rollback_runtime() {
     done
 
     local mcp_baks=()
-    mapfile -t mcp_baks < <(find "${target_dir}" -maxdepth 1 -name "${m_base}.bak.*" 2>/dev/null | sort -r || true)
+    mapfile -t mcp_baks < <(find "$(dirname "${target_mcp_file}")" -maxdepth 1 -name "${m_base}.bak.*" 2>/dev/null | sort -r || true)
     for b in "${mcp_baks[@]}"; do
         if [ -n "$b" ] && [ -e "$b" ]; then
             latest_mcp_bak="$b"
@@ -260,7 +281,14 @@ status_runtime() {
     fi
 
     echo "  Configuración MCP (${target_mcp_file}):"
-    if [ -L "${target_mcp_file}" ]; then
+    if [ -n "$(get_runtime_mcp_merge_file "$r")" ]; then
+        echo "    Tipo: Fusión en mcpServers (ADR-0057)"
+        if [ -f "${target_mcp_file}" ]; then
+            echo "    Servidores registrados: $(get_registered_mcp_servers "${target_mcp_file}" | paste -sd, -)"
+        else
+            echo "    Estado: No provisionado"
+        fi
+    elif [ -L "${target_mcp_file}" ]; then
         local target
         target="$(readlink "${target_mcp_file}")"
         echo "    Tipo: Enlace simbólico (symlink) -> ${target}"

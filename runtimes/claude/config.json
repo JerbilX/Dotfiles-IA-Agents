@@ -22,6 +22,7 @@
     "config_dir": "${HOME}/.claude",
     "prompt_filename": "CLAUDE.md",
     "mcp_filename": "mcp_config.json",
+    "mcp_merge_file": "${HOME}/.claude.json",
     "skills_dir": "${HOME}/.claude/skills"
   }
 }
