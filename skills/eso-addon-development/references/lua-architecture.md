@@ -413,6 +413,130 @@ El diseño de sistemas distribuidos, sincronización de misiones o herramientas 
 * **Visibilidad Subordinada al Estado Activo:** Los controles interactivos de navegación, apertura de mapas o localización (ej. botones `showMapBtn` o accesos directos de cartografía) deben gobernar su visibilidad (`control:SetHidden(...)`) de manera estrictamente reactiva respecto al ciclo de vida y vigencia de la entidad o misión asociada.
 * **Ocultamiento Inmediato ante Inactividad o Completitud:** Cuando una misión o etapa transiciona a estado inactivo, completado o descartado, los controles contextuales asociados deben ocultarse de inmediato (`control:SetHidden(true)`) para prevenir acciones inconsistentes o desfasadas con el estado actual del juego.
 
+---
 
+## 15. Dualidad Máster/Jugador en Sistemas P2P y Flujo de Self-Play
 
+En arquitecturas P2P para actividades de rol narrativo, los clientes pueden asumir alternativamente roles de **Game Master** (creador/administrador de la aventura) o de **Jugador** (aventurero ejecutor). Esta coexistencia exige desacoplar estrictamente contratos de datos, controles de UI y flujos de prueba:
 
+### 15.1 Contratos de Datos Asimétricos
+* **Registro del Máster (`SavedVariables`):**
+  * Almacena las definiciones maestras de misiones creadas o administradas (`savedQuests`), persistiendo la semilla criptográfica secreta (`secretSeed`), borradores editables (`isDraft = true`) y metadatos del autor.
+  * Preserva el rol inmutable `role = "MASTER"`, garantizando que la misión exista como registro administrativo independiente de la sesión activa del personaje.
+* **Registro del Jugador (`ActiveQuest`):**
+  * Consume instancias de misiones hidratadas desde código exportable o importación directa (`isCurrent = true`, `role = "PLAYER"`).
+  * Gobierna el seguimiento cuantitativo de objetivos en tiempo de ejecución, el almacenamiento efímero del progreso y la generación del recibo firmado de completitud (`completionCode`) al finalizar.
+
+### 15.2 Segregación de Vistas y Reactividad en la UI (EsoUI)
+* **Tagging Semántico en Lista:** En la lista de misiones del diario, cada fila debe prefijarse con un identificador de rol claro y estilizado:
+  * Misiones del Máster / Borradores: `|cFFD700[MÁSTER]|r`
+  * Misiones en Curso / Jugadas: `|c00FF00[JUGADOR]|r`
+* **Paneles de Detalle Asimétricos:**
+  * **Vista del Máster:** Expone acciones administrativas (`Exportar Código`, `Probar como Jugador`, `Eliminar`) y la caja interactiva de validación (`validationHeader`, `CT_EDITBOX` y botón `Validar`). Oculta taxativamente los botones de juego ordinario (`Completar Misión`, `Abandonar Misión`).
+  * **Vista del Jugador:** Expone seguimiento de objetivos, `Mostrar en mapa`, `Completar Misión`, `Abandonar Misión` y el contenedor con el código de completitud generado tras finalizar. Oculta taxativamente la caja de validación del máster.
+
+### 15.3 Modo de Auto-Prueba Local (Self-Play) y Validación In-Game
+* **Prueba en Solitario sin Segundo Cliente:** El Game Master debe poder validar localmente la viabilidad de sus misiones. La acción `SelfTestQuest(quest)` instancia la misión guardada en el motor de juego (`ActiveQuest:StartQuest`) conservando intacto el registro del máster.
+* **Validación In-Game y CLI:** Al completar la misión en modo de prueba, el jugador genera un comprobante firmado que el máster puede contrastar inmediatamente contra la semilla secreta de la misión original:
+  1. Directamente en la interfaz gráfica mediante la caja de validación (`Journal:ValidateCompletionCode`).
+  2. Mediante comando de conveniencia terminal-ready: `/rpq validate <código_completitud>`.
+
+### 15.4 Indexación por Clave Compuesta `(id, role)` y Prevención de Colisiones de Selección
+* **Colisión de Identificadores en Modo Dual:** Cuando el máster ejecuta auto-prueba local (`SelfTestQuest`), la misión activa en `ActiveQuest` y la definición persistida en `SavedVariables.savedQuests` comparten idéntico identificador (`id`).
+* **Invariante de Búsqueda Multirrol:** Queda prohibido resolver o validar misiones en listas, controladores de selección o refrescos de UI mediante comparaciones directas de clave simple (`q.id == selectedQuest.id`).
+* **Patrón Canónico de Indexación:** Toda búsqueda, reasignación o comprobación de selección en la interfaz de usuario debe discriminar obligatoriamente mediante la tupla compuesta `(id, role)` o contrastando `isSaved` frente a `isCurrent`:
+  ```lua
+  if q.id == self.selectedQuest.id and (self.selectedQuest.role == nil or q.role == self.selectedQuest.role) then
+      self.selectedQuest = q
+      break
+  end
+  ```
+  Esto previene que la instancia de juego del aventurero enmascare el registro administrativo del máster, garantizando que la caja de validación y las acciones de exportación permanezcan operativas.
+
+---
+
+## 16. Captura Pasiva y Recolección de Entidades en EsoUI (`[E] Take / Interact`)
+
+Los objetivos tradicionales de misiones en MMOs suelen gravitar en torno al combate. Sin embargo, en el rol interactivo son frecuentes las tareas de recolección de fauna ambiental (*critters*), hierbas, minerales o interacción con altares y mecanismos.
+
+### 16.1 Diferenciación Conceptual: Combate vs Interacción Pasiva
+* **Objetivos de Eliminación (`KILL`):**
+  * Monitorean el pipeline de combate del cliente mediante `EVENT_COMBAT_EVENT`.
+  * Requieren filtros de daño letal, cambio de estado de vida o resultados específicos (`ACTION_RESULT_DIED`, `ACTION_RESULT_DIED_XP`).
+* **Objetivos de Recolección / Interacción (`COLLECT` e `INTERACT`):**
+  * Involucran fauna pasiva que muere o se recoge de un solo golpe/interacción (mariposas, libélulas, antorchas, escarabajos) o nodos recolectables (hierbas alquímicas, vetas, runas, cofres).
+  * **Invariante Crítica:** Estas acciones **no** generan eventos convencionales de combate en EsoUI. Monitorearlas a través de `EVENT_COMBAT_EVENT` provocará que el objetivo quede atascado indefinidamente.
+
+### 16.2 Pipeline de Detección e Inspección de Retícula
+* **Captura de Contexto de Retícula (`GetGameCameraInteractableActionInfo`):**
+  * Al apuntar a una entidad interactuable, consultar la acción del motor antes de la interacción:
+    ```lua
+    local action, name, interactBlocked, isOwned, additionalInfo = GetGameCameraInteractableActionInfo()
+    ```
+  * Permite normalizar y asociar nombres en español e inglés (ej. "Tomar", "Take", "Interactuar", "Harvest") sin recurrir a identificadores rígidos.
+* **Monitoreo de Entrada en Inventario (`EVENT_LOOT_RECEIVED`):**
+  * Para capturas físicas y recolecciones, interceptar la recepción efectiva del ítem:
+    ```lua
+    local function OnLootReceived(eventCode, receivedBy, itemName, quantity, itemSound, lootType, quest)
+        -- Normalizar nombre con zo_strformat(SI_UNIT_NAME, itemName)
+        -- Contrastar contra el targetName del objetivo activo y actualizar contadores
+    end
+    ```
+* **Confirmación de Interacción Ambiental (`EVENT_CLIENT_INTERACT_RESULT`):**
+  * Para objetos que no depositan ítems en inventario (ej. palancas, libros de atril, estatuas, puertas de cripta), interceptar el resultado de la interacción directa del cliente con el entorno:
+    ```lua
+    local function OnClientInteractResult(eventCode, result, interactTargetName)
+        if result == CLIENT_INTERACT_RESULT_SUCCESS then
+            -- Avanzar objetivos de tipo INTERACT
+        end
+    end
+    ```
+
+---
+
+## 17. Exploración Oculta y Narrativa Contextual
+
+Las mecánicas de rol investigativo y deducción geográfica requieren a menudo guiar al aventurero a través de pistas orales o descripciones escritas en lugar de marcadores cartográficos obvios.
+
+### 17.1 Supresión Deliberada de Pines Cartográficos (`hiddenPin` / `noMapMarker`)
+* **Preservación del Desafío Narrativo:** Si una zona contiene coordenadas numéricas pero representa un misterio o escondite, dibujar un círculo en el mapa o brújula destruye la experiencia de búsqueda.
+* **Filtrado en Gestores de Pines:** Los callbacks registrados en `LibMapPins` y `CustomCompassPins` deben verificar explícitamente las banderas de exploración oculta:
+  ```lua
+  local function OnMapPinsCallback(pinType)
+      for _, area in ipairs(Addon:GetAreas()) do
+          if not area.hiddenPin and not area.noMapMarker then
+              -- Crear pin en ZO_WorldMap
+          end
+      end
+  end
+  ```
+  Esto suprime por completo la visibilidad del área en mapas provinciales, submapas urbanos y brújula (`Compass`).
+
+### 17.2 Muestreo Posicional Zonal Periódico
+* **Ausencia de Triggers Nativos de Área:** EsoUI carece de un sistema nativo para declarar colisiones geográficas arbitrarias creadas por addons de usuario.
+* **Temporizador Periódico de Proximidad (`EVENT_MANAGER:RegisterForUpdate`):**
+  * Registrar una rutina periódica con cadencia de bajo impacto (ej. cada 1000 ms a 2000 ms):
+    ```lua
+    EVENT_MANAGER:RegisterForUpdate("MyAddon_ProximityCheck", 1000, function()
+        Addon:CheckProximity()
+    end)
+    ```
+  * En cada iteración:
+    1. Validar que el mapa activo coincida con el mapa del área objetivo (`GetMapTileTexture`).
+    2. Obtener la posición normalizada del jugador con `GetMapPlayerPosition("player")`.
+    3. Calcular la distancia euclidiana 2D normalizada:
+       $$d = \sqrt{(x_p - x_o)^2 + (y_p - y_o)^2}$$
+    4. Evaluar si la distancia es menor o igual al radio de tolerancia del área ($d \le r$).
+
+### 17.3 Detonación Deduplicada de Anuncios Narrativos
+* **Prevención de Re-disparos:** Cada área oculta debe mantener un estado local de descubrimiento (`area.discovered = true`). Una vez descubierta, se desactiva el chequeo para dicha área para evitar ráfagas de avisos mientras el jugador camina dentro del perímetro.
+* **Anuncio Central en Pantalla (`CENTER_SCREEN_ANNOUNCE`):**
+  * Notificar el hallazgo con impacto visual cinematográfico en la interfaz central del jugador:
+    ```lua
+    if CENTER_SCREEN_ANNOUNCE then
+        local params = CENTER_SCREEN_ANNOUNCE:CreateMessageParams(CSA_CATEGORY_LARGE_TEXT, SOUNDS.QUEST_OBJECTIVE_INCREMENT)
+        params:SetText(discoveryMessage)
+        CENTER_SCREEN_ANNOUNCE:AddMessageWithParams(params)
+    end
+    ```
+* **Preservación del Registro en Chat:** Emitir simultáneamente el texto del hallazgo narrativo en la ventana de chat con prefijo estilizado (`|c00FFFF[Exploración]|r`), garantizando que el jugador pueda releer la pista o descripción incluso después de que desaparezca el texto en pantalla.
