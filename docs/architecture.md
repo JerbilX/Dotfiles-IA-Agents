@@ -106,6 +106,20 @@ Gobierna los manifiestos de dominio en `modules/<nombre>/module.json`:
 Para evitar la sobrecarga basal de tokens en el prompt inicial de proyectos genéricos, tanto los servidores MCP especializados como las skills de dominio (como `eso-addon-development`) se desacoplan del catálogo global y se confinan exclusivamente a los repositorios pertinentes mediante plantillas declarativas (`modules/<dominio>/template/`).
 La activación en el workspace activo se realiza on-demand sin fricción mediante el CLI `agent-module` (`agent-module enable <modulo>`), ya sea por orden explícita del usuario en el chat o por confirmación ante detección proactiva de marcadores de dominio por parte del agente. El comando `agent-module disable <modulo>` permite la poda y reversibilidad inmediata.
 
+### Protocolo Operativo para Skills Vinculadas por Symlink y Repositorios Consumidores
+
+Cuando un proyecto consumidor vincula una skill de dotfiles mediante symlink en `.agents/skills/<skill-name>` hacia `Dotfiles-IA-Agents/skills/<skill-name>`:
+- **Inyección Exclusiva de Runtime:** El symlink bajo `.agents/skills/` tiene como único propósito la inyección bajo demanda de contexto y utilidades en el runtime del agente (ej. Antigravity o Claude Code).
+- **Invariante de Control de Versiones (Git Error 128):** Intentar realizar `git add .agents/skills/...` en el repositorio consumidor falla taxativamente con:
+  ```text
+  fatal: pathspec '.agents/skills/<skill-name>/...' is beyond a symbolic link
+  ```
+  Git prohíbe añadir rutas que trasciendan la frontera de un enlace simbólico, pues los archivos reales pertenecen al árbol de trabajo del repositorio origen (`Dotfiles-IA-Agents`).
+- **Directrices de Operación y Versionado:**
+  1. **Edición en Disco Compartida:** Cualquier edición realizada a través del symlink se materializa de inmediato en el archivo físico en `Dotfiles-IA-Agents`.
+  2. **Versionado en el Proyecto Consumidor:** Si el repositorio consumidor requiere versionar documentación técnica o guías como parte de su historial Git propio, debe copiar o espejar el archivo bajo una ruta canónica interna (ej. `docs/references/` o `docs/architecture/`), preservando el symlink en `.agents/` estrictamente para el runtime del agente.
+  3. **Persistencia en el Catálogo Canónico de Dotfiles:** Si la actualización de la skill constituye una mejora o estándar general que debe persistir en el repositorio de dotfiles, debe formalizarse mediante GitHub Issue y Pull Request dirigidos a `JerbilX/Dotfiles-IA-Agents`.
+
 ---
 
 ## 4. Guía de Extensibilidad: Cómo Agregar un Nuevo Runtime

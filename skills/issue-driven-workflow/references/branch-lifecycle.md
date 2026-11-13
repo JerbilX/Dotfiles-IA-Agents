@@ -118,6 +118,12 @@ git-prune-gone --sync
    git add <ruta1> <ruta2>
    ```
    *(Indicar rutas explícitas; no usar `git add .` ni `git add -A`).*
+
+   > [!WARNING]
+   > **Skills Vinculadas por Symlink (`fatal: pathspec ... is beyond a symbolic link`):**
+   > Si el proyecto consumidor enlaza skills desde dotfiles mediante enlaces simbólicos (ej. `.agents/skills/<skill-name> -> ...`), Git impedirá hacer staging de rutas dentro del enlace emitiendo `fatal: pathspec '...' is beyond a symbolic link`. Los archivos bajo el symlink pertenecen al repositorio fuente (`Dotfiles-IA-Agents`), no al repositorio consumidor.
+   > - **Para versionar documentación en el proyecto consumidor:** Copiar/espejar el contenido a una ruta propia del repositorio (ej. `docs/references/` o `docs/architecture/`) y hacer staging de esa ruta.
+   > - **Para enriquecer o corregir la skill globalmente:** Tramitar los cambios en `JerbilX/Dotfiles-IA-Agents` mediante una issue y PR en dicho repositorio, preservando `.agents/skills/` exclusivamente para descubrimiento del runtime.
 2. **Paso 5.2: Redacción y Commit Atómico (ej. `BypassSandbox: true` en Antigravity):**
    * Evitar `git commit -m "..."` (anula el prefix matching de permisos al contener comillas). Redactar mensaje convencional en `.commit_msg` (o en runtimes confinados como Antigravity bajo `<appDataDir>/brain/<conversation-id>/scratch/.commit_msg` para I/O nativo) con herramientas nativas de archivos.
    * Incluir obligatoriamente al final del mensaje (separado por una línea en blanco) el trailer canónico de atribución:
