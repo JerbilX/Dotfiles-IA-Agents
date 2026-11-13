@@ -22,6 +22,8 @@ Guía canónica y operativa para la estructuración, redacción y mantenimiento 
    La documentación técnica es descriptiva, arquitectónica y operacional. **No define directivas de comportamiento ni órdenes para agentes de IA** (las cuales se reservan exclusivamente a `core/` y `rules/` bajo el estándar `AGENTS.md`).
 5. **Erradicación de Backlogs Locales y Bitácoras Informales:**
    Prohibido crear o mantener archivos como `TODO.md`, `backlog.md` o bitácoras `HISTORIAL.md`. La deuda técnica o tareas pendientes se canalizan mediante GitHub Issues e indexación en Projects v2.
+6. **Aislamiento de Documentación en Repositorios Consumidores (Skills Vinculadas):**
+   Cuando un proyecto consumidor integra skills de dotfiles mediante symlinks (`.agents/skills/<skill-name>`), la documentación o referencias técnicas que el proyecto requiera versionar en su propio árbol Git deben alojarse o espejarse en rutas locales (ej. `docs/references/` o `docs/architecture/`). Intentar comitear modificaciones dentro del symlink provoca el error de Git `fatal: pathspec ... is beyond a symbolic link`, dado que dicho contenido pertenece exclusivamente al repositorio fuente (`Dotfiles-IA-Agents`). Si se detectan mejoras o extensiones de valor universal para la skill, deben tramitarse mediante issue y PR en `JerbilX/Dotfiles-IA-Agents`.
 
 ---
 
@@ -120,6 +122,7 @@ Antes de finalizar cualquier tarea de documentación o abrir un Pull Request, va
 - [ ] **Integridad de Enlaces:** Todos los enlaces relativos hacia `docs/` existen en el sistema de archivos (sin rutas rotas ni referencias a archivos inexistentes).
 - [ ] **Cero Contenido Normativo:** No se redactaron órdenes o imperativos hacia agentes en los archivos Markdown de `docs/`.
 - [ ] **Separación Diátaxis:** No hay instrucciones de instalación mezcladas en `docs/architecture.md`, ni descripciones conceptuales extensas en `docs/setup.md`.
+- [ ] **Aislamiento de Symlinks:** Las referencias técnicas o adaptaciones locales residen en rutas propias del proyecto (`docs/`), sin intentar comitear archivos dentro de symlinks de `.agents/skills/`.
 - [ ] **Validación Estática:** `./build.sh check` ejecuta con 0 errores y 0 advertencias sobre documentación.
 
 ---
