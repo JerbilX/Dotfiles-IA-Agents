@@ -107,6 +107,23 @@ GIT_GLOBAL_OPTS_WITH_ARG = {"-C", "-c", "--git-dir", "--work-tree", "--namespace
                             "--super-prefix", "--config-env"}
 GIT_PUSH_OPTS_WITH_ARG = {"--repo", "-o", "--push-option", "--receive-pack", "--exec"}
 
+MUTATING_OR_NETWORK_GIT_SUBCMDS = {
+    "init", "clone", "fetch", "pull", "push", "commit", "merge",
+    "rebase", "cherry-pick", "revert", "reset", "restore",
+    "checkout", "switch", "add", "rm", "mv", "tag", "stash", "clean"
+}
+
+MUTATING_GIT_BRANCH_FLAGS = {
+    "-d", "-D", "-m", "-M", "-c", "-C",
+    "--delete", "--move", "--copy", "--create"
+}
+
+AUTHORIZED_BYPASS_CLIS = {
+    "gh",
+    "gh-pr-review",
+    "git-prune-gone",
+}
+
 # Tokenización shell: operadores de control y redirección
 SHELL_PUNCTUATION = ";&|()<>\n"
 SEPARATOR_OPS = {";", ";;", "&", "&&", "|", "||", "|&", "(", ")"}
@@ -562,6 +579,56 @@ def evaluate_shell_command(command: str, cwd: Optional[str] = None) -> Optional[
     return None
 
 
+def command_requires_sandbox_bypass(command: str) -> bool:
+    """Determina si un comando requiere elevación de permisos (BypassSandbox: true).
+
+    Aplica a:
+    1. Todas las llamadas a GitHub CLI ('gh').
+    2. Subcomandos de Git mutadores o con acceso a red (push, pull, commit, switch, checkout, etc.).
+    3. Tooling autorizado que delega en gh o git mutador (gh-pr-review, git-prune-gone).
+    Exime inspección pasiva local (git status, diff, log, branch de solo lectura).
+    """
+    if not isinstance(command, str) or not command.strip():
+        return False
+
+    for words, _ in _parse_segments(command.strip()):
+        tokens = _strip_wrappers(words)
+        if not tokens:
+            continue
+        cmd_name = os.path.basename(tokens[0])
+        args = tokens[1:]
+
+        if cmd_name in AUTHORIZED_BYPASS_CLIS:
+            return True
+
+        if cmd_name == "git":
+            i = 0
+            while i < len(args):
+                a = args[i]
+                if a in GIT_GLOBAL_OPTS_WITH_ARG and i + 1 < len(args):
+                    i += 2
+                    continue
+                if a.startswith("-"):
+                    i += 1
+                    continue
+                break
+            if i < len(args):
+                subcmd = args[i]
+                rest = args[i + 1:]
+                if subcmd in MUTATING_OR_NETWORK_GIT_SUBCMDS:
+                    return True
+                if subcmd == "branch":
+                    for arg in rest:
+                        if arg in MUTATING_GIT_BRANCH_FLAGS or any(
+                            arg.startswith(f) for f in ("-d", "-D", "-m", "-M", "-c", "-C")
+                        ):
+                            return True
+                        if not arg.startswith("-"):
+                            return True
+
+    return False
+
+
 def evaluate_target_file(file_path: str, cwd: Optional[str] = None) -> Optional[str]:
     """Evalúa la ruta de archivo para herramientas de escritura/edición nativas."""
     banned = is_banned_file_path(file_path, cwd)
@@ -609,13 +676,18 @@ def to_claude_response(reason: Optional[str]) -> Optional[dict]:
     }
 
 
-def to_antigravity_response(reason: Optional[str]) -> dict:
-    if not reason:
-        return {"decision": "allow"}
-    return {
-        "decision": "deny",
-        "reason": f"Guard P0 Activado: {reason}",
-    }
+def to_antigravity_response(reason: Optional[str], overwrite: Optional[Dict[str, Any]] = None) -> dict:
+    if reason:
+        return {
+            "decision": "deny",
+            "reason": f"Guard P0 Activado: {reason}",
+        }
+    if overwrite:
+        return {
+            "decision": "allow",
+            "overwrite": overwrite,
+        }
+    return {"decision": "allow"}
 
 
 def is_claude_payload(payload: dict) -> bool:
@@ -661,7 +733,18 @@ def main() -> int:
         cwd = ws_paths[0]
 
     reason = evaluate_tool_request(name, args if isinstance(args, dict) else {}, cwd)
-    out = to_antigravity_response(reason)
+    overwrite = None
+    if not reason and name in ("run_command", "bash", "execute_command"):
+        cmd = ""
+        for k in ("CommandLine", "command", "cmd"):
+            if isinstance(args, dict) and k in args and args[k]:
+                cmd = str(args[k])
+                break
+        if cmd and command_requires_sandbox_bypass(cmd):
+            if isinstance(args, dict) and args.get("BypassSandbox") is not True:
+                overwrite = {"BypassSandbox": True}
+
+    out = to_antigravity_response(reason, overwrite)
     sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
     return 0
 
