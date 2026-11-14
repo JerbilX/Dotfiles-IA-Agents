@@ -522,7 +522,7 @@ Las mecánicas de rol investigativo y deducción geográfica requieren a menudo 
     end)
     ```
   * En cada iteración:
-    1. Validar que el mapa activo coincida con el mapa del área objetivo (`GetMapTileTexture`).
+    1. Validar que el mapa activo coincida con el mapa del área objetivo (`GetMapTileTexture`), aplicando la salvaguarda de mapa abierto y suspensión contextual (§17.4).
     2. Obtener la posición normalizada del jugador con `GetMapPlayerPosition("player")`.
     3. Calcular la distancia euclidiana 2D normalizada:
        $$d = \sqrt{(x_p - x_o)^2 + (y_p - y_o)^2}$$
@@ -540,3 +540,48 @@ Las mecánicas de rol investigativo y deducción geográfica requieren a menudo 
     end
     ```
 * **Preservación del Registro en Chat:** Emitir simultáneamente el texto del hallazgo narrativo en la ventana de chat con prefijo estilizado (`|c00FFFF[Exploración]|r`), garantizando que el jugador pueda releer la pista o descripción incluso después de que desaparezca el texto en pantalla.
+
+---
+
+### 17.4 Salvaguarda Mandatoria de `SetMapToPlayerLocation` y Suspensión Contextual por Discrepancia Cartográfica
+
+En rutinas periódicas de navegación, seguimiento en brújula o muestreo de proximidad, los addons suelen necesitar asegurar que el contexto cartográfico interno de EsoUI apunte a la ubicación real del jugador para obtener coordenadas actualizadas con `GetMapPlayerPosition("player")`. Sin embargo, invocar `SetMapToPlayerLocation()` de manera incondicional introduce graves antipatrones en la experiencia del usuario.
+
+#### 17.4.1 Antipatrón de Bloqueo de `ZO_WorldMap` y Desincronización Zonal
+* **Secuestro del Visor Cartográfico:** Si `SetMapToPlayerLocation()` se invoca mientras el jugador tiene abierto el mapa del mundo (`ZO_WorldMap`), el visor es forzado en cada tick de actualización a re-centrarse en la coordenada del personaje. Esto anula por completo la interacción del jugador, bloqueando el zoom-out (impidiendo ver el mapa provincial o global de Tamriel) y el desplazamiento libre (*pan*).
+* **Desincronización Textural en Tránsitos de Zona:** Si el personaje cruza fronteras de zona o viaja mediante teleportación y se ejecutan llamadas cartográficas periódicas fuera de contexto, se produce una discrepancia entre las texturas provinciales activas y los marcadores urbanos o de misión, generando parpadeos o asignaciones erróneas de coordenadas.
+
+#### 17.4.2 Salvaguarda Canónica de Mapa Abierto (`IsWorldMapOpen`)
+Queda taxativamente prohibido invocar `SetMapToPlayerLocation()` si el mapa mundial está visible en pantalla (`ZO_WorldMap_IsWorldMapShowing()` o `not ZO_WorldMap:IsHidden()`). Todo módulo de muestreo o seguimiento debe encapsular la verificación mediante un helper canónico defensivo:
+
+```lua
+local function IsWorldMapOpen()
+    if _G.ZO_WorldMap_IsWorldMapShowing and _G.ZO_WorldMap_IsWorldMapShowing() then
+        return true
+    end
+    if _G.ZO_WorldMap and _G.ZO_WorldMap.IsHidden and not _G.ZO_WorldMap:IsHidden() then
+        return true
+    end
+    return false
+end
+```
+
+* **Regla de Omisión Inmediata:** Si `IsWorldMapOpen()` evalúa como `true`, la rutina de muestreo en segundo plano debe abstenerse estrictamente de llamar a `SetMapToPlayerLocation()`. Si las coordenadas actuales no pueden resolverse limpiamente sin forzar el mapa, la comprobación se omite de forma silente hasta el próximo ciclo.
+
+#### 17.4.3 Refresco Contextual por Proximidad y Suspensión Reactiva (`EVENT_ZONE_CHANGED`)
+* **Filtro de Coincidencia de Zona:** Restringir los cómputos de proximidad y reajustes cartográficos exclusivamente a cuando el mapa activo del jugador coincida con el mapa (o submapa) de la misión o punto de interés (`normCurrentMap == normQuestMap`).
+* **Suspensión Temporal Fuera de Zona:** Si el jugador se encuentra en una zona distinta (`normCurrentMap ~= normQuestMap`), suspender inmediatamente las comprobaciones periódicas fijando una bandera de estado (`self.isProximitySuspended = true`), evitando ciclos de CPU innecesarios y llamadas cartográficas espurias.
+* **Reactivación Reactiva con `EVENT_ZONE_CHANGED`:** Prohibido implementar *polling* continuo para detectar si el jugador regresó a la zona de la misión. La reactivación debe ser exclusivamente reactiva interceptando el evento del motor:
+  ```lua
+  local function OnZoneChanged(eventCode, zoneName, subZoneName, newSubzone, zoneId, subzoneId)
+      if self.isProximitySuspended then
+          -- Reevaluar pertenencia de zona
+          local currentMap = GetMapTileTexture()
+          if currentMap and self.questMap and currentMap == self.questMap then
+              self.isProximitySuspended = false
+          end
+      end
+  end
+
+  EVENT_MANAGER:RegisterForEvent(self.name .. "_ZoneWatcher", EVENT_ZONE_CHANGED, OnZoneChanged)
+  ```
