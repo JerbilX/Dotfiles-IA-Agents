@@ -470,5 +470,150 @@ class TestGitHooksExecution(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
 
 
+class TestAgentGuardSandboxBypass(unittest.TestCase):
+    """Verifica detección mecánica de bypass de sandbox y emisión de overwrite (ADR-0058, #382)."""
+
+    def test_gh_commands_require_bypass(self):
+        for cmd in (
+            "gh issue view 382",
+            "gh pr create --title 'feat: test'",
+            "gh project item-list 1",
+            "gh api graphql -f query='...'",
+            "gh board",
+            "gh board-ready",
+            "gh run view 123 --log-failed",
+        ):
+            self.assertTrue(
+                guard_mod.command_requires_sandbox_bypass(cmd),
+                f"Comando gh debería exigir bypass: {cmd}",
+            )
+
+    def test_git_mutating_and_network_commands_require_bypass(self):
+        for cmd in (
+            "git add .",
+            "git add core/00-router.md",
+            "git commit -F .commit_msg",
+            "git push -u origin feat/test",
+            "git fetch --prune origin",
+            "git pull --ff-only",
+            "git switch --no-track -c feat/test origin/main",
+            "git checkout -b feat/test",
+            "git merge origin/main",
+            "git branch -D feat/old",
+            "git branch -d feat/old",
+            "git branch -m old new",
+            "git branch feat/new",
+            "git stash",
+            "git revert HEAD",
+            "git reset --hard HEAD",
+            "git restore file.txt",
+            "git init",
+            "git -C /path/to/repo add .",
+        ):
+            self.assertTrue(
+                guard_mod.command_requires_sandbox_bypass(cmd),
+                f"Comando mutador/red git debería exigir bypass: {cmd}",
+            )
+
+    def test_git_readonly_commands_stay_sandboxed(self):
+        for cmd in (
+            "git status",
+            "git diff",
+            "git diff --cached",
+            "git log -n 5",
+            "git show HEAD",
+            "git rev-parse HEAD",
+            "git rev-parse --show-toplevel",
+            "git branch",
+            "git branch -a",
+            "git branch -r",
+            "git branch --list",
+            "git remote -v",
+        ):
+            self.assertFalse(
+                guard_mod.command_requires_sandbox_bypass(cmd),
+                f"Comando git de solo lectura no debería exigir bypass: {cmd}",
+            )
+
+    def test_authorized_clis_require_bypass(self):
+        for cmd in (
+            "gh-pr-review comments 382",
+            "git-prune-gone --sync",
+        ):
+            self.assertTrue(
+                guard_mod.command_requires_sandbox_bypass(cmd),
+                f"CLI autorizado debería exigir bypass: {cmd}",
+            )
+
+    def test_local_build_and_tests_stay_sandboxed(self):
+        for cmd in (
+            "./build.sh check",
+            "./build.sh test",
+            "./build.sh build",
+            "python3 -m unittest",
+            "pytest tests/",
+            "ls -la",
+        ):
+            self.assertFalse(
+                guard_mod.command_requires_sandbox_bypass(cmd),
+                f"Comando local de compilación/test no debería exigir bypass: {cmd}",
+            )
+
+    def test_antigravity_payload_enforces_overwrite_when_bypass_false(self):
+        payload = {
+            "toolCall": {
+                "name": "run_command",
+                "args": {
+                    "CommandLine": "gh issue view 382",
+                    "BypassSandbox": False,
+                },
+            }
+        }
+        res = guard_mod.evaluate_tool_request("run_command", payload["toolCall"]["args"])
+        self.assertIsNone(res)
+        self.assertTrue(guard_mod.command_requires_sandbox_bypass(payload["toolCall"]["args"]["CommandLine"]))
+        out = guard_mod.to_antigravity_response(res, {"BypassSandbox": True})
+        self.assertEqual(out["decision"], "allow")
+        self.assertEqual(out.get("overwrite"), {"BypassSandbox": True})
+
+    def test_antigravity_payload_no_overwrite_when_bypass_already_true(self):
+        payload = {
+            "toolCall": {
+                "name": "run_command",
+                "args": {
+                    "CommandLine": "gh issue view 382",
+                    "BypassSandbox": True,
+                },
+            }
+        }
+        res = guard_mod.evaluate_tool_request("run_command", payload["toolCall"]["args"])
+        out = guard_mod.to_antigravity_response(res, None)
+        self.assertEqual(out["decision"], "allow")
+        self.assertNotIn("overwrite", out)
+
+    def test_antigravity_denial_takes_precedence_over_bypass(self):
+        orig_get_branch = guard_mod.get_current_git_branch
+        guard_mod.get_current_git_branch = lambda ws=None: "main"
+        try:
+            payload = {
+                "toolCall": {
+                    "name": "run_command",
+                    "args": {
+                        "CommandLine": "git commit -m 'feat: bypass'",
+                        "BypassSandbox": False,
+                    },
+                }
+            }
+            res = guard_mod.evaluate_tool_request("run_command", payload["toolCall"]["args"])
+            self.assertIsNotNone(res)
+            self.assertIn("prohibido comitear directamente en 'main'", res)
+            out = guard_mod.to_antigravity_response(res, {"BypassSandbox": True})
+            self.assertEqual(out["decision"], "deny")
+            self.assertNotIn("overwrite", out)
+            self.assertIn("Guard P0 Activado", out["reason"])
+        finally:
+            guard_mod.get_current_git_branch = orig_get_branch
+
+
 if __name__ == "__main__":
     unittest.main()
