@@ -33,7 +33,11 @@ if expr.startswith("."):
     parts = expr.split("//")
     path_expr = parts[0].strip()
     strip_chars = chr(34) + chr(39)
-    default_val = parts[1].strip().strip(strip_chars) if len(parts) > 1 else ""
+    raw_default = parts[1].strip() if len(parts) > 1 else ""
+    if raw_default == "empty":
+        default_val = ""
+    else:
+        default_val = raw_default.strip(strip_chars)
     keys = [k for k in path_expr.lstrip(".").split(".") if k]
     cur = data
     for k in keys:

@@ -199,7 +199,7 @@ check_runtime() {
 
                 if [ -n "${cmd}" ]; then
                     local expanded_cmd
-                    expanded_cmd="$(eval echo "${cmd}")"
+                    expanded_cmd="$(python3 -c 'import os, sys; print(os.path.expandvars(sys.argv[1]))' "${cmd}")"
                     if [[ "${expanded_cmd}" == *"/"* ]]; then
                         if [ ! -e "${expanded_cmd}" ]; then
                             echo "  [!] Advertencia [${r}]: Ejecutable MCP '${expanded_cmd}' del servidor '${s_name}' no existe en disco" >&2
@@ -210,8 +210,8 @@ check_runtime() {
                             CHECK_ERRORS=$((CHECK_ERRORS + 1))
                         fi
                     else
-                        if ! command -v "${cmd}" >/dev/null 2>&1; then
-                            echo "  [!] Advertencia [${r}]: Comando MCP '${cmd}' del servidor '${s_name}' no encontrado en \$PATH" >&2
+                        if ! command -v "${expanded_cmd}" >/dev/null 2>&1; then
+                            echo "  [!] Advertencia [${r}]: Comando MCP '${expanded_cmd}' del servidor '${s_name}' no encontrado en \$PATH" >&2
                             CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
                         fi
                     fi
