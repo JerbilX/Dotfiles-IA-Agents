@@ -2,5 +2,6 @@
   "repository_type": "category_a",
   "base_branch": "main",
   "project_number": 1,
-  "project_owner": "@me"
+  "project_owner": "@me",
+  "deployCommand": "./build.sh all antigravity"
 }
