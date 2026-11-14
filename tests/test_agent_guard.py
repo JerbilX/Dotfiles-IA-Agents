@@ -615,5 +615,74 @@ class TestAgentGuardSandboxBypass(unittest.TestCase):
             guard_mod.get_current_git_branch = orig_get_branch
 
 
+class TestAgentGuardPipelining(unittest.TestCase):
+    """Verifica interdicción mecánica del antipatrón TERMINAL_PIPELINING (#385, ADR-0058)."""
+
+    def test_chained_commands_with_rm_and_bypass_denied(self):
+        for cmd in (
+            "git add . && git commit -F .commit_msg && rm -f .commit_msg",
+            "git add file.py && rm -f file.py",
+            "git commit -F .commit_msg ; rm -f .commit_msg",
+            "gh pr create --title 'x' && rm -f .pr_body",
+            "git push origin feat && rm -f scratch/.commit_msg",
+            "git checkout -b feat | rm -f test",
+        ):
+            err = guard_mod.evaluate_shell_command(cmd)
+            self.assertIsNotNone(err, f"Esperaba bloqueo para: {cmd}")
+            self.assertIn("operador de control", err)
+            self.assertIn("rm", err)
+            self.assertIn("bypass", err)
+            self.assertIn("atómicas y aisladas", err)
+
+    def test_chained_bypass_commands_breaking_atomicity_denied(self):
+        for cmd in (
+            "git add . && git commit -m 'feat'",
+            "git checkout -b feat && git push origin feat",
+            "git commit -m 'feat' ; git push origin feat",
+            "git push origin feat | cat",
+            "gh issue view 385 && gh issue close 385",
+        ):
+            err = guard_mod.evaluate_shell_command(cmd)
+            self.assertIsNotNone(err, f"Esperaba bloqueo para: {cmd}")
+            self.assertIn("TERMINAL_PIPELINING", err)
+            self.assertIn("atómicas y aisladas", err)
+
+    def test_chained_rm_without_bypass_denied(self):
+        for cmd in (
+            "echo hello && rm -f file.txt",
+            "rm -f a.txt ; rm -f b.txt",
+        ):
+            err = guard_mod.evaluate_shell_command(cmd)
+            self.assertIsNotNone(err, f"Esperaba bloqueo para: {cmd}")
+            self.assertIn("rm", err)
+            self.assertIn("atómicas y aisladas", err)
+
+    def test_legitimate_simple_commands_allowed(self):
+        for cmd in (
+            "git add .",
+            "git add file.py",
+            "git commit -F .commit_msg",
+            "git commit -m 'feat: update'",
+            "git checkout -b feat/test",
+            "git switch -c feat/test",
+            "git status",
+            "git diff",
+            "rm -f .commit_msg",
+            "gh issue view 385",
+        ):
+            err = guard_mod.evaluate_shell_command(cmd)
+            self.assertIsNone(err, f"No debería bloquearse comando legítimo atómico: {cmd}")
+
+    def test_antigravity_pipelining_denial_hook_response(self):
+        cmd = "git add . && git commit -F .commit_msg && rm -f .commit_msg"
+        reason = guard_mod.evaluate_tool_request("run_command", {"CommandLine": cmd})
+        self.assertIsNotNone(reason)
+        out = guard_mod.to_antigravity_response(reason)
+        self.assertEqual(out["decision"], "deny")
+        self.assertIn("Guard P0 Activado", out["reason"])
+        self.assertIn("atómicas y aisladas", out["reason"])
+
+
 if __name__ == "__main__":
     unittest.main()
+
