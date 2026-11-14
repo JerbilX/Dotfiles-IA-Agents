@@ -5,6 +5,8 @@ del antipatrón TERMINAL_REPL_LOOP en agent-audit.
 Ref: Issue #157.
 """
 
+import contextlib
+import io
 import sys
 import unittest
 from datetime import datetime
@@ -449,6 +451,8 @@ class TestAgentAuditCli(unittest.TestCase):
         loader.exec_module(cls.agent_audit)
 
     def test_cli_detects_repl_loop_and_fails_on_antipattern(self):
+        import contextlib
+        import io
         import json
         import tempfile
         from unittest.mock import patch
@@ -481,12 +485,17 @@ class TestAgentAuditCli(unittest.TestCase):
                     f.write(json.dumps(line) + "\n")
 
             test_argv = ["agent-audit", str(transcript_file), "--fail-on-antipattern"]
+            buf_out, buf_err = io.StringIO(), io.StringIO()
             with patch("sys.argv", test_argv):
-                code = self.agent_audit.main()
+                with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+                    code = self.agent_audit.main()
                 self.assertEqual(code, 2)
+                self.assertIn("TERMINAL_REPL_LOOP", buf_out.getvalue())
 
     def test_cli_detects_unpaginated_file_read_and_threshold_flag(self):
         """El CLI detecta UNPAGINATED_FILE_READ y respeta --threshold-file-lines."""
+        import contextlib
+        import io
         import json
         import tempfile
         from unittest.mock import patch
@@ -508,15 +517,21 @@ class TestAgentAuditCli(unittest.TestCase):
 
             # Con umbral default (200), 80 líneas no dispara fallo
             test_argv_default = ["agent-audit", str(transcript_file), "--fail-on-antipattern"]
+            buf_out_default, buf_err_default = io.StringIO(), io.StringIO()
             with patch("sys.argv", test_argv_default):
-                code = self.agent_audit.main()
+                with contextlib.redirect_stdout(buf_out_default), contextlib.redirect_stderr(buf_err_default):
+                    code = self.agent_audit.main()
                 self.assertEqual(code, 0)
+                self.assertIn("INFORME DE AUDITORÍA TÉCNICA", buf_out_default.getvalue())
 
             # Con umbral --threshold-file-lines 50, 80 líneas dispara antipatrón ALTA -> código 2
             test_argv_custom = ["agent-audit", str(transcript_file), "--threshold-file-lines", "50", "--fail-on-antipattern"]
+            buf_out_custom, buf_err_custom = io.StringIO(), io.StringIO()
             with patch("sys.argv", test_argv_custom):
-                code = self.agent_audit.main()
+                with contextlib.redirect_stdout(buf_out_custom), contextlib.redirect_stderr(buf_err_custom):
+                    code = self.agent_audit.main()
                 self.assertEqual(code, 2)
+                self.assertIn("UNPAGINATED_FILE_READ", buf_out_custom.getvalue())
 
 
 class TestStepInspectionAndFailedSteps(unittest.TestCase):
@@ -805,16 +820,24 @@ class TestStepInspectionAndFailedSteps(unittest.TestCase):
                     f.write(json.dumps(line) + "\n")
 
             # Paso existente (0 y 1)
+            buf_out1, buf_err1 = io.StringIO(), io.StringIO()
             with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-step", "1"]):
-                code = cli_mod.main()
+                with contextlib.redirect_stdout(buf_out1), contextlib.redirect_stderr(buf_err1):
+                    code = cli_mod.main()
                 self.assertEqual(code, 0)
+                self.assertIn("DETALLE DE PASO 1", buf_out1.getvalue())
 
             # Paso inexistente (999) -> código 1
+            buf_out999, buf_err999 = io.StringIO(), io.StringIO()
             with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-step", "999"]):
-                code = cli_mod.main()
+                with contextlib.redirect_stdout(buf_out999), contextlib.redirect_stderr(buf_err999):
+                    code = cli_mod.main()
                 self.assertEqual(code, 1)
+                self.assertIn("No se encontró el paso 999", buf_err999.getvalue())
 
     def test_cli_failed_steps_flag(self):
+        import contextlib
+        import io
         import json
         import tempfile
         from unittest.mock import patch
@@ -850,9 +873,13 @@ class TestStepInspectionAndFailedSteps(unittest.TestCase):
                 for line in lines:
                     f.write(json.dumps(line) + "\n")
 
+            buf_out, buf_err = io.StringIO(), io.StringIO()
             with patch("sys.argv", ["agent-audit", str(transcript_file), "--failed-steps", "--format", "json"]):
-                code = cli_mod.main()
+                with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+                    code = cli_mod.main()
                 self.assertEqual(code, 0)
+                res_data = json.loads(buf_out.getvalue())
+                self.assertEqual(res_data.get("total_failed_steps"), 1)
 
 
 class TestSubagentPromptConsistency(unittest.TestCase):
@@ -1127,39 +1154,63 @@ class TestStepRangesAndToolFiltering(unittest.TestCase):
                 for line in lines:
                     f.write(json.dumps(line) + "\n")
 
+            import contextlib
+            import io
+
             # 1. Rango numérico con --inspect-steps
+            buf_out1, buf_err1 = io.StringIO(), io.StringIO()
             with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-steps", "1-2"]):
-                code = cli_mod.main()
+                with contextlib.redirect_stdout(buf_out1), contextlib.redirect_stderr(buf_err1):
+                    code = cli_mod.main()
                 self.assertEqual(code, 0)
+                self.assertIn("DETALLE DE PASO 1", buf_out1.getvalue())
+                self.assertIn("DETALLE DE PASO 2", buf_out1.getvalue())
 
             # 2. Rango con sintaxis doble punto '..'
+            buf_out2, buf_err2 = io.StringIO(), io.StringIO()
             with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-steps", "1..3", "--format", "json"]):
-                code = cli_mod.main()
+                with contextlib.redirect_stdout(buf_out2), contextlib.redirect_stderr(buf_err2):
+                    code = cli_mod.main()
                 self.assertEqual(code, 0)
+                res_json = json.loads(buf_out2.getvalue())
+                self.assertIsInstance(res_json, list)
 
             # 3. Flexibilidad de --inspect-step aceptando rangos
+            buf_out3, buf_err3 = io.StringIO(), io.StringIO()
             with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-step", "1-2"]):
-                code = cli_mod.main()
+                with contextlib.redirect_stdout(buf_out3), contextlib.redirect_stderr(buf_err3):
+                    code = cli_mod.main()
                 self.assertEqual(code, 0)
+                self.assertIn("DETALLE DE PASO 1", buf_out3.getvalue())
 
             # 4. Combinación de rango con --filter-tool
+            buf_out4, buf_err4 = io.StringIO(), io.StringIO()
             with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-steps", "1-3", "--filter-tool", "run_command"]):
-                code = cli_mod.main()
+                with contextlib.redirect_stdout(buf_out4), contextlib.redirect_stderr(buf_err4):
+                    code = cli_mod.main()
                 self.assertEqual(code, 0)
+                self.assertIn("run_command", buf_out4.getvalue())
 
             # 5. --filter-tool aislado
+            buf_out5, buf_err5 = io.StringIO(), io.StringIO()
             with patch("sys.argv", ["agent-audit", str(transcript_file), "--filter-tool", "run_command", "--format", "markdown"]):
-                code = cli_mod.main()
+                with contextlib.redirect_stdout(buf_out5), contextlib.redirect_stderr(buf_err5):
+                    code = cli_mod.main()
                 self.assertEqual(code, 0)
+                self.assertIn("run_command", buf_out5.getvalue())
 
             # 6. --filter-tool sin coincidencias -> salida 1
+            buf_out6, buf_err6 = io.StringIO(), io.StringIO()
             with patch("sys.argv", ["agent-audit", str(transcript_file), "--filter-tool", "nonexistent"]):
-                code = cli_mod.main()
+                with contextlib.redirect_stdout(buf_out6), contextlib.redirect_stderr(buf_err6):
+                    code = cli_mod.main()
                 self.assertEqual(code, 1)
 
             # 7. Sintaxis de rango inválida -> salida 1
+            buf_out7, buf_err7 = io.StringIO(), io.StringIO()
             with patch("sys.argv", ["agent-audit", str(transcript_file), "--inspect-steps", "invalid-range"]):
-                code = cli_mod.main()
+                with contextlib.redirect_stdout(buf_out7), contextlib.redirect_stderr(buf_err7):
+                    code = cli_mod.main()
                 self.assertEqual(code, 1)
 
     def test_read_only_loop_detection(self):
