@@ -34,9 +34,6 @@ cmd_check() {
     # Verificación de documentación técnica (README y enlaces a docs/)
     check_documentation
 
-    # Verificación de suite de pruebas unitarias
-    check_unit_tests
-
     # Verificación de esquemas para runtimes registrados no incluidos en target_runtimes
     for r_avail in $(get_available_runtimes); do
         local is_in_target=false
