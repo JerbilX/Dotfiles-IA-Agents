@@ -82,14 +82,15 @@ Toda propuesta en la especificación de una issue (`.issue_body`) o plan de impl
 
 ## 6. Creación Determinista del Issue y Protección de Prefix Matching
 
-Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix matching* cuando se utilizan comillas complejas o cadenas multilínea en la terminal, el cuerpo debe transferirse mediante archivo temporal y el perfil tipificarse vía label:
+Para garantizar la tipificación estricta del perfil de ejecución y preservar el *prefix matching* del entorno, el registro de issues se realiza exclusivamente mediante el CLI wrapper determinista `issue-create` (o su alias `agent-issue`), transfiriendo el cuerpo mediante archivo temporal:
 
-1. Redactar la especificación técnica en `.issue_body` mediante herramientas nativas de archivos.
-2. Crear el issue mediante GitHub CLI especificando su perfil de ejecución:
+1. Redactar la especificación técnica en `.issue_body` (o `scratch/.issue_body`) mediante herramientas nativas de archivos.
+2. Crear el issue e indexarlo atómicamente en Projects v2 especificando su perfil obligatorio:
    ```bash
-   gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"
+   issue-create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --profile <perfil>
    ```
-3. Limpiar el archivo temporal en el mismo turno:
+   *(El wrapper valida la presencia de `--profile <low|medium|high|pro>` o `--label profile:<perfil>`, resuelve el proyecto central desde `.repo-config.json` con fallback a `1` y `@me`, e indexa automáticamente en Projects v2).*
+3. Limpiar el archivo temporal en el mismo turno (en sandbox confinado):
    ```bash
    rm -f .issue_body
    ```
@@ -98,19 +99,19 @@ Debido a que el evaluador de permisos del runtime (Antigravity) anula el *prefix
 Cuando el usuario proporciona una lista explícita de defectos, mejoras de diseño o requerimientos UI/UX acompañada de diagnóstico, comportamiento observado y comportamiento esperado, instruyendo al agente con una directiva declarativa de backlog (ej. *"agrega los issues correspondientes"* o *"registra estos tickets"*):
 - **Prohibición de Exploración Exhaustiva:** El agente NO debe realizar exploraciones de código en profundidad, rastreos exhaustivos de implementación ni lecturas pasivas multi-archivo (búsquedas de texto, listados de directorios o inspección de archivos) en el código de producción.
 - **Alcance Estricto de Inspección:** La inspección pasiva se restringe estrictamente a verificar nombres de módulos o componentes clave si es indispensable para delimitar con precisión el título o alcance (`<tipo>(<alcance>): <descripción>`). Si la descripción provista por el usuario ya identifica el área o subsistema afectado, se debe proceder de inmediato a la redacción e indexación de los tickets sin realizar lecturas previas.
-- **Progreso Observable y Conservación del Circuit Breaker:** La redacción en archivo temporal (mediante herramientas nativas en `.issue_body` o `scratch/.issue_body`), la creación determinista en GitHub CLI (`gh issue create`) y la indexación en Projects v2 (`gh project item-add`) constituyen progreso observable y acción atómica. Incurrir en lecturas pasivas redundantes antes de actuar consume innecesariamente el presupuesto del Hard Circuit Breaker (límite de 6 lecturas pasivas consecutivas), provocando interrupciones mecánicas de la sesión sin aportar valor a la especificación de los tickets.
+- **Progreso Observable y Conservación del Circuit Breaker:** La redacción en archivo temporal (mediante herramientas nativas en `.issue_body` o `scratch/.issue_body`), la creación determinista mediante `issue-create` y la indexación en Projects v2 constituyen progreso observable y acción atómica. Incurrir en lecturas pasivas redundantes antes de actuar consume innecesariamente el presupuesto del Hard Circuit Breaker (límite de 6 lecturas pasivas consecutivas), provocando interrupciones mecánicas de la sesión sin aportar valor a la especificación de los tickets.
 
 ### 6.2 Contención ante Prompts Híbridos (Consultas Técnicas y Registro de Backlog)
 Surgen frecuentemente patrones híbridos donde el usuario combina preguntas técnicas, análisis de viabilidad o consultas exploratorias (ej. *"¿qué se puede hacer?"*, *"¿es posible X?"*, *"¿cómo verificar Y?"*) con la instrucción simultánea de registrar o ampliar el backlog (ej. *"crea los issues correspondientes"* o *"registra los tickets de mejora"*).
 - **Respuesta a Nivel Conceptual:** El agente debe resolver las consultas técnicas a nivel de diseño conceptual, arquitectura y conocimiento del dominio sin encadenar lecturas pasivas profundas de archivos de implementación.
 - **Presupuesto Estricto de Inspección (1-2 Consultas):** La inspección del código fuente en estos casos queda estrictamente acotada a un máximo de 1 o 2 consultas puntuales (ej. validar el nombre exacto de un módulo, clase o archivo clave) para respaldar la respuesta o el alcance del ticket.
-- **Transición Inmediata a la Acción:** El agente debe proceder de inmediato a redactar las issues en archivos temporales, emitir las creaciones con `gh issue create` y presentar la síntesis técnica en su respuesta, conservando el presupuesto del Hard Circuit Breaker (límite de 6 lecturas pasivas consecutivas sin acción intermedia observable) y evitando bloqueos mecánicos por parálisis de análisis.
+- **Transición Inmediata a la Acción:** El agente debe proceder de inmediato a redactar las issues en archivos temporales, emitir las creaciones con `issue-create` y presentar la síntesis técnica en su respuesta, conservando el presupuesto del Hard Circuit Breaker (límite de 6 lecturas pasivas consecutivas sin acción intermedia observable) y evitando bloqueos mecánicos por parálisis de análisis.
 
 ---
 
 ## 7. Inyección Inmediata y Agnóstica al Tablero Central (Projects v2)
 
-El workflow nativo `Auto-add to project` indexa automáticamente los issues de repositorios que coinciden con su filtro configurado. Para garantizar la indexación inmediata y agnóstica en repositorios fuera de dicho filtro (o como salvaguarda idempotente ante demoras del workflow):
+Cuando se utiliza `issue-create`, la inyección en Projects v2 ocurre automáticamente de forma atómica. Si se requiere indexar manualmente o como salvaguarda idempotente ante demoras:
 ```bash
 gh project item-add <project_number> --owner <project_owner> --url <issue-url>
 ```

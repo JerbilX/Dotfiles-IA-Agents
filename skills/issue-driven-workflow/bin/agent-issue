@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+"""
+Alias canónico agent-issue que delega en issue-create (#384).
+"""
+import sys
+import types
+from pathlib import Path
+
+BIN_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
+TARGET = BIN_DIR / "issue-create"
+
+
+def main() -> int:
+    issue_mod = types.ModuleType("issue_create")
+    with open(TARGET, "r", encoding="utf-8") as f:
+        exec(f.read(), issue_mod.__dict__)
+    return issue_mod.main()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

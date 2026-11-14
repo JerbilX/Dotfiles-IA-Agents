@@ -14,11 +14,11 @@ Orquestador canónico para desarrollo guiado por GitHub Issues, Projects v2 y Pu
 
 Subordinado a las directivas basales compiladas en el prompt del runtime:
 
-* **Backlog Canónico:** Prohibido `TODO.md` o `tasks/`; registro en Issues e indexación en Projects v2 con perfiles según MBR (`profile:low`, `profile:medium`, `profile:high`, `profile:pro`).
-* **Ceremonia y Trazabilidad:** N0 (consultas, `scratch/`: sin issue ni rama), N1 (cambio acotado, evidente, sin `core/`, `runtimes/` ni ADR: issue mínima, sin plan, ADR ni perfil), N2 (feature, ambigüedad, `core/`, `runtimes/` o ADR: ciclo completo). Precedencia de Entornos Locales: priorizar binarios locales (`.venv/bin/`, `node_modules/.bin/`) sobre intérpretes globales.
+* **Backlog Canónico:** Prohibido `TODO.md` o `tasks/`; registro en Issues vía `issue-create` e indexación en Projects v2 con perfiles según MBR (`profile:low`, `profile:medium`, `profile:high`, `profile:pro`).
+* **Ceremonia y Trazabilidad:** N0 (consultas, `scratch/`: sin issue ni rama), N1 (cambio acotado, evidente, sin `core/`, `runtimes/` ni ADR: issue concisa con perfil tipificado, sin plan formal ni ADR), N2 (feature, ambigüedad, `core/`, `runtimes/` o ADR: ciclo completo con plan y/o ADR). Precedencia de Entornos Locales: priorizar binarios locales (`.venv/bin/`, `node_modules/.bin/`) sobre intérpretes globales.
 * **Inmutabilidad y PRs:** Inmutabilidad estricta de workspace (tooling y scripts constituyen desarrollo). Prohibido push directo a `main`. Ramas efímeras (`feat/` o `fix/`) y entrega vía PR.
 * **Higiene, Pruebas y Atomicidad:** I/O solo con herramientas nativas de archivos; delimitación obligatoria de rango o paginado (ventana ≤ 200 líneas); circuit breaker e inmunidad heurística; granularidad atómica en ediciones; acotar salidas (`head -n 20`, `--jq`) y pruebas filtradas en desarrollo (suite integral solo previa al commit); temporales de intercambio (`.commit_msg`, `.pr_body`, `.issue_body`) en `scratch/` (o raíz según runtime), commits vía `-F` y eliminación inmediata tras su uso.
-* **Sandbox y Atomicidad de Ejecución:** Subordinado a `runtimes/*/rules/01-sandbox.md`. Comandos de red, git mutadores (`init`, `checkout`, `switch`, `branch`, `add`, `commit`, `merge`, `push`, `pull`, `revert`), `gh` y tooling autorizado (`agent-audit`, `agent-module`, `gh-pr-review`, `git-prune-gone`) operan con bypass de sandbox (ej. `BypassSandbox: true` en Antigravity) como comandos atómicos directos; prohibido taxativamente encadenar llamadas (`&&`, `;`, `|`). Validaciones locales, checks (`./build.sh check`), inspección git pasiva y remoción de archivos temporales (`rm -f`) operan en sandbox confinado (ej. `BypassSandbox: false` en Antigravity).
+* **Sandbox y Atomicidad de Ejecución:** Subordinado a `runtimes/*/rules/01-sandbox.md`. Comandos de red, git mutadores (`init`, `checkout`, `switch`, `branch`, `add`, `commit`, `merge`, `push`, `pull`, `revert`), `gh` y tooling autorizado (`agent-audit`, `agent-module`, `gh-pr-review`, `git-prune-gone`, `issue-create`) operan con bypass de sandbox (ej. `BypassSandbox: true` en Antigravity) como comandos atómicos directos; prohibido taxativamente encadenar llamadas (`&&`, `;`, `|`). Validaciones locales, checks (`./build.sh check`), inspección git pasiva y remoción de archivos temporales (`rm -f`) operan en sandbox confinado (ej. `BypassSandbox: false` en Antigravity).
 * **Resiliencia de Binarios:** Ante fallo de invocación de tooling autorizado (`command not found` o ausencia en `$PATH`), resolver directamente la ruta canónica (`./skills/<skill>/bin/<cmd>` en este repo; `<skills_dir del runtime>/<skill>/bin/<cmd>` en workspaces externos) o aplicar fallback nativo (`git checkout <base> && git pull --prune --ff-only` y `git branch -D <rama>` solo si su PR está `MERGED`); prohibido realizar búsquedas exploratorias ciegas (`find`, `which`, `ls`).
 
 ---
@@ -69,19 +69,14 @@ Para relevamientos técnicos que requieran inspeccionar más de 8 archivos, expl
 2. **Consolidación:** El subagente entrega un resumen ejecutivo consolidado al hilo principal, protegiendo el contexto de la sesión. Ver [`references/exploratory-research.md`](references/exploratory-research.md).
 
 ### 3.5 Creación y Tipificación de Issues en Backlog
-Toda tarea futura, bug o deuda técnica detectada se lista al usuario y, con su confirmación, se registra formalmente en GitHub Issues tipificando su perfil de ejecución (`profile:<perfil>`). Issue mínima (N1, ejecutada en el mismo turno): mismo comando con `.issue_body` (o `scratch/.issue_body`) de 1-2 líneas, sin `--label` de perfil ni plan/ADR:
+Toda tarea futura, bug o deuda técnica detectada se lista al usuario y, con su confirmación, se registra formalmente en GitHub Issues tipificando obligatoriamente su perfil de ejecución (`profile:<perfil>`) mediante el wrapper canónico `issue-create` (o alias `agent-issue`). En issues concisas (N1, ejecutadas en el mismo turno), se tipifica igualmente el perfil correspondiente sin requerir plan de implementación formal ni ADR:
 1. Redactar especificación técnica en `.issue_body` (o `scratch/.issue_body` en runtimes confinados) mediante herramientas nativas de archivos.
-2. Crear issue determinista:
+2. Crear issue determinista con indexación atómica en Projects v2:
 ```bash
-gh issue create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"
+issue-create --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --profile <perfil>
 ```
-*(o `--body-file scratch/.issue_body` si se redactó en `scratch/`).*
-3. Limpiar temporal: `rm -f .issue_body scratch/.issue_body` (en paralelo en el mismo turno).
-4. Indexar inmediatamente en tablero central:
-```bash
-gh project item-add <project_number> --owner <project_owner> --url <issue_url>
-```
-*(Resueltos desde `.repo-config.json` o fallback `1` y `@me`).*
+*(o `--body-file scratch/.issue_body` si se redactó en `scratch/`). El wrapper valida obligatoriamente el perfil (`--profile <perfil>` o `--label "profile:<perfil>"`), resuelve `.repo-config.json` (fallback `1` y `@me`) e indexa automáticamente en Projects v2 sin encadenar llamadas).*
+3. Limpiar temporal: `rm -f .issue_body scratch/.issue_body` (en paralelo en el mismo turno en sandbox confinado).
 
 **Inspección Mínima ante Creación Declarativa de Backlog y Prompts Híbridos:** Si el usuario aporta el diagnóstico, comportamiento y solución para registrar issues de forma declarativa (*"registra estos issues"*), queda prohibida la exploración pasiva multi-archivo en el código. Ante prompts híbridos que combinan consultas técnicas o viabilidad (*"¿qué se puede hacer?"*, *"¿es posible X?"*) con la orden de registrar backlog (*"crea los issues correspondientes"*), responder a nivel de diseño conceptual y conocimiento de dominio sin encadenar lecturas pasivas profundas; limitar la inspección estrictamente a 1 o 2 consultas puntuales para confirmar nombres de módulos o archivos clave y proceder de inmediato a redactar las issues e informar respuestas sin agotar el Hard Circuit Breaker (ver [`references/issue-backlog.md`](references/issue-backlog.md) §6.1 y §6.2).
 
@@ -89,8 +84,7 @@ gh project item-add <project_number> --owner <project_owner> --url <issue_url>
 
 **Issues cruzadas (ADR-0045):** Si el hallazgo afecta a otro repositorio del owner, registrarlo allí desde el workspace actual, con confirmación del usuario y sin clonar ni leer archivos del repo destino. El cuerpo debe ser autocontenido (evidencia, origen y criterios de aceptación), porque el agente que lo ejecute no tendrá este contexto:
 ```bash
-gh issue create -R <owner>/<repo> --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --label "profile:<perfil>"
-gh project item-add <project_number> --owner <project_owner> --url <issue_url>
+issue-create -R <owner>/<repo> --title "<tipo>(<alcance>): <descripción>" --body-file .issue_body --profile <perfil>
 ```
 *(o `--body-file scratch/.issue_body` según corresponda).*
 Si el label `profile:<perfil>` no existe en el repo destino, omitirlo y mencionarlo en el cuerpo.

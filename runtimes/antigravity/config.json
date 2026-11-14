@@ -13,7 +13,9 @@
     "gh-pr-review": "gh-pr-review",
     "git-prune-gone": "git-prune-gone",
     "agent-module": "agent-module",
-    "agent-circuit-breaker": "agent-circuit-breaker"
+    "agent-circuit-breaker": "agent-circuit-breaker",
+    "issue-create": "issue-create",
+    "agent-issue": "agent-issue"
   },
   "mcp_servers": [
     "leantoken"

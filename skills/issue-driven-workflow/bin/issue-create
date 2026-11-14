@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+"""
+CLI determinista issue-create para creación de issues en GitHub con tipificación obligatoria
+de perfil de ejecución e indexación atómica en GitHub Projects v2 (#384).
+"""
+
+import argparse
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+VALID_PROFILES = {"low", "medium", "high", "pro"}
+
+
+def resolve_repo_config(cwd: Optional[Path] = None) -> Tuple[int, str]:
+    """
+    Resuelve project_number y project_owner desde .repo-config.json buscando desde cwd hacia arriba.
+    Fallback determinista: project_number=1, project_owner="@me".
+    """
+    base = cwd or Path.cwd()
+    target_dir = base
+    repo_cfg_file = None
+    for d in (target_dir, *target_dir.parents):
+        candidate = d / ".repo-config.json"
+        if candidate.is_file():
+            repo_cfg_file = candidate
+            break
+        if (d / ".git").exists():
+            break
+
+    project_number = 1
+    project_owner = "@me"
+
+    if repo_cfg_file and repo_cfg_file.is_file():
+        try:
+            with open(repo_cfg_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    if "project_number" in data:
+                        try:
+                            project_number = int(data["project_number"])
+                        except (ValueError, TypeError):
+                            pass
+                    if "project_owner" in data and isinstance(data["project_owner"], str):
+                        val = data["project_owner"].strip()
+                        if val:
+                            project_owner = val
+        except Exception:
+            pass
+
+    return project_number, project_owner
+
+
+def parse_arguments(argv: List[str]) -> Tuple[argparse.Namespace, List[str]]:
+    parser = argparse.ArgumentParser(
+        prog="issue-create",
+        description="Wrapper determinista para gh issue create con validación obligatoria de perfil e indexación en Projects v2.",
+        add_help=True,
+    )
+    parser.add_argument(
+        "--profile",
+        type=str,
+        default=None,
+        help="Perfil de ejecución MBR obligatorio (low, medium, high, pro)",
+    )
+    parser.add_argument("-t", "--title", type=str, default=None, help="Título de la issue")
+    parser.add_argument("-b", "--body", type=str, default=None, help="Cuerpo de la issue")
+    parser.add_argument(
+        "-F",
+        "--body-file",
+        type=str,
+        default=None,
+        help="Ruta al archivo con el cuerpo de la issue",
+    )
+    parser.add_argument(
+        "-l",
+        "--label",
+        action="append",
+        default=[],
+        help="Etiqueta para la issue (incluyendo profile:<perfil>)",
+    )
+    parser.add_argument(
+        "-a",
+        "--assignee",
+        action="append",
+        default=[],
+        help="Asignar usuarios a la issue",
+    )
+    parser.add_argument("-m", "--milestone", type=str, default=None, help="Milestone de la issue")
+    parser.add_argument(
+        "-R",
+        "--repo",
+        type=str,
+        default=None,
+        help="Repositorio destino ([HOST/]OWNER/REPO)",
+    )
+    parser.add_argument(
+        "--project-number",
+        type=int,
+        default=None,
+        help="Número de Projects v2 para indexación (override de .repo-config.json)",
+    )
+    parser.add_argument(
+        "--project-owner",
+        type=str,
+        default=None,
+        help="Propietario de Projects v2 (override de .repo-config.json)",
+    )
+    parser.add_argument(
+        "--no-project",
+        action="store_true",
+        help="Omitir indexación en Projects v2",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Simulación de comandos sin invocar APIs de GitHub",
+    )
+
+    return parser.parse_known_args(argv)
+
+
+def run_issue_create(argv: List[str], cwd: Optional[Path] = None) -> int:
+    known, extra = parse_arguments(argv)
+
+    profile = None
+    if known.profile:
+        p_val = known.profile.strip().lower()
+        if p_val not in VALID_PROFILES:
+            sys.stderr.write(
+                f"Error: Perfil '{known.profile}' inválido. Valores permitidos: low, medium, high, pro.\n"
+            )
+            return 1
+        profile = p_val
+
+    labels_to_forward: List[str] = []
+    for lbl in known.label:
+        lbl_clean = lbl.strip()
+        if lbl_clean.lower().startswith("profile:"):
+            p_from_lbl = lbl_clean.split(":", 1)[1].strip().lower()
+            if p_from_lbl not in VALID_PROFILES:
+                sys.stderr.write(
+                    f"Error: Perfil '{p_from_lbl}' en label inválido. Valores permitidos: low, medium, high, pro.\n"
+                )
+                return 1
+            if profile and profile != p_from_lbl:
+                sys.stderr.write(
+                    f"Error: Conflicto de perfiles: --profile={profile} vs --label=profile:{p_from_lbl}.\n"
+                )
+                return 1
+            profile = p_from_lbl
+        else:
+            labels_to_forward.append(lbl_clean)
+
+    if not profile:
+        sys.stderr.write(
+            "Error: Debe especificarse un perfil de ejecución obligatorio "
+            "(--profile <low|medium|high|pro> o --label \"profile:<perfil>\").\n"
+        )
+        return 1
+
+    final_labels = [f"profile:{profile}"] + labels_to_forward
+
+    gh_cmd: List[str] = ["gh", "issue", "create"]
+    if known.repo:
+        gh_cmd.extend(["-R", known.repo])
+    if known.title:
+        gh_cmd.extend(["--title", known.title])
+    if known.body_file:
+        gh_cmd.extend(["--body-file", known.body_file])
+    elif known.body:
+        gh_cmd.extend(["--body", known.body])
+
+    for lbl in final_labels:
+        gh_cmd.extend(["--label", lbl])
+
+    for assignee in known.assignee:
+        gh_cmd.extend(["--assignee", assignee])
+
+    if known.milestone:
+        gh_cmd.extend(["--milestone", known.milestone])
+
+    gh_cmd.extend(extra)
+
+    cfg_project_num, cfg_project_own = resolve_repo_config(cwd)
+    proj_num = known.project_number if known.project_number is not None else cfg_project_num
+    proj_own = known.project_owner if known.project_owner else cfg_project_own
+
+    if known.dry_run:
+        sys.stdout.write(f"[dry-run] {' '.join(shlex.quote(c) for c in gh_cmd)}\n")
+        if not known.no_project:
+            sys.stdout.write(
+                f"[dry-run] gh project item-add {proj_num} --owner {proj_own} --url <issue_url>\n"
+            )
+        return 0
+
+    proc = subprocess.run(
+        gh_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+        cwd=str(cwd) if cwd else None,
+    )
+
+    if proc.returncode != 0:
+        if proc.stderr:
+            sys.stderr.write(proc.stderr)
+        if proc.stdout:
+            sys.stdout.write(proc.stdout)
+        return proc.returncode
+
+    output = proc.stdout
+    sys.stdout.write(output)
+
+    issue_url = None
+    for line in output.splitlines():
+        clean_line = line.strip()
+        m = re.search(r"https?://[^\s]+/issues/\d+", clean_line)
+        if m:
+            issue_url = m.group(0)
+            break
+
+    if not issue_url and output.strip().startswith("http"):
+        issue_url = output.strip().split()[0]
+
+    if not issue_url or known.no_project:
+        return 0
+
+    proj_cmd = [
+        "gh",
+        "project",
+        "item-add",
+        str(proj_num),
+        "--owner",
+        proj_own,
+        "--url",
+        issue_url,
+    ]
+    proj_proc = subprocess.run(
+        proj_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+        cwd=str(cwd) if cwd else None,
+    )
+
+    if proj_proc.returncode != 0:
+        if proj_proc.stderr:
+            sys.stderr.write(proj_proc.stderr)
+        return proj_proc.returncode
+
+    if proj_proc.stdout:
+        sys.stdout.write(proj_proc.stdout)
+
+    return 0
+
+
+def main() -> int:
+    return run_issue_create(sys.argv[1:])
+
+
+if __name__ == "__main__":
+    sys.exit(main())

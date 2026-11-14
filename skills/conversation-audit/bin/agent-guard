@@ -63,6 +63,8 @@ BUILD_TEST_PREFIXES = (
     ("agent-guard",),
     ("gh-pr-review",),
     ("git-prune-gone",),
+    ("issue-create",),
+    ("agent-issue",),
 )
 
 # Wrappers que delegan en otro comando -> opciones que consumen el argumento siguiente
@@ -122,6 +124,8 @@ AUTHORIZED_BYPASS_CLIS = {
     "gh",
     "gh-pr-review",
     "git-prune-gone",
+    "issue-create",
+    "agent-issue",
 }
 
 UNAUTHORIZED_CHAINED_UTILITIES = {

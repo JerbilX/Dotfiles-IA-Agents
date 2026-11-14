@@ -12,7 +12,9 @@
     "agent-audit": "agent-audit",
     "gh-pr-review": "gh-pr-review",
     "git-prune-gone": "git-prune-gone",
-    "agent-module": "agent-module"
+    "agent-module": "agent-module",
+    "issue-create": "issue-create",
+    "agent-issue": "agent-issue"
   },
   "mcp_servers": [
     "leantoken"
