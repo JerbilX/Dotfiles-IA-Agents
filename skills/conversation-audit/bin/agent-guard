@@ -124,6 +124,23 @@ AUTHORIZED_BYPASS_CLIS = {
     "git-prune-gone",
 }
 
+UNAUTHORIZED_CHAINED_UTILITIES = {
+    "rm",
+    "rmdir",
+    "unlink",
+}
+
+CONTROL_OPERATORS = {
+    ";",
+    ";;",
+    "&",
+    "&&",
+    "|",
+    "||",
+    "|&",
+}
+
+
 # Tokenización shell: operadores de control y redirección
 SHELL_PUNCTUATION = ";&|()<>\n"
 SEPARATOR_OPS = {";", ";;", "&", "&&", "|", "||", "|&", "(", ")"}
@@ -523,6 +540,95 @@ def _check_output_redirections(redirects: List[Tuple[str, str]], cwd: Optional[s
     return None
 
 
+def _words_require_sandbox_bypass(words: List[str]) -> bool:
+    tokens = _strip_wrappers(words)
+    if not tokens:
+        return False
+    cmd_name = os.path.basename(tokens[0])
+    args = tokens[1:]
+
+    if cmd_name in AUTHORIZED_BYPASS_CLIS:
+        return True
+
+    if cmd_name == "git":
+        i = 0
+        while i < len(args):
+            a = args[i]
+            if a in GIT_GLOBAL_OPTS_WITH_ARG and i + 1 < len(args):
+                i += 2
+                continue
+            if a.startswith("-"):
+                i += 1
+                continue
+            break
+        if i < len(args):
+            subcmd = args[i]
+            rest = args[i + 1:]
+            if subcmd in MUTATING_OR_NETWORK_GIT_SUBCMDS:
+                return True
+            if subcmd == "branch":
+                for arg in rest:
+                    if arg in MUTATING_GIT_BRANCH_FLAGS or any(
+                        arg.startswith(f) for f in ("-d", "-D", "-m", "-M", "-c", "-C")
+                    ):
+                        return True
+                    if not arg.startswith("-"):
+                        return True
+    return False
+
+
+def _check_pipelining_guard(command: str) -> Optional[str]:
+    """Detecta el antipatrón TERMINAL_PIPELINING: encadenamiento con utilidades no autorizadas
+
+    o ruptura de atomicidad en comandos que requieren bypass de sandbox (ADR-0058, #385).
+    """
+    raw_tokens = _tokenize_shell(_strip_heredoc_bodies(command))
+    control_ops = [
+        t.strip()
+        for t in raw_tokens
+        if _classify_token(t)[0] == "sep" and t.strip() in CONTROL_OPERATORS
+    ]
+    if not control_ops:
+        return None
+
+    segments = _parse_segments(command.strip())
+    if len(segments) <= 1:
+        return None
+
+    unauth_cmds: List[str] = []
+    for words, _ in segments:
+        tokens = _strip_wrappers(words)
+        if tokens:
+            name = os.path.basename(tokens[0])
+            if name in UNAUTHORIZED_CHAINED_UTILITIES:
+                unauth_cmds.append(name)
+
+    has_bypass = any(_words_require_sandbox_bypass(words) for words, _ in segments)
+    op = control_ops[0]
+
+    if unauth_cmds:
+        if has_bypass:
+            return (
+                f"encadenamiento con operador de control ('{op}') e invocación de utilidad no autorizada "
+                f"('{unauth_cmds[0]}') en ejecución con bypass; ejecutar llamadas CLI atómicas y aisladas, "
+                f"y usar herramientas nativas de archivos o sandbox confinado para temporales"
+            )
+        return (
+            f"encadenamiento con operador de control ('{op}') invocando utilidad no autorizada "
+            f"('{unauth_cmds[0]}'); ejecutar llamadas CLI atómicas y aisladas, y usar herramientas nativas "
+            f"de archivos o sandbox confinado para temporales"
+        )
+
+    if has_bypass:
+        return (
+            f"encadenamiento con operador de control ('{op}') en ejecución con bypass "
+            f"(antipatrón TERMINAL_PIPELINING); ejecutar llamadas CLI atómicas y aisladas de forma "
+            f"estrictamente separada para preservar el prefix matching del entorno"
+        )
+
+    return None
+
+
 def evaluate_shell_command(command: str, cwd: Optional[str] = None) -> Optional[str]:
     """
     Evalúa una línea de comando shell completa, segmento por segmento.
@@ -530,6 +636,10 @@ def evaluate_shell_command(command: str, cwd: Optional[str] = None) -> Optional[
     """
     if not isinstance(command, str) or not command.strip():
         return None
+
+    pipe_err = _check_pipelining_guard(command)
+    if pipe_err:
+        return pipe_err
 
     for words, redirects in _parse_segments(command.strip()):
         tokens = _strip_wrappers(words)
@@ -592,39 +702,8 @@ def command_requires_sandbox_bypass(command: str) -> bool:
         return False
 
     for words, _ in _parse_segments(command.strip()):
-        tokens = _strip_wrappers(words)
-        if not tokens:
-            continue
-        cmd_name = os.path.basename(tokens[0])
-        args = tokens[1:]
-
-        if cmd_name in AUTHORIZED_BYPASS_CLIS:
+        if _words_require_sandbox_bypass(words):
             return True
-
-        if cmd_name == "git":
-            i = 0
-            while i < len(args):
-                a = args[i]
-                if a in GIT_GLOBAL_OPTS_WITH_ARG and i + 1 < len(args):
-                    i += 2
-                    continue
-                if a.startswith("-"):
-                    i += 1
-                    continue
-                break
-            if i < len(args):
-                subcmd = args[i]
-                rest = args[i + 1:]
-                if subcmd in MUTATING_OR_NETWORK_GIT_SUBCMDS:
-                    return True
-                if subcmd == "branch":
-                    for arg in rest:
-                        if arg in MUTATING_GIT_BRANCH_FLAGS or any(
-                            arg.startswith(f) for f in ("-d", "-D", "-m", "-M", "-c", "-C")
-                        ):
-                            return True
-                        if not arg.startswith("-"):
-                            return True
 
     return False
 
