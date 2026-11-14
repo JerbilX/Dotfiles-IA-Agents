@@ -144,6 +144,7 @@ safe_symlink "{src_b}" "{dst}" "test-link"
         with open(data_file, "w", encoding="utf-8") as f:
             json.dump({"status": "active", "nested": {"val": "123"}}, f)
 
+        # Con jq
         bash_with_jq = f"""
 source "{REPO_ROOT}/lib/common.sh"
 json_get "{data_file}" ".nested.val"
@@ -151,6 +152,118 @@ json_get "{data_file}" ".nested.val"
         res_jq = subprocess.run(["bash", "-c", bash_with_jq], capture_output=True, text=True)
         self.assertEqual(res_jq.returncode, 0)
         self.assertEqual(res_jq.stdout.strip(), "123")
+
+        # Sin jq (PATH restringido)
+        bin_no_jq = os.path.join(self._tmp, "bin_no_jq")
+        os.makedirs(bin_no_jq, exist_ok=True)
+        for bin_name in ["bash", "python3", "env", "dirname"]:
+            bin_path = shutil.which(bin_name)
+            if bin_path:
+                dst = os.path.join(bin_no_jq, bin_name)
+                if not os.path.exists(dst):
+                    os.symlink(bin_path, dst)
+
+        env_no_jq = os.environ.copy()
+        env_no_jq["PATH"] = bin_no_jq
+
+        bash_without_jq = f"""
+source "{REPO_ROOT}/lib/common.sh"
+json_get "{data_file}" ".nested.val"
+"""
+        res_no_jq = subprocess.run(["bash", "-c", bash_without_jq], env=env_no_jq, capture_output=True, text=True)
+        self.assertEqual(res_no_jq.returncode, 0)
+        self.assertEqual(res_no_jq.stdout.strip(), "123")
+
+        # Fallback de empty en clave ausente
+        url_file = os.path.join(self._tmp, "server_url.json")
+        with open(url_file, "w", encoding="utf-8") as f:
+            json.dump({"serverUrl": "https://example.com/sse"}, f)
+
+        bash_empty_jq = f"""
+source "{REPO_ROOT}/lib/common.sh"
+json_get "{url_file}" ".command // empty"
+"""
+        res_empty_jq = subprocess.run(["bash", "-c", bash_empty_jq], capture_output=True, text=True)
+        self.assertEqual(res_empty_jq.returncode, 0)
+        self.assertEqual(res_empty_jq.stdout.strip(), "")
+
+        res_empty_no_jq = subprocess.run(["bash", "-c", bash_empty_jq], env=env_no_jq, capture_output=True, text=True)
+        self.assertEqual(res_empty_no_jq.returncode, 0)
+        self.assertEqual(res_empty_no_jq.stdout.strip(), "")
+
+    def test_mcp_verification_safety_and_expansion(self):
+        """MCP verification does not execute command via eval and expands env vars safely."""
+        pwned_file = os.path.join(self._tmp, "pwned_marker")
+        if os.path.exists(pwned_file):
+            os.remove(pwned_file)
+
+        mock_home = os.path.join(self._tmp, "fake_home")
+        os.makedirs(mock_home, exist_ok=True)
+
+        mcp_dir = os.path.join(self._tmp, "mcp")
+        os.makedirs(mcp_dir, exist_ok=True)
+
+        # 1. Manifiesto con inyección de comando arbitrario
+        pwned_mcp = os.path.join(mcp_dir, "pwned.json")
+        with open(pwned_mcp, "w", encoding="utf-8") as f:
+            json.dump({"command": f"$(touch {pwned_file})", "args": []}, f)
+
+        # 2. Manifiesto con variable ${HOME}
+        home_mcp = os.path.join(mcp_dir, "home_var.json")
+        with open(home_mcp, "w", encoding="utf-8") as f:
+            json.dump({"command": "${HOME}/bin/custom-mcp", "args": []}, f)
+
+        # 3. Manifiesto con serverUrl (sin command)
+        url_mcp = os.path.join(mcp_dir, "sse.json")
+        with open(url_mcp, "w", encoding="utf-8") as f:
+            json.dump({"serverUrl": "https://example.com/sse"}, f)
+
+        bash_script = f"""
+export REPO_ROOT="{REPO_ROOT}"
+export LIB_DIR="{LIB_DIR}"
+source "{LIB_DIR}/common.sh"
+source "{LIB_DIR}/validate.sh"
+
+CHECK_ERRORS=0
+CHECK_WARNINGS=0
+
+enabled_mcps=("pwned" "home_var" "sse")
+r="test_runtime"
+mcp_dir="{mcp_dir}"
+
+for s_name in "${{enabled_mcps[@]}}"; do
+    s_path="${{mcp_dir}}/${{s_name}}.json"
+    cmd="$(json_get "${{s_path}}" ".command // empty")"
+    if [ -n "${{cmd}}" ]; then
+        expanded_cmd="$(python3 -c 'import os, sys; print(os.path.expandvars(sys.argv[1]))' "${{cmd}}")"
+        if [[ "${{expanded_cmd}}" == *"/"* ]]; then
+            if [ ! -e "${{expanded_cmd}}" ]; then
+                echo "Advertencia [${{r}}]: Ejecutable MCP '${{expanded_cmd}}' del servidor '${{s_name}}' no existe en disco" >&2
+                CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+            fi
+        else
+            if ! command -v "${{expanded_cmd}}" >/dev/null 2>&1; then
+                echo "Advertencia [${{r}}]: Comando MCP '${{expanded_cmd}}' del servidor '${{s_name}}' no encontrado en \\$PATH" >&2
+                CHECK_WARNINGS=$((CHECK_WARNINGS + 1))
+            fi
+        fi
+    fi
+done
+"""
+        env = os.environ.copy()
+        env["HOME"] = mock_home
+        res = subprocess.run(["bash", "-c", bash_script], env=env, capture_output=True, text=True)
+
+        # Criterio: no se ejecutó touch ni se creó el archivo
+        self.assertFalse(os.path.exists(pwned_file), "Vulnerabilidad eval: se creó el archivo pwned")
+        self.assertIn("Ejecutable MCP '$(touch", res.stderr)
+
+        # Criterio: ${HOME} se expande igual que en compilación
+        expected_home_path = os.path.join(mock_home, "bin", "custom-mcp")
+        self.assertIn(f"Ejecutable MCP '{expected_home_path}'", res.stderr)
+
+        # Criterio: sse.json sin command no produce advertencia 'empty'
+        self.assertNotIn("'empty'", res.stderr)
 
     def test_cmd_link_invokes_skills_runtime(self):
         """cmd_link must call skills_runtime for each target runtime (Issue #277)."""
