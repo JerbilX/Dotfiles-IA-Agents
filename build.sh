@@ -36,6 +36,8 @@ cmd_all() {
     cmd_status "${target_arg}"
     echo ""
     cmd_check "${target_arg}"
+    echo ""
+    cmd_test
 }
 
 # ------------------------------------------------------------------------------

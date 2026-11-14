@@ -337,7 +337,6 @@ required_functions=(
     check_global_skills_purity
     cmd_workspace
     check_documentation
-    check_unit_tests
     check_gh_aliases
     check_skill_bypass_quotes
     check_p0_guards
@@ -357,16 +356,47 @@ echo "all-check-functions-present"
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertIn("all-check-functions-present", res.stdout)
 
-    def test_build_test_subcommand(self):
-        """./build.sh test executes unittest discovery for test_build_path_safety.py successfully."""
+    def test_check_does_not_run_unittest(self):
+        """./build.sh check does not run unit tests (Issue #378)."""
         res = subprocess.run(
-            [BUILD_SH, "test", "test_build_path_safety.py"],
+            [BUILD_SH, "check"],
             capture_output=True,
             text=True,
         )
         self.assertEqual(res.returncode, 0, res.stderr)
-        self.assertIn("Ran 6 tests", res.stderr)
+        self.assertNotIn("Pruebas unitarias", res.stdout)
+        self.assertNotIn("Ran ", res.stdout)
+        self.assertNotIn("Ran ", res.stderr)
 
+    def test_build_test_subcommand_filtered(self):
+        """./build.sh test executes filtered pattern successfully (Issue #378)."""
+        res = subprocess.run(
+            [BUILD_SH, "test", "test_compile*.py"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("Ejecutando suite de pruebas unitarias (test_compile*.py)", res.stdout)
+        self.assertIn("Ran 8 tests", res.stderr)
+
+    def test_cmd_all_invokes_cmd_test(self):
+        """cmd_all must explicitly call cmd_test (Issue #378)."""
+        bash_cmd = f"""
+source "{REPO_ROOT}/build.sh"
+
+invoked=()
+cmd_build() {{ invoked+=("build"); }}
+cmd_link() {{ invoked+=("link"); }}
+cmd_status() {{ invoked+=("status"); }}
+cmd_check() {{ invoked+=("check"); }}
+cmd_test() {{ invoked+=("test"); }}
+
+cmd_all
+echo "${{invoked[*]}}"
+"""
+        res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(res.stdout.strip(), "build link status check test")
 
 
 if __name__ == "__main__":
