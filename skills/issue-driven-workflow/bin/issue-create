@@ -252,6 +252,9 @@ def run_issue_create(argv: List[str], cwd: Optional[Path] = None) -> int:
     )
 
     if proj_proc.returncode != 0:
+        # Idempotencia: si el issue ya fue indexado (ej. por workflow nativo 'Auto-add to project'), no es error
+        if "Content already exists in this project" in proj_proc.stderr:
+            return 0
         if proj_proc.stderr:
             sys.stderr.write(proj_proc.stderr)
         return proj_proc.returncode

@@ -618,6 +618,17 @@ class TestAgentGuardSandboxBypass(unittest.TestCase):
 class TestAgentGuardPipelining(unittest.TestCase):
     """Verifica interdicción mecánica del antipatrón TERMINAL_PIPELINING (#385, ADR-0058)."""
 
+    def setUp(self):
+        super().setUp()
+        self._orig_get_branch = guard_mod.get_current_git_branch
+        guard_mod.get_current_git_branch = lambda workspace_hint=None: (
+            self._orig_get_branch(workspace_hint) if workspace_hint else "feat/test"
+        )
+
+    def tearDown(self):
+        guard_mod.get_current_git_branch = self._orig_get_branch
+        super().tearDown()
+
     def test_chained_commands_with_rm_and_bypass_denied(self):
         for cmd in (
             "git add . && git commit -F .commit_msg && rm -f .commit_msg",
