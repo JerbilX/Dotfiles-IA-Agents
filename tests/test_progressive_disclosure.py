@@ -117,6 +117,8 @@ class TestProgressiveDisclosure(unittest.TestCase):
             "Prohibición de Backlogs Locales",
             "Inmutabilidad de Workspace",
             "Límites de Workspace",
+            "Rol de Ingeniero de Sistemas",
+            "Primacía del Análisis Crítico",
         ]
 
         for inv in required_invariants:
