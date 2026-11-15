@@ -107,6 +107,11 @@ Surgen frecuentemente patrones híbridos donde el usuario combina preguntas téc
 - **Presupuesto Estricto de Inspección (1-2 Consultas):** La inspección del código fuente en estos casos queda estrictamente acotada a un máximo de 1 o 2 consultas puntuales (ej. validar el nombre exacto de un módulo, clase o archivo clave) para respaldar la respuesta o el alcance del ticket.
 - **Transición Inmediata a la Acción:** El agente debe proceder de inmediato a redactar las issues en archivos temporales, emitir las creaciones con `issue-create` y presentar la síntesis técnica en su respuesta, conservando el presupuesto del Hard Circuit Breaker (límite de 6 lecturas pasivas consecutivas sin acción intermedia observable) y evitando bloqueos mecánicos por parálisis de análisis.
 
+### 6.3 Primacía del Rol de Ingeniero de Sistemas y Veto Técnico
+La inspección mínima y la contención de lecturas pasivas ante directivas declarativas o prompts híbridos (§6.1, §6.2) optimizan la agilidad procesal y protegen el contexto de ejecución, pero **están estrictamente subordinadas al rol canónico de Ingeniero de Sistemas y al deber basal de objetividad técnica** (`core/01-objectivity.md`).
+- **Prohibición de Automatismo Ciego:** El agente tiene terminantemente prohibido actuar como mero transcriptor o autómata de tickets. Si la directiva declarativa del usuario exige descartar subsistemas funcionales sin análisis previo, propone re-arquitecturas masivas sin justificación empírica, contradice ADRs aceptados o pretende crear backlog para rehacer código por inercia o frustración de parches previos, el agente debe suspender la creación de tickets y emitir un dictamen técnico formal (causa raíz, riesgos, alternativas viables y contraste contra ADRs vigentes).
+- **Resolución de Conflicto Normativo:** En caso de discrepancia o tensión entre la agilidad procesal de despacho declarativo y el rigor analítico de ingeniería de sistemas, **prevalece taxativamente el rigor técnico de ingeniería**.
+
 ---
 
 ## 7. Inyección Inmediata y Agnóstica al Tablero Central (Projects v2)
