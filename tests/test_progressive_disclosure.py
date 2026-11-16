@@ -396,6 +396,38 @@ class TestProgressiveDisclosure(unittest.TestCase):
             eso_skill_content.index("Flujo Ordenado de Inspección y Fallback"),
         )
 
+    def test_eso_asset_anti_hallucination_and_mock_governance_invariants(self):
+        """skills/eso-addon-development must enforce asset anti-hallucination, mock governance and Stop & Audit (#400)."""
+        eso_skill_path = os.path.join(REPO_ROOT, "skills", "eso-addon-development", "SKILL.md")
+        with open(eso_skill_path, "r", encoding="utf-8") as f:
+            eso_skill_content = f.read()
+
+        # SKILL.md invariants
+        self.assertIn("eso_search_textures", eso_skill_content)
+        self.assertIn("Regla P0 Anti-Alucinación de Assets y Texturas", eso_skill_content)
+        self.assertIn("EsoUI/Art/...", eso_skill_content)
+        self.assertIn("Protocolo de Circuit Breaker ante Fallos de Contrato (Stop & Audit)", eso_skill_content)
+        self.assertIn("mocks complacientes", eso_skill_content)
+
+        # build-and-packaging.md invariants
+        packaging_path = os.path.join(REPO_ROOT, "skills", "eso-addon-development", "references", "build-and-packaging.md")
+        with open(packaging_path, "r", encoding="utf-8") as f:
+            packaging_content = f.read()
+
+        self.assertIn("Gobernanza de Mocks de Plataforma y Prohibición de Mocks Complacientes", packaging_content)
+        self.assertIn("Anti-Complacent Mocks", packaging_content)
+        self.assertIn("falsos positivos", packaging_content)
+
+        # lua-architecture.md invariants
+        lua_arch_path = os.path.join(REPO_ROOT, "skills", "eso-addon-development", "references", "lua-architecture.md")
+        with open(lua_arch_path, "r", encoding="utf-8") as f:
+            lua_arch_content = f.read()
+
+        self.assertIn("Regla P0 Anti-Alucinación de Assets y Validación de Contratos Visuales en EsoUI", lua_arch_content)
+        self.assertIn("Verificación Mandatoria de Texturas y Assets", lua_arch_content)
+        self.assertIn("Protocolo de Circuit Breaker ante Fallos de Contrato Visual (Stop & Audit)", lua_arch_content)
+        self.assertIn("eso_search_textures", lua_arch_content)
+
     def test_basal_rules_admission_metadata(self):
         """All basal rules in core/*.md and runtimes/*/rules/*.md must have valid admission metadata (#286)."""
         rule_comment_pattern = re.compile(

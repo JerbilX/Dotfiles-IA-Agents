@@ -50,6 +50,10 @@ Guía técnica y operativa para la documentación de comandos, gestión de depen
   * Si una llamada, signatura, constante o evento nativo válido de EsoUI (ej. `EVENT_MANAGER:AddFilterForEvent`, constantes tipadas `ITEMTYPE_*`) genera errores o aserciones fallidas en la suite de pruebas locales (`tests/`), el agente **DEBE actualizar y sincronizar los mocks y fixtures de prueba** para alinearlos con el contrato real de la API oficial.
   * Los mocks bajo LuaJIT son emulaciones artesanales de soporte; nunca deben dictar el diseño ni degradar la compatibilidad con el motor real.
 * **Prohibición de Comprobaciones Defensivas Artificiales:** Queda terminantemente prohibido introducir comprobaciones defensivas artificiales en el código de producción (tales como `if API_EXISTS then`, comprobaciones de existencia de métodos nativos, o desactivación de filtros válidos) con el único fin de complacer un mock incompleto o desactualizado.
+* **Gobernanza de Mocks de Plataforma y Prohibición de Mocks Complacientes (Anti-Complacent Mocks):**
+  * Los arneses y mocks de UI en suites herméticas (ej. `eso_ui_mock.lua`) no deben operar como sumideros permisivos que aceptan cualquier cadena de texto arbitraria para rutas de textura o assets (`SetTexture`, `CreateControl` de tipo `CT_TEXTURE`, pins cartográficos o iconos de compás).
+  * **Validación Temprana y Rechazo de Rutas No Verificadas:** Los mocks deben advertir o rechazar rutas de activos bajo `EsoUI/Art/...` no registradas en catálogos canónicos o fixtures verificadas del proyecto, evitando que suites de pruebas unitarias complacientes actúen como falsos positivos.
+  * **Riesgo de Falso Sentido de Seguridad:** Una suite hermética al 100% que tolera rutas de texturas ficticias o alucinadas oculta defectos críticos que en el cliente real de EsoUI se manifiestan como componentes invisibles, controles rotos o micro-parches reactivos desgastantes. La suite de pruebas debe modelar con rigor los contratos del motor y no degradarse a un validador meramente cosmético.
 
 ---
 
