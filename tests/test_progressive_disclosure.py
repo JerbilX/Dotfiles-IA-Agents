@@ -793,8 +793,31 @@ class TestProgressiveDisclosure(unittest.TestCase):
         self.assertIn("1 o 2 consultas puntuales", backlog_content)
         self.assertIn("Hard Circuit Breaker", backlog_content)
 
+    def test_autonomous_accountability_and_executive_consultation_invariants(self):
+        """SKILL.md and branch-lifecycle.md must enforce autonomy with accountability and executive consultation (#404)."""
+        skill_path = os.path.join(REPO_ROOT, "skills", "issue-driven-workflow", "SKILL.md")
+        with open(skill_path, "r", encoding="utf-8") as f:
+            skill_content = f.read()
+
+        self.assertIn("Vía Autónoma con Rendición de Cuentas", skill_content)
+        self.assertIn("Consulta Ejecutiva Mandatoria", skill_content)
+        self.assertIn("Dictamen Técnico y Criterio de Arquitectura", skill_content)
+
+        lifecycle_path = os.path.join(
+            REPO_ROOT, "skills", "issue-driven-workflow", "references", "branch-lifecycle.md"
+        )
+        with open(lifecycle_path, "r", encoding="utf-8") as f:
+            lifecycle_content = f.read()
+
+        self.assertIn("Vía Autónoma con Rendición de Cuentas", lifecycle_content)
+        self.assertIn("Consulta Ejecutiva Mandatoria", lifecycle_content)
+        self.assertIn("## Dictamen Técnico y Criterio de Arquitectura", lifecycle_content)
+        self.assertIn("## Resumen de Cambios", lifecycle_content)
+        self.assertIn("## Verificación y Pruebas", lifecycle_content)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
