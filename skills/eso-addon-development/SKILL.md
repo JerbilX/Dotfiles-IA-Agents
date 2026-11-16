@@ -16,7 +16,7 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
 
 1. **Nivel 1 — Contexto Local:**
    * El código del proyecto es la referencia arquitectónica interna.
-   * Mocks locales en `tests/` son emulaciones artesanales subordinadas a la API oficial (`references/ESOUIDocumentation.txt`), no la fuente de verdad.
+   * Mocks locales en `tests/` son emulaciones artesanales subordinadas a la API oficial (`references/ESOUIDocumentation.txt`), no la fuente de verdad. Prohibidos los mocks complacientes que toleran rutas ficticias de assets o llamadas no verificadas generando falsos positivos.
 2. **Nivel 2 — Conocimiento del Modelo:**
    * Proceder con APIs y constantes conocidas de ZOS y Lua.
    * Validar ejecutando pruebas locales (`luajit tests/...`), sin inspección remota previa.
@@ -32,8 +32,9 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
      * **Búsqueda Guiada por Hipótesis:** Prohibida la navegación exploratoria ciega. Exige formular una hipótesis técnica previa antes de invocar herramientas de exploración profunda (`eso_search_ui_source`, `eso_get_ui_modules`).
      * **Lectura de Código UI por Rango:** Firma `eso_get_ui_source(file_path, symbol?, start_line?, end_line?, max_lines=200)`. Los nombres canónicos son `start_line`/`end_line`. Las herramientas rechazan parámetros desconocidos con `Unknown parameter(s): ... Valid parameters: ...`: corregir el nombre según esa lista y reintentar, sin reformular la consulta.
      * **Salida MCP No Paginable:** Las salidas grandes se persisten (ej. `.system_generated/steps/<n>/output.txt`) como JSON de pocas líneas, con el código en una sola cadena. Paginar ese archivo por líneas (mediante lectura con delimitación de rango) no acota el contenido. Pedir rangos chicos al MCP (`start_line`/`end_line`, `max_lines`) en lugar de releer el archivo.
-     * Consulta de API: `eso_search_api`, `eso_get_constant`, `eso_get_enum`, `eso_get_function`, `eso_get_event`, `eso_search_strings`, `eso_api_stats`.
+     * Consulta de API y Assets: `eso_search_api`, `eso_get_constant`, `eso_get_enum`, `eso_get_function`, `eso_get_event`, `eso_search_strings`, `eso_search_textures`, `eso_api_stats`.
      * Inspección de persistencia (solo lectura): `eso_savedvars_inspect`, `eso_savedvars_get_account_wide`, `eso_savedvars_get_character`, `eso_savedvars_query`. Prohibida la mutación vía MCP.
+     * **Regla P0 Anti-Alucinación de Assets y Texturas:** Queda estrictamente prohibido introducir, asumir o proponer constantes, identificadores o rutas bajo `EsoUI/Art/...` (o cualquier asset nativo de texturas) sin comprobación obligatoria previa contra `eso-mcp-server` (`eso_search_textures`, `eso_search_ui_source`) o las referencias locales oficiales (`references/ESOUIDocumentation.txt`). Toda ruta de asset no verificada constituye una alucinación y rotura de contrato en el cliente.
    * **Vía Fallback — Archivos Locales (Auto-actualizables):**
      * Si el MCP no está disponible, o tras agotar su límite sin localizar el símbolo, consultar en `references/ESOUIDocumentation.txt` (API/constantes C/Lua) y `references/localizegeneratedstrings.lua` (strings a `SI_*`).
      * **Flujo para textos en pantalla:** Buscar string en `localizegeneratedstrings.lua` -> contrastar constante/enum en `ESOUIDocumentation.txt`.
@@ -50,6 +51,7 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
      * **Con Servidor MCP Disponible:** MCP -> Referencias Locales -> Web -> Stop & Ask.
      * **Si el MCP No Está Disponible:** Referencias Locales -> Web -> Stop & Ask.
      * **Stop & Ask:** Si no se localiza la API o constante tras agotar el flujo, **detenerse inmediatamente y consultar al usuario**. Prohibido inventar signaturas, asumir parámetros o reiniciar bucles de inspección ciega.
+   * **Protocolo de Circuit Breaker ante Fallos de Contrato (Stop & Audit):** Si un componente visual, textura, anclaje o animación falla en el cliente de EsoUI (componente invisible, textura no renderizada o ausente, error Lua de UI), queda estrictamente prohibido encadenar micro-parches reactivos a ciegas o iteraciones generativas basadas en conjeturas. Es mandatorio activar un Stop & Audit inmediato: detenerse y auditar la causa raíz contrastando contra el código fuente oficial de ZOS mediante el MCP de dominio (`eso_search_ui_source`, `eso_search_textures`) o referencias canónicas antes de proponer cualquier código o parche al usuario.
 
 ---
 
@@ -66,8 +68,8 @@ Protocolo jerárquico de 4 niveles para resolver dudas de API y constantes:
 Procedimientos detallados y normativas de ingeniería en `references/`:
 
 | Dominio | Contenido | Referencia Especializada |
-| **Arquitectura Lua** | Aislamiento de namespace, ciclo `EVENT_ADD_ON_LOADED`, persistencia `SavedVariables` e inspección MCP, `ZO_PreHook`/`ZO_PostHook`, recolección de basura, tipado nativo, constantes, anclaje de escenas/diario (`ZO_QuestJournal` vs `ZO_SharedRightPanelBackground`), `CT_EDITBOX` (copiado in-place vs antipatrón de modales), ciclo de borrador, convención de texturas de mapa, salvaguarda de `SetMapToPlayerLocation` en `ZO_WorldMap`, suspensión contextual por `EVENT_ZONE_CHANGED`, soberanía contractual del addon, pragmatismo P2P, arquitectura zero-reload in-game, contención de logs y reactividad contextual. | [`references/lua-architecture.md`](references/lua-architecture.md) |
-| **Build y Empaquetado** | Comandos slash en README, sincronización de dependencias (`## DependsOn:` vs README), inyección `@BUILD_VERSION@`, prevalencia del motor sobre mocks, estándares de arnés de pruebas, paridad de orden de carga con el manifiesto, flujo de desarrollo in-game vía symlinks y paridad multi-addon. | [`references/build-and-packaging.md`](references/build-and-packaging.md) |
+| **Arquitectura Lua** | Aislamiento de namespace, ciclo `EVENT_ADD_ON_LOADED`, persistencia `SavedVariables` e inspección MCP, `ZO_PreHook`/`ZO_PostHook`, recolección de basura, tipado nativo, constantes, anclaje de escenas/diario (`ZO_QuestJournal` vs `ZO_SharedRightPanelBackground`), `CT_EDITBOX` (copiado in-place vs antipatrón de modales), ciclo de borrador, convención de texturas de mapa, salvaguarda de `SetMapToPlayerLocation` en `ZO_WorldMap`, suspensión contextual por `EVENT_ZONE_CHANGED`, soberanía contractual del addon, pragmatismo P2P, arquitectura zero-reload in-game, contención de logs, reactividad contextual, Regla P0 anti-alucinación de assets (`EsoUI/Art/...`) y protocolo Stop & Audit ante fallos de contrato visual. | [`references/lua-architecture.md`](references/lua-architecture.md) |
+| **Build y Empaquetado** | Comandos slash en README, sincronización de dependencias (`## DependsOn:` vs README), inyección `@BUILD_VERSION@`, prevalencia del motor sobre mocks, gobernanza de mocks complacientes (anti-complacent mocks), estándares de arnés de pruebas, paridad de orden de carga con el manifiesto, flujo de desarrollo in-game vía symlinks y paridad multi-addon. | [`references/build-and-packaging.md`](references/build-and-packaging.md) |
 | **Documentación API** | API oficial de C/Lua, funciones globales, enums, eventos y constantes del motor ZOS. | [`references/ESOUIDocumentation.txt`](references/ESOUIDocumentation.txt) |
 | **Strings y Localización** | Mapeo oficial de textos de interfaz/tooltips en inglés a IDs de strings y enums (`SI_*`). | [`references/localizegeneratedstrings.lua`](references/localizegeneratedstrings.lua) |
 

@@ -585,3 +585,34 @@ end
 
   EVENT_MANAGER:RegisterForEvent(self.name .. "_ZoneWatcher", EVENT_ZONE_CHANGED, OnZoneChanged)
   ```
+
+---
+
+## 18. Regla P0 Anti-Alucinación de Assets y Validación de Contratos Visuales en EsoUI
+
+### 18.1 Verificación Mandatoria de Texturas y Assets (`EsoUI/Art/...`)
+
+El motor de Zenimax (EsoUI) carga sus recursos gráficos desde contenedores binarios internos (`.dat`), direccionados mediante rutas virtuales relativas (por ejemplo, `EsoUI/Art/...` o `/esoui/art/...`).
+
+* **Invariante P0 Anti-Alucinación:** Queda terminantemente prohibido inventar, asumir por analogía o deducir rutas o nombres de archivo de texturas (por ejemplo, inferir `compass_area_pin.dds` basándose en nombres de funciones o constantes).
+* **Comprobación Mandatoria Previa:** Antes de incorporar cualquier ruta de textura en código de producción, constantes o arneses de pruebas, el agente **DEBE** verificar su existencia en el catálogo oficial de ZOS mediante:
+  1. `eso_search_textures`: Para localizar texturas registradas por coincidencia de subcadena o patrón.
+  2. `eso_search_ui_source` / `eso_get_ui_source`: Para inspeccionar controles nativos de ZOS y constatar las rutas exactas de textura asignadas a elementos homólogos (pins, marcos, iconos, barras, botones).
+  3. `references/ESOUIDocumentation.txt`: Para constantes y enums relacionados con texturas y estilos.
+* **Tolerancia Cero a la Inferencia Generativa:** Si una textura no puede ser verificada en el catálogo canónico mediante el MCP de dominio ni en las referencias oficiales, no debe proponerse ni incorporarse al código bajo ninguna circunstancia.
+
+### 18.2 Protocolo de Circuit Breaker ante Fallos de Contrato Visual (Stop & Audit)
+
+Cuando un componente visual, textura, anclaje o animación falla en tiempo de ejecución en el cliente de EsoUI (manifestándose como un control invisible, textura no renderizada, pin desalineado o error Lua al instanciar el control):
+
+* **Interdicción de Micro-Parches Reactivos:** Queda estrictamente prohibido iniciar secuencias sucesivas de parches a ciegas, cambios especulativos de anclajes o permutación de nombres de archivo basada en prueba y error.
+* **Parada Obligatoria y Auditoría de Raíz (Stop & Audit):**
+  1. **Detener la Modificación de Código:** Congelar inmediatamente la edición del addon.
+  2. **Auditoría del Componente Nativo:** Usar `eso_search_ui_source` para localizar cómo implementa Zenimax controles equivalentes en el código fuente de EsoUI.
+  3. **Verificación de Contrato:** Comprobar en el código fuente de ZOS:
+     * Contenedor padre (`parent`), tipo de control (`CT_*`) y plantilla XML o virtual usada.
+     * Capas gráficas (`drawLayer`, `drawLevel`, `drawTier`).
+     * Dimensiones explícitas (`SetDimensions`) y anclajes requeridos (`SetAnchor`).
+     * Rutas fidedignas de texturas validadas con `eso_search_textures`.
+  4. **Emisión de Diagnóstico Técnico:** Proponer la solución al usuario acompañada de la evidencia del código nativo de ZOS que respalda el cambio, erradicando conjeturas.
+
