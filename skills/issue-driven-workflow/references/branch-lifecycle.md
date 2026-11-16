@@ -61,10 +61,13 @@ Toda tarea despachada debe cumplir secuencialmente con las siguientes 8 fases:
    Contrastar las especificaciones y entidades del ticket contra los ADRs aceptados en `docs/adr/`. Si un ADR aceptado posterior a la issue deroga, reemplaza o declara obsoletos componentes, librerías, flujos, servicios externos o entidades descritas en el ticket, prevalece estrictamente el ADR sobre el texto del ticket. Descartar referencias obsoletas y contrastar el alcance real contra la arquitectura vigente antes de formular cualquier plan o cambio de código.
 3. **Rol de Ingeniero de Sistemas y Dictamen Crítico Previo:**
    El ticket y las instrucciones directas son hipótesis técnicas (`core/00-router.md`, `core/01-objectivity.md`). Prohibido actuar como ejecutor administrativo ciego. Si el requerimiento promueve parches sobre bases viciadas, asume funcionalidad errónea por inercia histórica o plantea reescrituras masivas sin sustento, el agente debe emitir un dictamen técnico formal antes de avanzar mecánicamente en el ciclo E2E o mutar el remoto.
-4. **Protocolo de Investigación Exploratoria (Ahorro de Contexto):**
+4. **Bifurcación de Ejecución: Autonomía con Rendición de Cuentas vs. Consulta Ejecutiva:**
+   - **Vía Autónoma con Rendición de Cuentas (Camino Unívoco / 100% de Alineación):** Cuando el requerimiento es técnicamente claro y el agente (posicionado como Ingeniero de Sistemas) concuerda en que es la mejor solución de arquitectura y respeta los contratos y ADRs vigentes, la ejecución autónoma es legítima y deseable. Queda estrictamente prohibida la entrega de meros resúmenes cosméticos de archivos modificados; es mandatorio registrar formalmente el **Dictamen Técnico y Criterio de Arquitectura** en el cuerpo del PR, en el reporte de chat y en un ADR (si introduce cambios estructurales, nuevas dependencias o altera contratos/persistencia).
+   - **Consulta Ejecutiva Mandatoria (*Stop & Ask* Ejecutivo ante Bifurcaciones):** Queda prohibido consultar por dudas operativas, vacilaciones o trivialidades que el agente debe resolver mediante análisis técnico del código. La consulta ejecutiva es obligatoria cuando existan alternativas técnicas viables con impactos divergentes, trade-offs de arquitectura o necesidad de re-arquitectura/cambio de rumbo. Debe formularse de manera concisa, técnica y estructurada (resumen del dilema, alternativas con pros/contras y recomendación técnica fundamentada) para que el usuario tome una decisión ejecutiva informada antes de ramificar o mutar el workspace.
+5. **Protocolo de Investigación Exploratoria (Ahorro de Contexto):**
    * **Lecturas Acotadas (≤ 8 archivos):** Si la tarea requiere inspección quirúrgica de hasta 8 archivos conocidos, realizar lecturas directas en la sesión principal mediante herramientas nativas de lectura o búsqueda por contenido.
    * **Exploración Extensa (> 8 archivos, repositorios externos o a pedido del usuario):** Evitar saturar la sesión principal con lecturas masivas. Delegar el relevamiento al subagente de investigación (ej. `research` con modelo `flash` en Antigravity, o subagente equivalente del runtime), quien devuelve un resumen ejecutivo consolidado. Ver [`references/exploratory-research.md`](exploratory-research.md).
-5. El análisis sitúa la tarea operativamente en fase de planificación local (`📐 In Planning`), sin mutaciones CLI en GitHub Projects v2.
+6. El análisis sitúa la tarea operativamente en fase de planificación local (`📐 In Planning`), sin mutaciones CLI en GitHub Projects v2.
 
 ### Paso 2: Aislamiento e Higiene del Workspace
 
@@ -156,7 +159,24 @@ git push -u origin <nombre-de-rama>
 ```
 
 ### Paso 7: Apertura de Pull Request (👀 In Review / PR)
-1. Redactar el cuerpo del PR en `.pr_body` (o en Antigravity bajo `<appDataDir>/brain/<conversation-id>/scratch/.pr_body`) mediante herramientas nativas de archivos, incluyendo obligatoriamente `Closes #<id>` (o vinculación múltiple si aplica).
+1. **Redacción del Cuerpo del PR (`.pr_body`):**
+   Redactar el cuerpo del PR en `.pr_body` (o en Antigravity bajo `<appDataDir>/brain/<conversation-id>/scratch/.pr_body`) mediante herramientas nativas de archivos. Queda estrictamente prohibida la entrega de listas cosméticas de archivos modificados sin justificación. La estructura canónica obligatoria comprende:
+
+   ```markdown
+   ## Dictamen Técnico y Criterio de Arquitectura
+   <!-- Justificación técnica formal de por qué esta es la mejor solución arquitectónica, alternativas evaluadas y descartadas, y alineación o contraste con ADRs vigentes. -->
+   <Justificación técnica y alineación arquitectónica>
+
+   ## Resumen de Cambios
+   <Descripción concisa y estructurada de los cambios realizados>
+
+   ## Verificación y Pruebas
+   <Comandos ejecutados y resultados de pruebas (ej. ./build.sh check, ./build.sh test)>
+
+   Closes #<id>
+
+   Creado por: <runtime> (<modelo>)
+   ```
 2. Publicar mediante GitHub CLI:
    ```bash
    gh pr create --base <base_branch> --title "<tipo>(<alcance>): <descripción>" --body-file .pr_body
