@@ -694,6 +694,81 @@ class TestAgentGuardPipelining(unittest.TestCase):
         self.assertIn("atómicas y aisladas", out["reason"])
 
 
+class TestAgentGuardGhIssueCreate(unittest.TestCase):
+    """Verifica intercepción determinista de llamadas a gh issue create (#393)."""
+
+    def test_gh_issue_create_without_profile_denied(self):
+        for cmd in (
+            "gh issue create --title 'Bug' --body 'Detalles'",
+            "gh issue create -t 'Bug' -b 'Detalles'",
+            "gh issue create --title 'Bug' --label 'bug'",
+            "gh issue create -t 'Bug' -l bug -l enhancement",
+            "gh -R owner/repo issue create --title 'Bug'",
+            "gh --repo owner/repo issue create --title 'Bug'",
+            "gh --repo=owner/repo issue create -t 'Bug'",
+            "gh issue create",
+        ):
+            err = guard_mod.evaluate_shell_command(cmd)
+            self.assertIsNotNone(err, f"Esperaba bloqueo para llamada desnuda: {cmd}")
+            self.assertIn("gh issue create", err)
+            self.assertIn("issue-create", err)
+            self.assertIn("--profile", err)
+
+    def test_gh_issue_create_hook_denial_response(self):
+        cmd = "gh issue create --title 'Falta perfil' --body 'Texto'"
+        reason = guard_mod.evaluate_tool_request("run_command", {"CommandLine": cmd})
+        self.assertIsNotNone(reason)
+        out = guard_mod.to_antigravity_response(reason)
+        self.assertEqual(out["decision"], "deny")
+        self.assertIn("Guard P0 Activado", out["reason"])
+        self.assertIn("issue-create --profile", out["reason"])
+
+        claude_out = guard_mod.to_claude_response(reason)
+        self.assertIsNotNone(claude_out)
+        self.assertEqual(claude_out["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("issue-create --profile", claude_out["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_gh_issue_create_with_profile_allowed(self):
+        for cmd in (
+            "gh issue create --title 'Bug' --label profile:low",
+            "gh issue create --title 'Bug' --label profile:medium",
+            "gh issue create -t 'Bug' -l profile:high",
+            "gh issue create -t 'Bug' -l profile:pro",
+            "gh issue create --title 'Bug' --label=profile:medium",
+            "gh issue create --title 'Bug' -l=profile:medium",
+            "gh issue create --title 'Bug' -lprofile:medium",
+            "gh issue create -t 'Bug' -l bug -l profile:medium",
+            "gh issue create -t 'Bug' --label 'bug,profile:medium'",
+            "gh -R owner/repo issue create -t 'Bug' -l profile:low",
+            "gh --repo owner/repo issue create -t 'Bug' --label profile:high",
+            "gh issue create -R owner/repo -t 'Bug' --label profile:pro",
+        ):
+            err = guard_mod.evaluate_shell_command(cmd)
+            self.assertIsNone(err, f"Falso positivo en llamada con perfil: {cmd}")
+
+    def test_issue_create_and_agent_issue_allowed(self):
+        for cmd in (
+            "issue-create --title 'Bug' --profile medium",
+            "issue-create -t 'Bug' --body-file .issue_body --profile low",
+            "agent-issue --title 'Bug' --profile high",
+            "./skills/issue-driven-workflow/bin/issue-create --title 'Bug' --profile pro",
+        ):
+            err = guard_mod.evaluate_shell_command(cmd)
+            self.assertIsNone(err, f"No debería bloquearse invocación directa al wrapper: {cmd}")
+
+    def test_other_gh_issue_commands_allowed(self):
+        for cmd in (
+            "gh issue view 393",
+            "gh issue list",
+            "gh issue close 393",
+            "gh pr create --title 'gh issue create'",
+            "gh pr create -t 'issue' -b 'create'",
+        ):
+            err = guard_mod.evaluate_shell_command(cmd)
+            self.assertIsNone(err, f"Falso positivo en otro comando de gh: {cmd}")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

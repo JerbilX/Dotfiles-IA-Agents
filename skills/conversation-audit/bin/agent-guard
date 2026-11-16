@@ -428,6 +428,87 @@ def _check_terminal_file_io(cmd_name: str, args: List[str], cwd: Optional[str] =
     return None
 
 
+def _check_gh_issue_create(cmd_name: str, args: List[str]) -> Optional[str]:
+    """Detecta llamadas directas a 'gh issue create' sin tipificación de perfil (Issue #393).
+
+    Exige tipificación explícita de perfil mediante --label profile:* o -l profile:*,
+    orientando al agente a usar el wrapper determinista 'issue-create'.
+    """
+    if cmd_name != "gh":
+        return None
+
+    subcommands: List[str] = []
+    labels: List[str] = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--":
+            i += 1
+            while i < len(args):
+                if len(subcommands) < 2:
+                    subcommands.append(args[i])
+                i += 1
+            break
+
+        if a.startswith("--label="):
+            labels.append(a.split("=", 1)[1])
+            i += 1
+            continue
+        if a in ("--label", "-l"):
+            if i + 1 < len(args):
+                labels.append(args[i + 1])
+                i += 2
+                continue
+            i += 1
+            continue
+        if a.startswith("-l") and len(a) > 2:
+            val = a[2:]
+            if val.startswith("="):
+                val = val[1:]
+            labels.append(val)
+            i += 1
+            continue
+
+        if a in ("-R", "--repo", "-t", "--title", "-b", "--body", "-F", "--body-file",
+                 "-a", "--assignee", "-m", "--milestone", "-p", "--project", "-d", "--template"):
+            i += 2
+            continue
+        if a.startswith(("-R=", "--repo=", "-t=", "--title=", "-b=", "--body=",
+                         "-F=", "--body-file=", "-a=", "--assignee=", "-m=", "--milestone=",
+                         "-p=", "--project=", "-d=", "--template=")):
+            i += 1
+            continue
+
+        if a.startswith("-"):
+            i += 1
+            continue
+
+        if len(subcommands) < 2:
+            subcommands.append(a)
+        i += 1
+
+    if len(subcommands) >= 2 and subcommands[0] == "issue" and subcommands[1] == "create":
+        has_profile = False
+        for lbl in labels:
+            for part in lbl.split(","):
+                part_clean = part.strip().lower()
+                if part_clean.startswith("profile:"):
+                    p_val = part_clean.split(":", 1)[1].strip()
+                    if p_val in ("low", "medium", "high", "pro") or p_val:
+                        has_profile = True
+                        break
+            if has_profile:
+                break
+
+        if not has_profile:
+            return (
+                "llamada directa a 'gh issue create' sin tipificación de perfil; "
+                "usar 'issue-create --profile <low|medium|high|pro>' para registrar tareas en el backlog central"
+            )
+
+    return None
+
+
 def _strip_heredoc_bodies(command: str) -> str:
     """Elimina los cuerpos de heredocs (<<EOF ... EOF): son datos, no comandos."""
     out: List[str] = []
@@ -689,6 +770,11 @@ def evaluate_shell_command(command: str, cwd: Optional[str] = None) -> Optional[
         io_err = _check_terminal_file_io(cmd_name, args, cwd)
         if io_err:
             return io_err
+
+        # 6. Intercepción de llamadas a gh issue create sin tipificación de perfil (#393)
+        gh_issue_err = _check_gh_issue_create(cmd_name, args)
+        if gh_issue_err:
+            return gh_issue_err
 
     return None
 
