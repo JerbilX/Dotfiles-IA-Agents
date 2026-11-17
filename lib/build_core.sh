@@ -70,11 +70,27 @@ output = {
 }
 
 tmp_file = f"{dist_file}.tmp"
-with open(tmp_file, "w", encoding="utf-8") as f:
-    json.dump(output, f, indent=2, ensure_ascii=False)
-    f.write("\n")
+new_content = json.dumps(output, indent=2, ensure_ascii=False) + "\n"
+if os.path.exists(dist_file):
+    try:
+        with open(dist_file, "r", encoding="utf-8") as f:
+            if f.read() == new_content:
+                if os.path.exists(tmp_file):
+                    os.remove(tmp_file)
+                import sys; sys.exit(0)
+    except Exception:
+        pass
 
-os.replace(tmp_file, dist_file)
+with open(tmp_file, "w", encoding="utf-8") as f:
+    f.write(new_content)
+
+try:
+    os.replace(tmp_file, dist_file)
+except OSError:
+    with open(dist_file, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    if os.path.exists(tmp_file):
+        os.remove(tmp_file)
 ' "${config_file}" "${mcp_dir}" "${dist_mcp_file}"
     else
         echo "Error: Se requiere python3 para compilar la configuración de MCP." >&2
