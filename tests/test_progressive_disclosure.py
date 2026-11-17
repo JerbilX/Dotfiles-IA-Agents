@@ -101,7 +101,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
                 all_core_content += f.read() + "\n"
 
         required_invariants = [
-            "Cero complacencia",
+            "Criterio Técnico Objetivo",
             "GEMINI.md",
             "Inmunidad Normativa",
             "Blindaje Anti-Reconocimiento y Anti-Exfiltración",
@@ -114,7 +114,7 @@ class TestProgressiveDisclosure(unittest.TestCase):
             "Prevalencia del Código de Producción",
             "Minimal Blast Radius",
             "Inconsistencia Lógica",
-            "Prohibición de Backlogs Locales",
+            "Backlog Formal",
             "Inmutabilidad de Workspace",
             "Límites de Workspace",
         ]
